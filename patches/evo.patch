@@ -670,37 +670,25 @@
          std::vector<std::string> candidates = {
 --- a/scripts/package-app.sh
 +++ b/scripts/package-app.sh
-@@ -183,7 +183,8 @@
+@@ -183,7 +183,7 @@
  # 2. Native-app dependency bootstrap (static zlib for the host converter).
  # ---------------------------------------------------------------------------
  begin "native-app dependencies"
 -eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"
-+ZLIB_INCLUDE="${NUVIO_MAC_SDK}/usr/include"
-+ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"
++ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"
  need_file "${ZLIB_ARCHIVE:?}" "zlib bootstrap did not yield an archive"
  
  # ---------------------------------------------------------------------------
-@@ -191,8 +192,8 @@
- # ---------------------------------------------------------------------------
+@@ -192,7 +192,7 @@
  begin "building host converter (ps5-native-tool)"
  TOOL="${BUILD}/host/ps5-native-tool"
--clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+ clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 -    -I "${ZLIB_INCLUDE}" \
-+/usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 +     \
      "${NATIVE}/native_app_builder.cpp" "${NATIVE}/self_container.cpp" \
      "${NATIVE}/elf_object.cpp" "${NATIVE}/sce_module_writer.cpp" \
      "${ZLIB_ARCHIVE}" -o "${TOOL}"
-@@ -207,7 +208,7 @@
-     expected_signed="$(awk '{print $1}' "${NATIVE}/runtime/libc.prx.sha256")"
-     local work="${BUILD}/runtime-shim"
-     mkdir -p "${work}"
--    clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
-+    /usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
-         "${NATIVE}/libc_builder.cpp" -o "${work}/libc-builder"
-     local copy
-     for copy in a b; do
-@@ -285,7 +286,7 @@
+@@ -285,7 +285,7 @@
      # cached mount is caught immediately instead of costing a console session.
      # Written to a generated header to sidestep -D string quoting through the
      # make -> /bin/sh recipe chain.
@@ -709,7 +697,7 @@
      git -C "${EVO}" diff --quiet -- "${EVO}" 2>/dev/null || BUILD_SHA="${BUILD_SHA}-dirty"
      printf '#pragma once\n#define EVO_BUILD_ID "%s_%s"\n' \
          "${BUILD_SHA}" "$(date -u +%m%d-%H%M)" > "${EVO}/include/evo_build_id.h"
-@@ -406,16 +407,10 @@
+@@ -406,16 +406,10 @@
      ok "librmlui.a patched"
      ARCHIVE_GROUP+=("${RML_A}")
  
@@ -727,7 +715,7 @@
               libass libfreetype libharfbuzz libharfbuzz-subset libfribidi \
               libpng16 libsamplerate libssl libcrypto libiconv libxml2 \
               libz libbz2 liblzma libzstd libm; do
-@@ -702,7 +697,7 @@
+@@ -702,7 +696,7 @@
  
  echo ""
  ok "app module: ${APPDIR#"${REPO_ROOT}/"}/"

@@ -44,7 +44,7 @@ port never runs a browser inside the native decoder.
 | Route state | Enable the Nuvio resume methods for the PS5 flag | Keep browsing state across browser recreation |
 | Public login configuration | Read selected values from the official TV package | Enable the official QR login path |
 | Browser UI hosting | Serve `webui/` from the title over loopback | Remove the computer that served the UI |
-| Host build | Adapt the EVO packaging for macOS | Build without a Linux VM |
+| Host build | Select Linux or macOS toolchains and host zlib | Build the same PS5 sources on either host |
 
 `sce_sys/param.json` in this repository holds the title identity and content
 version. The build copies those values into the generated title, so a release tag

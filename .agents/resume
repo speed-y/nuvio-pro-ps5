@@ -13,5 +13,6 @@ import subprocess
 versions = {p['id']: p.get('version') for p in json.load(open('deps.lock'))['host_requirements']}
 assert platform.python_version() == versions['python'], 'Run .agents/setup to refresh Python'
 assert subprocess.check_output(['node', '--version'], text=True).strip() == 'v' + versions['node'], 'Run .agents/setup to refresh Node'
-print('Orb toolchains ready. Native PS5 builds require macOS.')
+subprocess.run(['llvm-config-19', '--version'], check=True)
+print('Orb toolchains ready for Linux PS5 builds.')
 PY

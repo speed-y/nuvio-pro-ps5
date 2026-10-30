@@ -58,7 +58,7 @@
       "id": "ps5-homebrew-ui-source",
       "kind": "source-archive",
       "role": "EVO's UI kit, pinned at the revision the EVO source records as a submodule; codeload archives exclude submodules, so the adapter installs it before the build.",
-      "url": "https://codeload.github.com/blackbearreloaded/ps5-homebrew-ui/tar.gz/4bd942579dd981b3df9c740438489ca6a614ddc0",
+      "url": "https://codeload.github.com/Phononenom/ps5-homebrew-ui/tar.gz/4bd942579dd981b3df9c740438489ca6a614ddc0",
       "commit": "4bd942579dd981b3df9c740438489ca6a614ddc0",
       "sha256": "e51a7e20d9bf5e051d8106c87268bcdcb22717919b69ece4510e063a754ecf0d",
       "size_bytes": 99464200,
@@ -66,7 +66,7 @@
       "directory": "ps5-homebrew-ui-4bd942579dd981b3df9c740438489ca6a614ddc0",
       "retrieved": "2026-10-10",
       "license": "GPL-3.0",
-      "evidence": "[SOURCE-VERIFIED] Archive hash recorded locally; the revision is the submodule commit in the pinned EVO source. Not firmware validation."
+      "evidence": "[SOURCE-VERIFIED] Archive hash recorded locally; the revision is the submodule commit in the pinned EVO source. On 2026-10-30 the original repository returned 404; the Phononenom mirror reproduced the unchanged archive hash. Not firmware validation."
     },
     {
       "id": "stremio-ps5-network-reference",

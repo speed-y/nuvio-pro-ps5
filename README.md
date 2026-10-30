@@ -68,7 +68,7 @@ Start a new stream to apply it. Your HDMI soundbar or receiver decodes the audio
 - Firmware 13.60, ShadowMount and the current boot's ELF loader on port 9021.
 - Use FTP for manual installation and updates.
 - Software AV1 through dav1d is not included.
-- To build from source, install macOS host tools: Xcode command-line tools, Homebrew LLVM and Node.js.
+- Build from source on Linux or macOS. See [Build](docs/BUILD.md) for the host tools.
 
 ## Documentation
 

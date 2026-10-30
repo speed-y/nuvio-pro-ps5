@@ -11,9 +11,10 @@ port or to test native code.
 
 Amp runs `.agents/setup` when it prepares a fresh Linux orb without an exact snapshot.
 Setup installs the Python and Node.js versions recorded in `deps.lock`.
-It installs host compilers, FFmpeg and its development libraries.
+It installs LLVM/Clang/lld 19, nasm, host zlib, FFmpeg and its development libraries.
 It builds the browser UI and runs `make check`.
 The UI builder verifies pinned downloads and warms the npm dependency cache.
+Setup also caches and verifies the pinned native source, SDK and target-library archives.
 Amp snapshots the installed tools, dependencies and generated UI for later orbs.
 
 The repository-scoped login profile selects these tools in new non-interactive shells.
@@ -21,14 +22,41 @@ The repository-scoped login profile selects these tools in new non-interactive s
 Setup needs no console address, credentials or background service.
 Generated files remain under ignored `build/` and `.cache/` directories.
 
-Use `make check` for host tests and `make ui` for browser UI builds.
-The native adapter still requires macOS, including its Apple command-line tools.
-Linux orb setup does not enable `make build` or establish console execution.
+Use `make check` for host tests, `make ui` for browser UI builds and `make build` for the complete title.
+The first native build compiles target FFmpeg from the cached source.
+Later builds reuse the archive and FFmpeg caches.
+Compilation does not establish console execution.
 
-## Prepare the host
+## Prepare a Linux host
 
-The native build adapter needs macOS. Install the Xcode command-line tools, then
-install the tools below yourself. The builder never installs or updates them.
+Use Debian 12 or Ubuntu 24.04 with the following tools:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential clang-19 llvm-19-dev lld-19 nasm \
+  zlib1g-dev pkg-config curl ca-certificates xz-utils
+```
+
+Install Python and Node.js at the versions in `deps.lock`.
+Amp orb setup installs these tools automatically.
+On other Linux hosts, install them yourself. The builder does not install host packages.
+
+The builder prefers `llvm-config-19`, then `llvm-config`.
+Set `LLVM_CONFIG` to select another installation explicitly.
+It uses that installation's compiler, linker and LLVM utilities for target builds.
+Linux packaging links the host converter against the system static zlib.
+The PS5 title still links the pinned target libraries, not Linux libraries.
+
+```sh
+export LLVM_CONFIG=/usr/bin/llvm-config-19
+make check
+make build
+```
+
+## Prepare a macOS host
+
+Install the Xcode command-line tools, then install the tools below yourself.
+The builder never installs or updates them.
 
 | Tool | Recorded version | Purpose |
 |---|---|---|

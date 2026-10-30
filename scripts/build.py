@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the pinned Nuvio UI and an EVO-derived PS5 native title on macOS.
+"""Build the pinned Nuvio UI and an EVO-derived PS5 native title on Linux or macOS.
 
 Host only. Generated upstream sources, modules and binaries remain outside Git.
 """
@@ -46,17 +46,6 @@ def sdk_install_auth_profile(makefile):
     if not 0 <= int(authority[0], 16) <= 0xffffffffffffffff:
         raise RuntimeError('SDK authority exceeds its 64-bit field')
     return {'authority': authority[0], 'auth_info': ''.join(values).lower()}
-
-
-def lld_available():
-    """prospero-lld resolves ld.lld from the LLVM prefix or the lld formula prefix."""
-    if shutil.which('ld.lld'):
-        return True
-    try:
-        prefix = subprocess.check_output(['brew', '--prefix', 'lld'], text=True, stderr=subprocess.DEVNULL).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    return bool(prefix) and (Path(prefix)/'bin/ld.lld').is_file()
 
 
 def fetch(key):
@@ -580,10 +569,11 @@ FFMPEG_FLAGS = (
 )
 
 
-def install_ffmpeg(sdk):
+def install_ffmpeg(sdk, env):
     """Build the pinned FFmpeg over the sysroot homebrew prefix (cached)."""
     pin, archive = fetch('ffmpeg-source')
-    config_id = hashlib.sha256('\n'.join([pin['sha256'], *FFMPEG_FLAGS]).encode()).hexdigest()[:16]
+    compiler = subprocess.check_output([env['LLVM_CONFIG'], '--version'], text=True).strip()
+    config_id = hashlib.sha256('\n'.join([pin['sha256'], compiler, *FFMPEG_FLAGS]).encode()).hexdigest()[:16]
     cached = CACHE / ('ffmpeg-' + config_id)
     stamp = {'source_sha256': pin['sha256'], 'config_id': config_id, 'directory': pin['directory']}
     stamp_file = cached / 'stamp.json'
@@ -599,11 +589,6 @@ def install_ffmpeg(sdk):
     stage = WORK / 'ffmpeg-stage'
     if stage.exists():
         shutil.rmtree(stage)
-    env = os.environ.copy()
-    llvm = subprocess.check_output(['brew', '--prefix', 'llvm'], text=True).strip()
-    core = subprocess.check_output(['brew', '--prefix', 'coreutils'], text=True).strip()
-    env.update(PS5_PAYLOAD_SDK=str(sdk),
-               PATH=os.pathsep.join([str(sdk / 'bin'), llvm + '/bin', core + '/libexec/gnubin', env['PATH']]))
 
     def logged(args, name, **kwargs):
         log = WORK / ('ffmpeg-' + name + '.log')
@@ -879,10 +864,14 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     end = s.index('    # Static archives EVO links', start)
     s = s[:start]+s[end:]
     s = s.replace('libswscale libdav1d \\', 'libswscale \\')
-    # The host converter can link macOS's zlib SDK stub. No console libc change.
+    # Only the host converter uses host zlib. Target libraries remain unchanged.
+    if os.uname().sysname == 'Darwin':
+        zlib = 'ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"'
+        s = s.replace('clang++ -std=c++20', '/usr/bin/clang++ -std=c++20')
+    else:
+        zlib = 'ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"'
     s = s.replace('eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"',
-                  'ZLIB_INCLUDE="${NUVIO_MAC_SDK}/usr/include"\nZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"')
-    s = s.replace('clang++ -std=c++20', '/usr/bin/clang++ -std=c++20')
+                  zlib)
     s = s.replace('-I "${ZLIB_INCLUDE}"', '')
     s = '\n'.join('echo "Installable inventory is recorded in build.json."'
                   if line.startswith('find "${APPDIR}" -type f -printf') else line
@@ -970,11 +959,31 @@ def main():
     if args.ui_only:
         print('Host UI built:', ui)
         return
-    if os.uname().sysname != 'Darwin':
-        raise RuntimeError('This native host adapter currently requires macOS.')
-    if not lld_available():
-        raise RuntimeError('ld.lld not found. Install LLVM and the lld formula: brew install llvm lld')
+    host = os.uname().sysname
+    if host not in ('Linux', 'Darwin'):
+        raise RuntimeError('The native host adapter requires Linux or macOS.')
     sdk = WORK/'sdk/ps5-payload-sdk'
+    env = os.environ.copy()
+    if host == 'Darwin':
+        llvm = subprocess.check_output(['brew', '--prefix', 'llvm'], text=True).strip()
+        core = subprocess.check_output(['brew', '--prefix', 'coreutils'], text=True).strip()
+        env.setdefault('LLVM_CONFIG', llvm+'/bin/llvm-config')
+        env['NUVIO_MAC_SDK'] = subprocess.check_output(['xcrun', '--show-sdk-path'], text=True).strip()
+        env['PATH'] = core+'/libexec/gnubin'+os.pathsep+env['PATH']
+    else:
+        env.setdefault('LLVM_CONFIG', shutil.which('llvm-config-19') or shutil.which('llvm-config') or '')
+    if not env['LLVM_CONFIG']:
+        raise RuntimeError('LLVM not found. Install clang, lld and llvm development tools; set LLVM_CONFIG if needed.')
+    llvm_bin = subprocess.check_output([env['LLVM_CONFIG'], '--bindir'], text=True).strip()
+    env['PATH'] = os.pathsep.join([llvm_bin, str(sdk/'bin'), env['PATH']])
+    env['PS5_PAYLOAD_SDK'] = str(sdk)
+    env['PS5_LLD'] = str(Path(llvm_bin)/'ld.lld')
+    if not Path(env['PS5_LLD']).is_file():
+        if host == 'Darwin':
+            lld = subprocess.check_output(['brew', '--prefix', 'lld'], text=True).strip()
+            env['PS5_LLD'] = str(Path(lld)/'bin/ld.lld')
+        if not Path(env['PS5_LLD']).is_file():
+            raise RuntimeError('ld.lld not found. Install lld for the selected LLVM toolchain.')
     _, sdk_zip = fetch('ps5-payload-sdk-prebuilt')
     with zipfile.ZipFile(sdk_zip) as z:
         z.extractall(WORK/'sdk')
@@ -987,20 +996,13 @@ def main():
     for p in (sdk/'bin').iterdir():
         if p.is_file():
             p.chmod(p.stat().st_mode | 0o111)
-    install_ffmpeg(sdk)
+    install_ffmpeg(sdk, env)
     evo = source('evo-player-nuvio-source')
     provide_hui(evo)
     adapt(evo, loopback_diagnostic=loopback_diagnostic, title_ui=args.title_ui, auto_bootstrap=args.auto_bootstrap is not None)
     polish.apply(evo, nv)
     patches.write_patch(fetch('evo-player-nuvio-source')[1], evo, ROOT/'patches/evo.patch')
     patches.write_patch(fetch('nuvio-tv-source')[1], nv, ROOT/'patches/nuvio.patch')
-    env = os.environ.copy()
-    llvm = subprocess.check_output(['brew', '--prefix', 'llvm'], text=True).strip()
-    core = subprocess.check_output(['brew', '--prefix', 'coreutils'], text=True).strip()
-    env.update(PS5_PAYLOAD_SDK=str(sdk), LLVM_CONFIG=llvm+'/bin/llvm-config',
-               PS5_LLD=shutil.which('ld.lld') or '',
-               NUVIO_MAC_SDK=subprocess.check_output(['xcrun', '--show-sdk-path'], text=True).strip())
-    env['PATH'] = ':'.join([core+'/libexec/gnubin', llvm+'/bin', str(sdk/'bin'), env['PATH']])
     bootstrap_metadata = None
     if args.auto_bootstrap is not None:
         payload = WORK/'bootstrap-promote.elf'

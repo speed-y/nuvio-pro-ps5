@@ -834,3 +834,51 @@ The login profile contained one toolchain hook after both setup runs.
 [UNKNOWN] The native adapter still requires macOS. No native artifact changed.
 This session produced no new console execution result or hardware artifact hash.
 Future-orb activation requires these scripts on the project's default branch.
+
+## Complete Linux build, 2026-10-30
+
+[LOCALLY BUILT] The complete title and all eight helpers built on Debian 12 x86-64 in a four-core Amp orb.
+The host used Python 3.13.7, Node.js 22.23.2, LLVM/Clang/lld 19.1.7, nasm 2.16.01 and host zlib 1.2.13.
+SDK v0.43, pacbrew v0.39 and all source revisions and archive checksums remain unchanged.
+
+The original UI-kit download returned HTTP404 before compilation.
+The Phononenom mirror reproduced the pinned archive SHA-256, so only its download URL changed.
+The builder now selects Linux host tools and static host zlib without Apple SDK paths.
+The FFmpeg cache key includes the selected LLVM version.
+
+Build and package commands:
+
+```sh
+NUVIO_WORK_DIR="$PWD/build/linux" make build
+NUVIO_WORK_DIR="$PWD/build/linux" make release
+unzip -t release/PPSA99997.zip
+```
+
+The first build took 268.83 seconds, including uncached FFmpeg 7.1.1 compilation.
+The second build reused FFmpeg and took 143.71 seconds while setup validation also ran.
+Both builds compiled 216 player objects and passed signed-container integrity checks.
+The generated runtime matched the existing pinned SHA-256.
+The converted title imports `libkernel.prx`, not `libkernel_web.prx`, and has no Linux shared-library imports.
+The second receipt covers 237 title files and eight helpers.
+Release packaging verified the receipt and helper ELF section headers.
+The store ZIP passed `unzip -t`.
+
+| Second-build artifact | SHA-256 |
+|---|---|
+| `PPSA99997.zip` | `523fa1d226b8b9d00d8fcd8dd1eea570ac0d00ed02a973b3dfd0ca5eb292c5fd` |
+| `eboot.bin` | `a8f7b397682fe6451191529a4d6c255608cd97359938912bd763e55334ad9a47` |
+| `sce_module/libc.prx` | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+| Embedded promotion helper | `2f4d1e2a299aa67d9e8b9a04d6ec80f82a92eb11e86378712cac5b52047cecc1` |
+| `nuvio.elf` | `777211f13f556cebf4fb1af18e0bbe873179e1947b01c70bcc438e6becdca8e3` |
+
+The final orb setup passed twice in 15.71 and 16.14 seconds with tools and input archives already present.
+Both runs verified the five native input archives without downloading or extracting them.
+A clean login shell selected LLVM 19 and the pinned Python and Node versions.
+Resume passed in 0.04 seconds. All 60 host tests, documentation and source checks passed.
+The Linux CI job now builds the complete title and runs release packaging.
+Its remote execution remains pending until these changes reach GitHub.
+
+[SOURCE-VERIFIED] A host-side adaptation check preserved the macOS Apple zlib and compiler paths and passed Bash syntax checks.
+[UNKNOWN] This session did not rerun a native build on macOS or access a console.
+Linux-built startup, UI, playback, seeking and exit still need firmware 13.60 console validation.
+The receipt retains `firmware_validation: [UNKNOWN]`. No installation or release publication occurred.

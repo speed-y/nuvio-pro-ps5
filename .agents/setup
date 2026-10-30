@@ -8,7 +8,8 @@ mkdir -p "$tools/bin"
 started=$SECONDS
 
 echo "[orb setup] Checking Linux host packages"
-packages=(build-essential ca-certificates curl xz-utils clang pkg-config ffmpeg
+packages=(build-essential ca-certificates curl xz-utils clang-19 llvm-19-dev lld-19
+          nasm zlib1g-dev pkg-config ffmpeg
           libavformat-dev libavcodec-dev libavutil-dev)
 missing=()
 for package in "${packages[@]}"; do
@@ -49,7 +50,7 @@ if [[ ! -x "$node_dir/bin/node" ]]; then
 fi
 
 # Separate non-interactive login shells must receive these versions too.
-printf 'export PATH=%q:%q:"$PATH"\n' "$tools/bin" "$node_dir/bin" > "$tools/env"
+printf 'export PATH=%q:%q:/usr/lib/llvm-19/bin:"$PATH"\n' "$tools/bin" "$node_dir/bin" > "$tools/env"
 marker="# Nuvio PS5 orb toolchain"
 if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
     {
@@ -61,8 +62,20 @@ if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
 fi
 echo "[orb setup] Toolchains ready (${SECONDS}s)"
 
+echo '[orb setup] Caching pinned native build inputs'
+/bin/bash -lc 'python3 -' <<'PY'
+import sys
+sys.path.insert(0, "scripts")
+import build
+for key in ("ps5-payload-sdk-prebuilt", "nuvio-pacbrew", "evo-player-nuvio-source",
+            "ps5-homebrew-ui-source", "ffmpeg-source"):
+    print("Verifying", key, flush=True)
+    build.fetch(key)
+PY
+echo "[orb setup] Native inputs ready (${SECONDS}s)"
+
 # Populate checksum-verified UI inputs and npm's cache through the real builder.
-# Native PS5 compilation remains macOS-only; do not attempt it on this orb.
+# The native toolchain is ready; the first full build compiles target FFmpeg.
 echo '[orb setup] Building browser UI and warming dependencies'
 /bin/bash -lc 'make ui'
 echo "[orb setup] UI ready (${SECONDS}s)"

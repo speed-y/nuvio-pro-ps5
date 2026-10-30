@@ -14,7 +14,7 @@ identify locally recorded downloads and are not maintainer signatures.
 | [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk/releases/tag/v0.43) | v0.43 | Headers, wrappers and payload link inputs |
 | [pacbrew target libraries](https://github.com/ps5-payload-dev/pacbrew-repo/releases/tag/v0.39) | v0.39 | Target libraries only |
 | [FFmpeg](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz) | 7.1.1 | Target libav* libraries. The build compiles this source and installs it over the sysroot copy |
-| [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui/tree/4bd942579dd981b3df9c740438489ca6a614ddc0) | `4bd942579dd981b3df9c740438489ca6a614ddc0` | EVO's UI kit. The EVO archive omits submodules, so the build installs this pinned tree into `third_party/` |
+| [ps5-homebrew-ui mirror](https://github.com/Phononenom/ps5-homebrew-ui/tree/4bd942579dd981b3df9c740438489ca6a614ddc0) | `4bd942579dd981b3df9c740438489ca6a614ddc0` | EVO's UI kit. The EVO archive omits submodules, so the build installs this pinned tree into `third_party/` |
 | [Official Nuvio TV package](https://github.com/NuvioMedia/NuvioTVSmart/releases/tag/1.2.3) | Tizen 1.2.3 | Selected public browser login configuration |
 | [klogsrv](https://github.com/ps5-payload-dev/klogsrv/releases/tag/v0.9) | v0.9 | Optional diagnostics used in the console session |
 
@@ -26,6 +26,10 @@ EVO's minimal configuration and installs it over the sysroot copy, replacing
 the pacbrew libav* libraries. The build omits libdav1d, so software AV1
 remains unsupported. The GPL-3.0 `ps5-homebrew-ui` kit unpacks under
 `third_party/` from its own pinned archive during the build.
+
+The original BlackBearReloaded UI repository returned HTTP404 on 2026-10-30.
+The Phononenom mirror serves the same commit and reproduces the original archive SHA-256.
+The source revision, checksum and attribution remain unchanged.
 
 ## Source attribution
 
