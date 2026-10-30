@@ -7,3 +7,4 @@ __pycache__/
 *.pyc
 release/
 .DS_Store
+.amp/portals/*

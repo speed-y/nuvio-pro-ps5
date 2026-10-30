@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+tools="$repo_root/.cache/orb-tools"
+mkdir -p "$tools/bin"
+started=$SECONDS
+
+echo "[orb setup] Checking Linux host packages"
+packages=(build-essential ca-certificates curl xz-utils clang pkg-config ffmpeg
+          libavformat-dev libavcodec-dev libavutil-dev)
+missing=()
+for package in "${packages[@]}"; do
+    if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed'; then
+        missing+=("$package")
+    fi
+done
+if ((${#missing[@]})); then
+    sudo apt-get update -qq
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing[@]}"
+fi
+echo "[orb setup] Host packages ready (${SECONDS}s)"
+
+# Read the same versions as CI. The base orb's Python can parse this manifest.
+python_version="$(python3 -c 'import json; print(next(p["version"] for p in json.load(open("deps.lock"))["host_requirements"] if p["id"] == "python"))')"
+node_version="$(python3 -c 'import json; print(next(p["version"] for p in json.load(open("deps.lock"))["host_requirements"] if p["id"] == "node"))')"
+echo "[orb setup] Preparing Python $python_version and Node $node_version"
+uv python install "$python_version"
+ln -sfn "$(uv python find "$python_version")" "$tools/bin/python3"
+
+case "$(uname -m)" in
+    x86_64) node_arch=x64 ;;
+    aarch64) node_arch=arm64 ;;
+    *) echo 'Unsupported orb architecture' >&2; exit 1 ;;
+esac
+node_dir="$tools/node-v$node_version-linux-$node_arch"
+if [[ ! -x "$node_dir/bin/node" ]]; then
+    download="$(mktemp -d)"
+    trap 'rm -rf "$download"' EXIT
+    archive="node-v$node_version-linux-$node_arch.tar.xz"
+    base="https://nodejs.org/dist/v$node_version"
+    curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 "$base/$archive" -o "$download/$archive"
+    curl --fail --location --retry 3 --connect-timeout 20 --max-time 60 "$base/SHASUMS256.txt" -o "$download/SHASUMS256.txt"
+    (cd "$download"; grep "  $archive$" SHASUMS256.txt | sha256sum --check --strict -)
+    tar -xJf "$download/$archive" -C "$tools"
+    rm -rf "$download"
+    trap - EXIT
+fi
+
+# Separate non-interactive login shells must receive these versions too.
+printf 'export PATH=%q:%q:"$PATH"\n' "$tools/bin" "$node_dir/bin" > "$tools/env"
+marker="# Nuvio PS5 orb toolchain"
+if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
+    {
+        printf '\n%s\n' "$marker"
+        printf 'if [[ "$PWD" == %q || "$PWD" == %q/* ]]; then\n' "$repo_root" "$repo_root"
+        printf '    if [[ -f %q ]]; then . %q; fi\n' "$tools/env" "$tools/env"
+        printf 'fi\n'
+    } >> "$HOME/.bash_profile"
+fi
+echo "[orb setup] Toolchains ready (${SECONDS}s)"
+
+# Populate checksum-verified UI inputs and npm's cache through the real builder.
+# Native PS5 compilation remains macOS-only; do not attempt it on this orb.
+echo '[orb setup] Building browser UI and warming dependencies'
+/bin/bash -lc 'make ui'
+echo "[orb setup] UI ready (${SECONDS}s)"
+/bin/bash -lc 'make check'
+echo "[orb setup] Complete ($((SECONDS - started))s)"

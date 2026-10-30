@@ -7,6 +7,24 @@ Most users do not build anything. Download `PPSA99997.zip` from the
 and follow [Operations](OPERATIONS.md). Build from source only to change the
 port or to test native code.
 
+## Work in an Amp orb
+
+Amp runs `.agents/setup` when it prepares a fresh Linux orb without an exact snapshot.
+Setup installs the Python and Node.js versions recorded in `deps.lock`.
+It installs host compilers, FFmpeg and its development libraries.
+It builds the browser UI and runs `make check`.
+The UI builder verifies pinned downloads and warms the npm dependency cache.
+Amp snapshots the installed tools, dependencies and generated UI for later orbs.
+
+The repository-scoped login profile selects these tools in new non-interactive shells.
+`.agents/resume` checks the pinned versions without downloads or installation.
+Setup needs no console address, credentials or background service.
+Generated files remain under ignored `build/` and `.cache/` directories.
+
+Use `make check` for host tests and `make ui` for browser UI builds.
+The native adapter still requires macOS, including its Apple command-line tools.
+Linux orb setup does not enable `make build` or establish console execution.
+
 ## Prepare the host
 
 The native build adapter needs macOS. Install the Xcode command-line tools, then

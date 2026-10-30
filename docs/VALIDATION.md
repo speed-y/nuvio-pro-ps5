@@ -815,3 +815,22 @@ Console model: CFI-1016A 01Y. SDK v0.43 and pacbrew v0.39 remained fixed.
 Resident exploit, loader, HEN and helper revisions remain unknown.
 [TESTED-ON-CONSOLE] The owner reports alpha.7 is installed, tested and working.
 The owner approved publication of this build.
+
+## Linux orb setup, 2026-10-30
+
+[LOCALLY BUILT] On a Debian 12 x86-64 Amp orb, `.agents/setup` passed twice.
+The first run took 29.94 seconds. The warm run took 16.15 seconds.
+The warm run skipped apt and Node downloads. Python was already installed.
+Both runs built the browser UI and passed all 60 tests through `make check`.
+Documentation and private-artifact checks passed, with one existing passive-voice advisory.
+
+The environment used Python 3.13.7, Node.js 22.23.2 and Debian Clang 14.0.6.
+Host FFmpeg libraries were libavformat 59.27.100, libavcodec 59.37.100 and libavutil 57.28.100.
+These host libraries do not replace the pinned console FFmpeg libraries.
+A minimal-environment `/bin/bash -lc` selected the pinned Python and Node executables.
+The login profile contained one toolchain hook after both setup runs.
+`.agents/resume` passed in 0.05 seconds without installation or console access.
+
+[UNKNOWN] The native adapter still requires macOS. No native artifact changed.
+This session produced no new console execution result or hardware artifact hash.
+Future-orb activation requires these scripts on the project's default branch.
