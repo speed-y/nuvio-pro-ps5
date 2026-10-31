@@ -112,16 +112,22 @@ permission to bind the loopback proxy. [TESTED-ON-CONSOLE] The failed bind
 returned `errno=13` on firmware 13.60. File access alone therefore did not give
 the network permission the proxy needs.
 
-The payload matches `PPSA99997` and `eboot.bin` before it changes credentials, and
-it checks the firmware against 13.60. It refuses a missing or ambiguous process
-match, applies the capability and authentication values from the SDK privilege
-example, then reads those values again to check the change.
+The embedded one-shot helper matches `PPSA99997` and `eboot.bin` before it changes credentials.
+SDK v0.43 initializes firmware-specific support before the helper's `main` and rejects unknown versions.
+Nuvio adds no second firmware allowlist to the one-shot helper, legacy watcher or close helper.
+It refuses a missing or ambiguous process match, applies the SDK example's capability and authentication values, then reads them back.
 
-The measured app-info buffer has 96 bytes with the title at byte 16. The SDK v0.43
-sample places the title at byte 20. The helper uses the measured layout and
-refuses other firmware. This is an API buffer, not a kernel offset.
+Read-only probes found the title at byte 16 in the 96-byte app-info buffer on both firmware versions.
+The SDK v0.43 sample places the title at byte 20.
+This is an API buffer, not a kernel offset.
+`scripts/app_info.h` checks for one exact, terminated Nuvio title within that bounded buffer.
+The promotion and close helpers query the identity again before acting.
+[TESTED-ON-CONSOLE] Credential changes and readback succeeded on 12.70 and 13.60.
+[TESTED-ON-CONSOLE] The owner reported UI loading, existing profiles and playback on 12.70 with the earlier two-version candidate.
+[UNKNOWN] The SDK-gated candidate and all other firmware versions still need console validation.
+SDK recognition alone does not establish compatibility of the native title, resident loader or browser.
 
-The same payload also serves the browser UI from `webui/` in the title folder,
+The legacy watcher also serves the browser UI from `webui/` in the title folder,
 because the title cannot bind its proxy until the payload grants the privilege.
 The payload watches once every quarter second, and the one-time helper `promote.elf`
 promotes once. Neither adds a new exploit or hypervisor access.

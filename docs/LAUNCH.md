@@ -12,7 +12,8 @@ How to describe Nuvio PS5 and where to announce it.
 Credit NuvioMedia for the UI and the EVO contributors for the player and the
 browser bridge. This port adds macOS builds, focused controller input, provider
 seeking, Nuvio branding, playback exit and route restoration. It adds no decoder,
-no exploit and no support for other firmware.
+no exploit and no claim of universal firmware compatibility.
+Current source delegates firmware support to SDK v0.43. See [Validation](VALIDATION.md) for console-tested artifacts.
 
 ## Before you announce
 
@@ -66,6 +67,9 @@ Points to cover:
 Do not ask for votes or coordinate comments.
 
 ## Reddit draft
+
+This historical draft describes the older 13.60-only boot-payload build.
+Do not reuse its firmware restriction or installation requirements for the current source.
 
 Destination: r/ps5homebrew. Read its rules again before you post. The
 [release rule](https://www.reddit.com/r/ps5homebrew/about/rules.json) asks for a

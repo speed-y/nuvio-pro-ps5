@@ -5,7 +5,10 @@ The single-install build includes the interface and its startup helper.
 
 ## Before you install
 
-Use a PS5 on firmware 13.60. Run your jailbreak for the current boot.
+Run your jailbreak for the current boot. Do not update the firmware.
+Console evidence covers firmware 12.70 and 13.60.
+The current source delegates firmware support to SDK v0.43, which refuses versions it does not recognize.
+Other SDK-recognized versions remain experimental. Older release assets can retain the 13.60 restriction.
 Start ShadowMount and an ELF loader on port 9021 through your existing setup.
 Start FTP and read the console's address and FTP port from that setup.
 

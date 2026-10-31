@@ -882,3 +882,262 @@ Its remote execution remains pending until these changes reach GitHub.
 [UNKNOWN] This session did not rerun a native build on macOS or access a console.
 Linux-built startup, UI, playback, seeking and exit still need firmware 13.60 console validation.
 The receipt retains `firmware_validation: [UNKNOWN]`. No installation or release publication occurred.
+
+## Firmware 12.70 startup investigation, 2026-10-30
+
+[TESTED-ON-CONSOLE] The owner supplied a native log from a reported firmware 12.70 console.
+All four launches identify build `9ee9a542-nuvio_1010-0436`.
+Each records `bootstrap: promotion failed stage=transfer errno=92`.
+The browser dialog opens, but the page watchdog closes it after approximately 20 seconds.
+The log contains no listener-start or page-route events.
+The installed eboot hash, console model and resident support-stack versions remain unknown.
+The supplied log stays outside Git because it can contain private data.
+
+[SOURCE-VERIFIED] SDK v0.43 defines errno 92 as EPROTO.
+The bootstrap reports EPROTO when the connection closes without a verified helper response.
+The permission helper explicitly rejects firmware other than 13.60.
+[INFERENCE] That restriction explains the reported failure, but this log does not preserve the helper's rejection message.
+
+[LOCALLY BUILT] `scripts/compatibility.c` uses the pinned SDK's process-query example and its 96-byte app-info buffer size.
+It reports the firmware value and searches the returned buffer for the exact Nuvio title identity.
+It prints match positions without printing raw buffers or unrelated title identities.
+It does not change credentials, signal processes, write files or test network permissions.
+Its output goes to the loader connection, not `evo.log`.
+Existing firmware guards and release packages remain unchanged.
+
+The diagnostic built on Linux x86-64 with Python 3.11.6, LLVM/Clang/lld 19.1.7 and SDK v0.43.
+The builder verified the SDK archive against `deps.lock` before extraction into `build/compatibility/sdk/`.
+Build and validation commands:
+
+```sh
+LLVM_CONFIG=/usr/bin/llvm-config-19 \
+  build/compatibility/sdk/ps5-payload-sdk/bin/prospero-clang \
+  -std=c11 -O2 -Wall -Wextra -Werror scripts/compatibility.c \
+  -lkernel_sys -lkernel_web -o build/compatibility/nuvio-compatibility.elf
+python3 scripts/elfcheck.py build/compatibility/nuvio-compatibility.elf
+make check
+```
+
+Diagnostic SHA-256: `3766b6e3b1e1f08bb38e1d0099d38eba57b28724fed63075e17d416437a63a1c`.
+The unstripped ELF has 110888 bytes and 20 section headers.
+All 61 host tests, documentation checks and private-artifact checks passed.
+Synthetic process responses cover title positions 16, 20 and 86, missing and ambiguous matches, query failure and malformed records.
+These tests do not establish the firmware's actual app-info layout.
+
+[UNKNOWN] The diagnostic has not run on firmware 12.70 or 13.60.
+No console transfer, installation, settings change or recovery occurred during this preparation.
+Next, keep Nuvio open at the splash and capture the diagnostic's loader output using an explicit console address.
+Record the console model, support-stack versions and observed output before proposing a permission-helper change.
+
+### Owner diagnostic result and permission-test preparation
+
+[TESTED-ON-CONSOLE] The owner verified the diagnostic's SHA-256 on macOS before sending it through the existing loader.
+With Nuvio open, the diagnostic reported `firmware_raw=0x12700001 existing_helper_allows=no`.
+It found one `eboot.bin` candidate and one exact Nuvio title match at byte 16 of the 96-byte buffer.
+No app-info query failed.
+This confirms process identification on that boot, not credential changes or UI compatibility.
+Console model and resident jailbreak, loader and HEN versions remain unknown.
+The owner supplied the output. This orb did not connect to the console.
+
+The owner used this command, with the private console address omitted:
+
+```sh
+nc -w 10 <console-address> 9021 < "$HOME/Downloads/nuvio-compatibility.elf"
+```
+
+[LOCALLY BUILT] The opt-in `NUVIO_TEST_FW_1270` build of `scripts/promote.c` permits only firmware 12.70.
+The normal helper still permits only 13.60. The watcher firmware check remains unchanged.
+The experiment retains exact-title matching, ambiguity refusal and credential readback.
+It uses the existing SDK privilege values without new offsets or platform symbols.
+It changes the running title's credentials, not installed files or settings.
+Those credentials do not survive termination of that title process.
+
+```sh
+LLVM_CONFIG=/usr/bin/llvm-config-19 \
+  build/compatibility/sdk/ps5-payload-sdk/bin/prospero-clang \
+  -std=c11 -O2 -Wall -Wextra -Werror -DNUVIO_TEST_FW_1270 \
+  scripts/promote.c -lkernel_sys -lkernel_web \
+  -o build/compatibility/nuvio-permission-test-1270.elf
+python3 scripts/elfcheck.py --quiet build/compatibility/nuvio-permission-test-1270.elf
+make check
+```
+
+Permission-test SHA-256: `91e0e2744d144aa6991557bbe7abfdf01ca64ef085f0413c62da3224f6365add`.
+The unstripped ELF has 110912 bytes.
+Both experimental and normal one-shot helpers compile with SDK v0.43 and LLVM 19.1.7.
+All 61 host tests, documentation checks and private-artifact checks pass.
+An additional temporary harness passed 18 synthetic firmware and identity cases under GCC 12.2.0 ASan and UBSan.
+It covered 12.70, 13.60 and rejected 12.80, plus missing and ambiguous titles.
+The initial Clang 19 sanitizer link failed because its host sanitizer libraries were absent.
+GCC's installed sanitizer libraries enabled that host-only check without changing the PS5 compiler.
+
+[UNKNOWN] The permission test has no console result. No revised title package installation occurred.
+Ask the owner before the credential-changing test. Do not describe it as a read-only diagnostic or a completed fix.
+After a verified credential result, prepare and validate a title that starts its listener on firmware 12.70.
+
+### Owner permission-test result
+
+[TESTED-ON-CONSOLE] The owner approved the temporary credential change and verified the permission-test SHA-256 on macOS.
+With Nuvio open, the owner sent the recorded `nuvio-permission-test-1270.elf` to the existing loader on port 9021.
+The helper found one Nuvio process, reported its previous credentials and returned:
+
+```text
+NUVIO promote verified: native network privileges applied
+```
+
+The helper reaches that message only after reading back the requested authentication ID and all capability bytes.
+This establishes the credential operation on the measured 12.70 boot.
+It does not establish listener startup, page loading, playback or a fresh-boot launch.
+The owner used `nc -w 10 <console-address> 9021 < "$HOME/Downloads/nuvio-permission-test-1270.elf"`.
+The console model, resident support-stack versions and installed eboot hash remain unknown.
+No installed title file changed during this test. The owner reported no recovery action.
+
+[SOURCE-VERIFIED] The normal one-shot helper now permits only 12.70 and 13.60.
+The 12.70-only experiment remains available to reproduce the recorded permission test.
+The legacy watcher and automatic close helper retain their 13.60 restrictions.
+The updated embedded helper is the only runtime change in the candidate title.
+Tests exercise both permitted firmware versions and reject 12.60, 12.80 and 13.70.
+Missing and ambiguous title matches still prevent promotion.
+
+### Firmware 12.70 candidate build and transfer preparation
+
+[LOCALLY BUILT] The complete candidate built with Python 3.13.7, Node.js 22.23.2 and LLVM/Clang/lld 19.1.7 on Linux x86-64.
+SDK v0.43, pacbrew v0.39, FFmpeg 7.1.1 and all upstream source pins remain unchanged.
+
+```sh
+. .cache/orb-tools/env
+NUVIO_WORK_DIR="$PWD/build/firmware-1270" make build
+make check
+```
+
+Build `9ee9a542-nuvio_1030-2323` passes signed-container integrity inspection with the default authority.
+It imports `libkernel.prx`.
+The receipt matches all 237 title files and eight helpers.
+All 62 host tests, documentation checks and private-artifact checks pass.
+
+| Candidate artifact | SHA-256 |
+|---|---|
+| Signed `eboot.bin`, 35989476 bytes | `5d1b4ac2e6191ec6e94c594b5cdf8fc2f0132f8fb4273c6757d1882ecbf88511` |
+| Embedded helper, 110912 bytes | `0a80005f6d061ccd5218f595235ad46d9e6ec3060268f6d190bd215adb54ab00` |
+| Runtime `libc.prx`, unchanged | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+| Browser bundle, unchanged from alpha.7 | `84109831940e1e21b85bbc5983f12b8098754a9e9fa9adcabcfe4cda0a91d50e` |
+| Read-only eboot verifier, 111400 bytes | `6d37a6f414659925bbb8a44218f1f7291afa1266eecfb6a7478fe84572ec87c8` |
+
+The owner explicitly declined a backup and chose reinstallation from ProsperoStore as the recovery plan.
+The manual transfer must not invoke the normal backup-creating hash helper.
+The optional `NUVIO_VERIFY_ONLY` build of `vendor/control.c` hashes installed and staged eboots without creating backups.
+Normal updater builds retain their backup requirement.
+Host tests cover both modes with independent SHA-256 expectations, including an absent staged file.
+The read-only verifier imports no write or file-creation function other than `open`, which its source uses only with O_RDONLY.
+Its source permits only the fixed installed and staged Nuvio eboot paths.
+
+The verifier build uses the normal Nuvio title substitutions from `scripts/build.py` and these compiler flags:
+
+```sh
+-std=c11 -O2 -Wall -Wextra -Werror -DNUVIO_CONTROL_ACTION=5 -DNUVIO_VERIFY_ONLY
+```
+
+[UNKNOWN] No candidate title or verifier has run on the owner's console yet.
+Keep Nuvio closed during transfer. Verify staged and installed raw hashes before launch.
+Replace only the signed eboot and preserve `/data/nuvio/`, the runtime and existing browser assets.
+Automatic startup, UI, playback, exit and fresh-boot behavior on firmware 12.70 remain pending.
+No commit, push, release publication or candidate installation occurred.
+
+[LOCALLY BUILT] A separate supervised browser preview uses a copy of the packaged UI without the PS5 click-redirection script.
+HTTP returned 200 and Chromium reached the guest home route with navigation and catalogue data.
+The browser preview does not establish console execution. The owner chose to return to the PS5 installation work.
+
+### Owner verification of the staged 12.70 candidate
+
+[TESTED-ON-CONSOLE] The owner uploaded `eboot.bin.nuvio-update` with ps5upload and ran the read-only verifier through the existing ELF loader.
+The owner supplied this output:
+
+```text
+NUVIO eboot installed bytes=36155940 sha256=e800b9ac03f47662bb9452bacb8fe074dc53579c4dc80d6b74c0f641c0985d26
+NUVIO eboot stage bytes=35989476 sha256=5d1b4ac2e6191ec6e94c594b5cdf8fc2f0132f8fb4273c6757d1882ecbf88511
+```
+
+The staged size and SHA-256 match the local candidate exactly.
+The installed file still has the old hash. Replacement, installed-hash verification and candidate launch remain pending.
+This run created no backup, as the owner requested.
+
+### Owner verification after replacing the installed eboot
+
+[TESTED-ON-CONSOLE] The owner reported removing the old eboot and renaming the verified staged candidate to `eboot.bin` with ps5upload.
+The owner ran the same read-only verifier again and supplied:
+
+```text
+NUVIO eboot installed bytes=35989476 sha256=5d1b4ac2e6191ec6e94c594b5cdf8fc2f0132f8fb4273c6757d1882ecbf88511
+NUVIO eboot stage=absent
+```
+
+The installed raw size and SHA-256 now match the candidate exactly, and the staged path no longer exists.
+This confirms the eboot replacement, not successful execution.
+Candidate launch, listener startup, UI, playback, exit and fresh-boot behavior on firmware 12.70 remain pending.
+
+[TESTED-ON-CONSOLE] After the launch instruction, the owner reported seeing customization and new-profile creation screens rather than an existing profile.
+This establishes owner-observed UI loading on firmware 12.70 after the eboot replacement.
+No launch log or screenshot accompanies this observation.
+Account sign-in, existing-profile synchronization, playback, exit and fresh-boot behavior remain unverified.
+The cause of the missing expected profile is unknown. Do not infer data loss or a synchronization failure from the setup screen alone.
+
+[TESTED-ON-CONSOLE] The owner then reported that all existing profiles appeared.
+This establishes owner-observed profile-list recovery in the same session without a reported new-profile creation.
+The cause and duration of the initial delay are unknown.
+Profile selection, saved settings, playback, exit and fresh-boot behavior remain pending.
+
+[TESTED-ON-CONSOLE] The owner subsequently reported that playback works on firmware 12.70 with the candidate eboot.
+The owner also reported an unwanted mouse icon.
+No playback log, media format, duration or cursor screenshot accompanies this observation.
+The report establishes successful owner-observed playback, not validation of every format or playback control.
+Exit, repeated launches and fresh-boot behavior remain pending.
+
+### SDK-gated candidate for community testing
+
+[LOCALLY BUILT] The next candidate removes Nuvio's firmware allowlists from promotion, the legacy watcher and the close helper.
+The unchanged SDK v0.43 rejects unknown firmware before calling `main`.
+The helpers require one exact, terminated `PPSA99997` match within the 96-byte app-info buffer.
+Promotion and close query the title identity again before acting.
+Source pins, runtime, browser assets and title identity remain unchanged.
+
+```sh
+. .cache/orb-tools/env
+NUVIO_WORK_DIR="$PWD/build/firmware-portable" make build
+make check
+NUVIO_WORK_DIR="$PWD/build/firmware-portable" make release
+```
+
+Build `9ee9a542-nuvio_1030-2356` used Linux x86-64, Python 3.13.7, Node.js 22.23.2 and LLVM/Clang/lld 19.1.7.
+The receipt matches all 237 title files and eight unstripped helpers.
+Signed-container integrity inspection passed with the default authority and the `libkernel.prx` import.
+All 62 host tests, documentation checks and private-artifact checks pass.
+Local packaging passed ZIP integrity, SHA-256 and clean source-inventory checks.
+CI now retains experimental packages and their checksums for 14 days without publishing a release.
+
+| Candidate artifact | SHA-256 |
+|---|---|
+| Signed `eboot.bin`, 35989476 bytes | `08272f56a7419a5c699891b0c5e81c7c142e1ee0c4932c7c96d23e44cd7a6295` |
+| Embedded promotion helper, 110912 bytes | `0d7979ff8787680f97a992637c700f5301ce3aa4ec74c2a2d491821b3c469f5b` |
+| Legacy watcher | `38f3682fee2eaec5bdc3ee69615fd913b58ff7d6b94251292699a77986d7033d` |
+| Close helper | `21fe48d5ada6418476203833a707ee6d8683b8e803a1c7592a2029ca943232a1` |
+
+The read-only diagnostic v2 also compiled with the pinned SDK and strict warnings.
+Its unstripped ELF has 110888 bytes and SHA-256 `728d5c3e622663828fad80f00c0f671d1473b71d7eece5e5073f6e59e90621bb`.
+It reports successful SDK initialization instead of the removed helper allowlist.
+It remains a source-only diagnostic, not an extra package required for testers.
+
+Host tests exercise helper behavior after simulated SDK initialization across six firmware values and three title positions.
+They reject missing, repeated and unterminated identities, malformed records, failed target queries and identity changes.
+These tests do not establish actual SDK initialization or console execution on those versions.
+
+[UNKNOWN] This SDK-gated candidate has no console result, including on 12.70 and 13.60.
+The owner has only a 12.70 console and declined further test files.
+Their installed, working two-version candidate remains unchanged.
+Community testing must establish startup, UI, playback, return and fresh-boot behavior on each reported firmware.
+Do not describe this change as universal firmware support.
+
+### Deferred controller requests
+
+The owner requested hiding the browser mouse pointer and using the controller's Options button for the movie Play options menu.
+The reported long-press X action did not open that menu on their console.
+These requests remain deferred. This firmware change does not modify browser input or appearance.

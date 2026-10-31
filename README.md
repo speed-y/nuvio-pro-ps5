@@ -18,8 +18,13 @@ This is a community project with no connection to Sony, NuvioMedia or EVO Player
 
 ## Start here
 
-You need a PS5 on firmware **13.60**, jailbroken for the current boot, with
-ShadowMount and an ELF loader listening on port **9021**. Keep the console on 13.60.
+You need a PS5 jailbroken for the current boot, with ShadowMount and an ELF loader
+listening on port **9021**. Do not update the firmware.
+
+The current source lets the pinned SDK v0.43 check firmware support instead of
+restricting the helper to two versions. Unknown firmware still fails SDK initialization.
+Console evidence covers **12.70 and 13.60**. Other SDK-recognized versions remain
+experimental, not confirmed compatible. Older release assets can retain the 13.60 restriction.
 
 The new single-install build includes its permission helper and browser UI.
 Open Nuvio from its home-screen tile. The app loads the helper automatically.
@@ -65,7 +70,8 @@ Start a new stream to apply it. Your HDMI soundbar or receiver decodes the audio
 
 ## Requirements and codec support
 
-- Firmware 13.60, ShadowMount and the current boot's ELF loader on port 9021.
+- Firmware recognized by SDK v0.43, ShadowMount and the current boot's ELF loader on port 9021.
+- Only 12.70 and 13.60 have console evidence. See [Validation](docs/VALIDATION.md) for tested artifact identities and remaining checks.
 - Use FTP for manual installation and updates.
 - Software AV1 through dav1d is not included.
 - Build from source on Linux or macOS. See [Build](docs/BUILD.md) for the host tools.
@@ -89,6 +95,13 @@ Fresh-boot testing, playback return checks, subtitles and longer playback
 sessions all help. Send the firmware, the artifact hashes and the expected and
 observed behavior. Remove account details and private stream URLs from reports.
 See [Contributing](docs/CONTRIBUTING.md).
+
+For experimental firmware testing, open the fork's **Actions** tab and select a successful **Host checks** run.
+Download its `nuvio-experimental-<commit>` artifact, then extract it.
+It contains `PPSA99997.zip`, the complete source package and `SHA256SUMS`.
+These temporary CI packages expire after 14 days. They are not published releases or proof of firmware compatibility.
+Report the commit, firmware, loader and HEN versions, startup, playback and return behavior.
+Do not update firmware to participate.
 
 ## Licences
 

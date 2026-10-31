@@ -27,6 +27,22 @@ the pacbrew libav* libraries. The build omits libdav1d, so software AV1
 remains unsupported. The GPL-3.0 `ps5-homebrew-ui` kit unpacks under
 `third_party/` from its own pinned archive during the build.
 
+### SDK firmware checks
+
+[SOURCE-VERIFIED] SDK v0.43's source tag resolves to `d9c9519116944a7f1c22d262012c53b80b3520b7`.
+These files explain firmware initialization in the unchanged, checksum-pinned SDK input:
+
+| Reference | Locally recorded SHA-256 |
+|---|---|
+| [`crt/kernel.c`](https://github.com/ps5-payload-dev/sdk/blob/d9c9519116944a7f1c22d262012c53b80b3520b7/crt/kernel.c) | `16ca32ffc36309f2caa768d2f4e565f8d31186d7f8625de83bf3f1869e0c81c0` |
+| [`crt/crt.c`](https://github.com/ps5-payload-dev/sdk/blob/d9c9519116944a7f1c22d262012c53b80b3520b7/crt/crt.c) | `f0c9e81e740b6beeda3dd4a62e22751603b310b258b7bb7c0875a4cbdcaa212e` |
+
+Inspection date: 2026-10-30. These are reference files, not new build inputs.
+`__kernel_init` switches on recognized firmware and returns `-ENOSYS` for an unknown version.
+`__crt_start` requires successful initialization before it calls the payload's `main`.
+Nuvio delegates firmware selection to that runtime instead of copying its version table or adding offsets.
+SDK recognition does not establish console compatibility of Nuvio, the browser or the resident support stack.
+
 The original BlackBearReloaded UI repository returned HTTP404 on 2026-10-30.
 The Phononenom mirror serves the same commit and reproduces the original archive SHA-256.
 The source revision, checksum and attribution remain unchanged.

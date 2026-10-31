@@ -8,8 +8,11 @@
 4. Close other applications before you launch Nuvio with a helper.
 5. Install the release archive, or build from source as described in [Build](BUILD.md).
 
-The tested target is firmware 13.60. Record the loader and HEN versions when you
-can read them. A reboot clears the jailbreak and the resident helpers.
+Console evidence covers firmware 12.70 and 13.60.
+The current source uses SDK v0.43's firmware checks. Other SDK-recognized versions remain experimental.
+Older release assets can retain the 13.60 restriction.
+Record the loader and HEN versions when you can read them.
+A reboot clears the jailbreak and the resident helpers.
 
 ## Addresses
 

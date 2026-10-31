@@ -73,14 +73,17 @@ static void report(const char *kind, uint64_t bytes,
 int main(void) {
     int installed=open("/data/homebrew/PPSA99997/eboot.bin",O_RDONLY|O_NOFOLLOW);
     if(installed<0) { perror("installed eboot"); return 1; }
-    uint8_t installed_hash[SHA256_DIGEST_SIZE], backup_hash[SHA256_DIGEST_SIZE];
-    uint64_t installed_size=0, backup_size=0;
+    uint8_t installed_hash[SHA256_DIGEST_SIZE];
+    uint64_t installed_size=0;
     if(hash_fd(installed,installed_hash,&installed_size)!=0 || installed_size==0 ||
        installed_size>134217728u || lseek(installed,0,SEEK_SET)<0) {
         perror("hash installed eboot"); close(installed); return 1;
     }
     report("installed",installed_size,installed_hash);
 
+#ifndef NUVIO_VERIFY_ONLY
+    uint8_t backup_hash[SHA256_DIGEST_SIZE];
+    uint64_t backup_size=0;
     char backup_name[96];
     int n=snprintf(backup_name,sizeof(backup_name),"nuvio-eboot-backup-");
     if(n<0 || (size_t)n>=sizeof(backup_name)) { close(installed); return 1; }
@@ -127,6 +130,7 @@ int main(void) {
     }
     report("backup",backup_size,backup_hash);
     printf("NUVIO eboot backup_path=/data/homebrew/ps5-homebrew-dev/%s\n",backup_name);
+#endif
 
     int staged=open("/data/homebrew/PPSA99997/eboot.bin.nuvio-update",O_RDONLY|O_NOFOLLOW);
     if(staged<0 && errno==ENOENT) {
