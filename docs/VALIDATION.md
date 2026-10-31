@@ -3295,3 +3295,48 @@ The environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.
 | `sce_sys/param.json` | 911 | `f6a92cc9399c354a99b0fcd8cf4aa3fc41649d34ce39979de57ef4531db5c1f3` |
 
 [PENDING CONSOLE TEST] This exact combined candidate still needs QR-label, storage, controller, playback and selection-music validation on hardware.
+
+## Workflow and cache improvements, 2026-10-31
+
+[SOURCE-VERIFIED] CI now runs on PR updates and pushes to `main`, not duplicate feature-branch push events.
+Superseded check runs cancel. Versioned release runs retain an active publication instead of cancelling it.
+Host, documentation and private-artifact checks always run for these CI events.
+The existing `check` and `native-linux` status names remain available for branch protection.
+The branch reports protection, but the token cannot read its detailed rules. No protection settings change.
+
+Documentation-only ranges skip compilation. Mixed PRs can reuse a successful build record for the same non-Markdown Git tree.
+Missing or cancelled build records require another build. A stable final gate rejects failed checks, failed builds and unverified skips.
+The shared Linux workflow builds both PR candidates and versioned packages with LLVM 19.
+Manual Release runs upload downloadable artifacts without publishing, including when selected on a tag.
+An optional manual macOS compatibility build uses separate caches and artifacts. Only Linux artifacts enter versioned releases.
+Publishing jobs receive write permission, recheck checksums and preserve existing release assets on reruns.
+
+Downloaded archives, compiled FFmpeg and npm downloads use separate caches.
+Archive checksums remain mandatory. FFmpeg cache identity includes its source, SDK and pacbrew pins, LLVM version and flags.
+The new LLVM 19.1.7 cache ID is `b552904bcd83202b`, replacing the older identity once.
+Four host regressions cover relevant-input invalidation, unrelated-edit stability and cached installation reuse.
+
+[HOST-TESTED] Checksum-verified actionlint 1.7.7 accepts all three workflows.
+Disposable probes execute the actual change-detection Python and publication/package shell blocks extracted from the YAML.
+Synthetic Git commits cover documentation changes, mixed PRs, missing bases, renames, deletions, binary/tabbed paths and version changes.
+The stable native gate passes successful builds and verified skips, but rejects failures, cancellations and unverified skips.
+Fake GitHub transport probes verify draft/PR flags, exact target commits, rerun preservation and rejection of tampered packages before publication.
+PR, manual and version-tag packaging probes verify repository, tag and artifact outputs. No probe publishes or triggers a workflow.
+An initial fake-transport probe fails because its release-view stub cannot observe its preceding simulated create.
+Correcting that fixture makes all probes pass without a workflow change.
+
+[HOST-TESTED] Configured `make check` passes 85 tests. Source-pin and private-artifact checks pass.
+Documentation checks report 36 advisory findings and zero hard violations. `git diff --check` passes.
+
+[LOCALLY BUILT] A cold build with the new cache identity succeeds as `9ee9a542-nuvio_1031-2050`, with signed-container `integrity: valid`.
+The exact receipt matches 240 title files and eight unstripped helpers. `make release` succeeds.
+A real warm-cache installation copies FFmpeg without compilation. All five installed library hashes match the cached libraries.
+The environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Workflow-build artifact | SHA-256 |
+|---|---|
+| `PPSA99996.zip` | `ab9041b968f17f12146c6f10c30fb81cc0555298003f70992d710f417d0feb9f` |
+| Signed `eboot.bin` | `dcdc9f2006afa5291243cd9b1a1e07e0ef330f2299432ffa63599a75637d96fe` |
+
+[PENDING] The new workflow orchestration and cache hit/miss behavior still need execution on GitHub runners.
+Manual macOS and tag-publication paths receive no live trigger during this task. No console action occurs.

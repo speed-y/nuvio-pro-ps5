@@ -146,7 +146,9 @@ For experimental testing, open the fork's **Releases** page and select the prere
 Download `PPSA99996.zip` and `SHA256SUMS`. The complete `nuvio-ps5` package contains source and build receipts.
 Same-repository PRs publish these test candidates after Host checks and native compilation pass.
 They are not console-validated or marked latest. See [Release](docs/RELEASE.md) for details.
-The **Actions** tab also provides `nuvio-experimental-<commit>` packages, which expire after 14 days.
+Documentation-only updates skip publication when they can reuse a successful native build or contain no application changes.
+The **Actions** tab also provides `nuvio-Linux-X64-<commit>` packages, which expire after 14 days.
+Manual Release workflow runs provide downloads too, with an optional macOS compatibility build.
 Report the commit, firmware, loader and HEN versions, startup, playback and return behavior.
 Do not update firmware to participate.
 

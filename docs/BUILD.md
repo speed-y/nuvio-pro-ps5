@@ -27,6 +27,21 @@ The first native build compiles target FFmpeg from the cached source.
 Later builds reuse the archive and FFmpeg caches.
 Compilation does not establish console execution.
 
+## CI builds and caches
+
+PR checks and versioned releases share `.github/workflows/build.yml` on Ubuntu 24.04 with LLVM 19.
+Manual release-workflow runs can also check macOS, without using its packages for a versioned release.
+
+CI caches downloaded archives, compiled FFmpeg and npm downloads separately.
+Restored archives still receive SHA-256 verification against `deps.lock` before use.
+The compiled FFmpeg identity includes its source, SDK and pacbrew pins, LLVM version and configuration flags.
+Unrelated frontend or build-script edits do not invalidate that identity. Changing compilation inputs does.
+The stronger identity causes one cold FFmpeg build when replacing an older cache.
+
+CI also records successful builds by non-Markdown source identity.
+Documentation updates in a mixed PR can skip a previously successful native build, but not an unfinished or failed one.
+Host checks always run. Missing verification caches cause a rebuild, not a presumed success.
+
 ## Prepare a Linux host
 
 Use Debian 12 or Ubuntu 24.04 with the following tools:

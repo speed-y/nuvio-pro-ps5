@@ -14,9 +14,15 @@ The PS5 Homebrew Store catalog accepts pre-release tags. Use a fixed tag such as
 
 ## PR test releases
 
-Successful pull requests within the same repository publish an experimental GitHub prerelease after both Host checks jobs pass.
+Pull requests within the same repository publish an experimental GitHub prerelease after host checks and a new native build pass.
 External fork pull requests cannot publish releases.
 Find the download in the repository's Releases page or the publishing job's summary.
+
+Checks run for pull requests and pushes to `main`, without duplicate feature-branch push runs.
+New commits cancel superseded check runs. All commits still run host, documentation and privacy checks.
+Documentation-only changes skip native compilation and publication.
+In a mixed PR, documentation updates reuse a successful verification record for identical non-Markdown source, when available.
+A missing record requires a build. Cancelling an unfinished build cannot create that record.
 
 The fixed tag is `pr-<number>-<tested-merge-commit-prefix>`.
 The release records the PR head and tested merge commit.
@@ -40,11 +46,17 @@ Asset URLs use the current repository, not the upstream repository.
 5. Commit the source and the documentation.
 6. Push the commit.
 
-The release workflow builds on macOS when you push a version tag. It runs the
-host checks, builds the native title and helpers, packages the artifacts, and
-creates a draft GitHub release with the assets below.
+The release workflow uses the same Linux build job as PR candidates when you push a version tag.
+It runs host checks, builds the title and helpers, verifies the packages, and uploads workflow artifacts.
+A separate publishing job downloads those exact artifacts, checks their hashes again, and creates a draft GitHub release.
+Reruns preserve an existing release and its assets. Release runs do not cancel an active publication.
 Download the draft assets and test those exact files on the console.
 Publish the draft after recording their hashes and results in Validation.
+
+Manual runs of the Release workflow upload downloadable artifacts without creating a GitHub release, even on a tag.
+Select the optional `macos` input to check macOS build compatibility alongside Linux.
+Only Linux packages enter versioned releases. Both platforms use the shared build workflow, with separate caches and artifact names.
+Artifacts use `nuvio-<OS>-<architecture>-<commit>` names and expire after 14 days.
 
 ```sh
 git tag v0.1.0-alpha.1

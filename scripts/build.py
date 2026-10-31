@@ -569,11 +569,19 @@ FFMPEG_FLAGS = (
 )
 
 
+def ffmpeg_cache_id(compiler):
+    """Identify compilation inputs using the llvm-config version, without fetching."""
+    pins = {pin['id']: pin for pin in json.loads((ROOT/'deps.lock').read_text())['artifacts']}
+    sources = [pins[key]['sha256'] for key in (
+        'ffmpeg-source', 'ps5-payload-sdk-prebuilt', 'nuvio-pacbrew')]
+    return hashlib.sha256('\n'.join([*sources, compiler, *FFMPEG_FLAGS]).encode()).hexdigest()[:16]
+
+
 def install_ffmpeg(sdk, env):
     """Build the pinned FFmpeg over the sysroot homebrew prefix (cached)."""
     pin, archive = fetch('ffmpeg-source')
     compiler = subprocess.check_output([env['LLVM_CONFIG'], '--version'], text=True).strip()
-    config_id = hashlib.sha256('\n'.join([pin['sha256'], compiler, *FFMPEG_FLAGS]).encode()).hexdigest()[:16]
+    config_id = ffmpeg_cache_id(compiler)
     cached = CACHE / ('ffmpeg-' + config_id)
     stamp = {'source_sha256': pin['sha256'], 'config_id': config_id, 'directory': pin['directory']}
     stamp_file = cached / 'stamp.json'
