@@ -98,3 +98,25 @@ the checksum-pinned SDK v0.43 archive. The port uses no kstuff source code.
 session record stays in the private development workspace. Raw console logs and
 private settings are not publication inputs. Use filtered excerpts with exact
 artifact identities.
+
+## Home-screen media
+
+The owner supplied the cinema-ribbon background generated with Gemini and the
+40-second `nuvio_warm_glass_cinematic_v6.wav` generated with ChatGPT.
+These are owner-supplied media, not extracted game assets or runtime code.
+AI generation does not establish third-party rights clearance.
+Public redistribution remains subject to the applicable generation terms and input rights.
+
+`assets/launch.png` holds the resized 3840x2160 background.
+`assets/launch.dds` holds its BC7 DX10 conversion without mipmaps.
+The build copies each image to both selection and launch filenames.
+`assets/snd0.at9` holds the quieter 48 kHz stereo ATRAC9 conversion with loop metadata.
+The build does not download or execute an audio encoder.
+
+Microsoft DirectXTex `texconv`, release `may2026`, converts the background under Wine.
+The one-time audio conversion uses the proprietary encoder bundled with
+[AT9 and AT3 Converter 2.7](https://github.com/BMK-Studio/AT9-AT3_Converter/releases/tag/2.7).
+The owner's approval covers this local conversion, not redistribution of the encoder.
+The encoder's redistribution permission remains unverified.
+No encoder executable or DLL belongs in source or title packages.
+See [Validation](VALIDATION.md#home-screen-background-and-music-2026-10-31) for commands, checksums and test limits.

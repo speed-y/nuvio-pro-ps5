@@ -1,6 +1,81 @@
+--- a/css/base.css
++++ b/css/base.css
+@@ -66,6 +66,13 @@
+   -moz-osx-font-smoothing: grayscale;
+ }
+ 
++button,
++input,
++textarea,
++select {
++  font-family: inherit;
++}
++
+ * {
+   -webkit-box-sizing: border-box;
+   box-sizing: border-box;
+--- a/css/components-21.css
++++ b/css/components-21.css
+@@ -218,6 +218,9 @@
+ }
+ 
+ .settings-account-signout-button {
++  width: auto;
++  max-width: 100%;
++  align-self: flex-start;
+   min-height: 68px;
+   padding: 16px 28px;
+   background: rgb(198 40 40 / 0.12);
+--- a/css/components-40.css
++++ b/css/components-40.css
+@@ -1,3 +1,7 @@
++.movie-cast-avatar-image[hidden] {
++  display: none;
++}
++
+ .movie-cast-avatar-image {
+   position: absolute;
+   inset: 0;
+--- a/css/components-43.css
++++ b/css/components-43.css
+@@ -257,6 +257,10 @@
+   transition:
+     box-shadow 180ms ease,
+     transform 180ms ease;
++}
++
++.detail-morelike-poster-image[hidden] {
++  display: none;
+ }
+ 
+ .detail-morelike-poster-image {
+--- a/css/components-60.css
++++ b/css/components-60.css
+@@ -167,10 +167,6 @@
+   will-change: auto !important;
+ }
+ 
+-.performance-constrained .series-episode-card.focused,
+-.performance-constrained .detail-morelike-card.focused,
+-.performance-constrained .movie-cast-card.focused,
+-.performance-constrained .series-cast-card.focused,
+ .performance-constrained .detail-company-card.focused,
+ .performance-constrained .detail-comment-card.focused,
+ .performance-constrained .series-primary-btn.focused,
+@@ -181,10 +177,6 @@
+   box-shadow: 0 0 0 2px var(--focus-color, #fff) !important;
+ }
+ 
+-.legacy-tizen .series-episode-card.focused,
+-.legacy-tizen .detail-morelike-card.focused,
+-.legacy-tizen .movie-cast-card.focused,
+-.legacy-tizen .series-cast-card.focused,
+ .legacy-tizen .detail-company-card.focused,
+ .legacy-tizen .detail-comment-card.focused,
+ .legacy-tizen .series-primary-btn.focused,
 --- a/js/app.js
 +++ b/js/app.js
-@@ -55,6 +55,41 @@
+@@ -55,6 +55,129 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
@@ -9,15 +84,37 @@
 +const PS5_PLAYBACK_RETURN_KEY = "ps5_playback_return";
 +const ps5PlaybackReturn = globalThis.__NUVIO_PS5__
 +  ? LocalStore.get(PS5_PLAYBACK_RETURN_KEY, null) : null;
-+if (globalThis.__NUVIO_PS5__) LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
++// Keep a pending import recoverable if the recreated browser loses transport.
++if (globalThis.__NUVIO_PS5__ && !ps5PlaybackReturn?.progressSession) {
++  LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
++}
++
++// Read the live route: history updates only after player mounting, while EVO
++// intercepts the media source during that mount.
++globalThis.__nuvioPlaybackStartSeconds = function () {
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return 0;
++  const params = Router.currentParams || {};
++  if (params.startFromBeginning) return 0;
++  const position = Number(params.resumePositionMs);
++  if (Number.isFinite(position) && position > 0) return position / 1000;
++  const percent = Number(params.resumeProgressPercent);
++  const duration = Number(params.resumeDurationMs);
++  if (Number.isFinite(percent) && percent > 0 && Number.isFinite(duration) && duration > 0) {
++    return Math.min(100, percent) * duration / 100000;
++  }
++  return 0;
++};
 +
 +globalThis.__nuvioSavePlaybackReturn = function () {
 +  if (!globalThis.__NUVIO_PS5__) return;
++  const progressSession = globalThis.__nuvioCapturePlayback?.() || "";
 +  LocalStore.set(PS5_PLAYBACK_RETURN_KEY, {
 +    profileId: String(ProfileManager.getActiveProfileId()),
++    progressSession,
 +    resume: LocalStore.get("webos_last_resume_route", null),
 +    savedAt: Date.now()
 +  });
++  return progressSession;
 +};
 +
 +function canResumePs5Playback() {
@@ -31,18 +128,96 @@
 +  if (!Array.isArray(profiles) || !profiles.some(profile => String(profile.id) === id)) return false;
 +  const resume = ps5PlaybackReturn.resume;
 +  if (resume && Router.isWebOsResumeRouteRestorable(resume.route)) {
++    // Browser recreation is a playback return, not a fresh Play request.
++    // Use the existing stream opt-out instead of changing the user's setting.
++    const params = { ...resume.params };
++    if (resume.route === "stream") params.manualSelection = true;
++    if (resume.route === "detail") {
++      delete params.playOnLoad;
++      delete params.autoOpenContinueWatching;
++    }
 +    // The route's normal 20-minute lifetime must not expire during a movie.
-+    LocalStore.set("webos_last_resume_route", { ...resume, savedAt: Date.now() });
++    LocalStore.set("webos_last_resume_route", { ...resume, params, savedAt: Date.now() });
 +  } else {
 +    LocalStore.remove("webos_last_resume_route");
 +  }
 +  return true;
 +}
 +
++// The browser is absent during EVO playback. Keep the frontend's exact progress
++// context, not a guessed identity derived from the URL or display title.
++const PS5_PROGRESS_KEY = "ps5_native_progress";
++globalThis.__nuvioCapturePlayback = function () {
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return "";
++  const context = PlayerController.createProgressContext();
++  if (!context.itemId) return "";
++  const session = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
++  LocalStore.set(PS5_PROGRESS_KEY, {
++    session,
++    profileId: String(ProfileManager.getActiveProfileId()),
++    context
++  });
++  return session;
++};
++
++let ps5ProgressImport;
++function restorePs5PlaybackProgress() {
++  if (ps5ProgressImport) return ps5ProgressImport;
++  ps5ProgressImport = (async () => {
++    if (!canResumePs5Playback()) return;
++    const saved = LocalStore.get(PS5_PROGRESS_KEY, null);
++    if (!saved?.session || !saved.context?.itemId ||
++        saved.profileId !== ps5PlaybackReturn.profileId ||
++        saved.session !== ps5PlaybackReturn.progressSession) return;
++    const controller = new AbortController();
++    const timeout = setTimeout(() => controller.abort(), 5000);
++    try {
++      const response = await fetch("/evo/progress?session=" + encodeURIComponent(saved.session), {
++        cache: "no-store", signal: controller.signal
++      });
++      if (response.status === 204 || response.status === 404) {
++        LocalStore.remove(PS5_PROGRESS_KEY);
++        LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
++        globalThis.__nuvioPrepareKeyboard?.();
++        return;
++      }
++      if (!response.ok) throw new Error("Native progress unavailable");
++      const { positionMs, durationMs } = await response.json();
++      if (!Number.isFinite(positionMs) || positionMs <= 0 ||
++          !Number.isFinite(durationMs) || durationMs < 0) return;
++      // Never switch profiles to apply an old report, even if fetching yielded.
++      if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
++      await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
++        allowCloudSync: false, syncRemote: true
++      });
++      LocalStore.remove(PS5_PROGRESS_KEY);
++      LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
++      globalThis.__nuvioPrepareKeyboard?.(); // Flush the existing console storage bridge.
++    } catch (error) {
++      console.warn("Native playback progress could not be restored", error);
++    } finally {
++      clearTimeout(timeout);
++    }
++  })().finally(() => { ps5ProgressImport = null; });
++  return ps5ProgressImport;
++}
++
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -218,7 +253,7 @@
+@@ -209,6 +332,11 @@
+ }
+ 
+ async function shouldShowProfileSelection() {
++  // Restore account profiles before getProfiles can create a local default.
++  // Playback returns already have a verified profile and must not wait here.
++  if (globalThis.__NUVIO_PS5__ && !canResumePs5Playback()) {
++    await ProfileSyncService.pull();
++  }
+   const [profiles, pinStates] = await Promise.all([
+     ProfileManager.getProfiles(),
+     ProfileSyncService.pullProfileLockStates()
+@@ -218,7 +346,7 @@
      pinStates?.[String(activeProfileId)] || pinStates?.[Number(activeProfileId)]
    );
  
@@ -51,7 +226,15 @@
      return { show: false, pinStates };
    }
  
-@@ -584,8 +619,10 @@
+@@ -237,6 +365,7 @@
+ }
+ 
+ async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
++  await restorePs5PlaybackProgress();
+   hasSelectedProfileThisSession = true;
+   const profiles = await ProfileManager.getProfiles();
+   const activeProfileId = ProfileManager.getActiveProfileId();
+@@ -584,8 +713,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (
@@ -64,6 +247,96 @@
          ) {
            enterWithLastProfile({ restoreWebOsRoute: true }).catch((error) => {
              console.warn("Failed to enter with last profile", error);
+--- a/js/core/auth/deviceSessionRegistration.js
++++ b/js/core/auth/deviceSessionRegistration.js
+@@ -165,6 +165,9 @@
+ }
+ 
+ export async function resolveCurrentDeviceMetadata(platform = Platform, runtime = globalThis) {
++  if (runtime.__NUVIO_PS5__) {
++    return { clientName: CLIENT_NAME, deviceName: "PS5", platform: "PS5" };
++  }
+   const platformName = normalizedText(platform.getName?.()).toLowerCase();
+   const fallbackDeviceName = normalizedText(platform.getDeviceLabel?.());
+   if (platformName === "tizen") {
+--- a/js/core/profile/experienceModeRouting.js
++++ b/js/core/profile/experienceModeRouting.js
+@@ -2,7 +2,17 @@
+ import { ExperienceModeStore } from "../../data/local/experienceModeStore.js";
+ import { LayoutPreferences } from "../../data/local/layoutPreferences.js";
+ 
+-export function resolveExperienceRoute(profileId) {
++import { AuthManager } from "../auth/authManager.js";
++import { ProfileSettingsSyncService } from "./profileSettingsSyncService.js";
++
++export async function resolveExperienceRoute(profileId) {
++  // A cold account has no local mode yet. Pull before offering setup, not
++  // after routing there. Existing choices and guest onboarding stay local.
++  if (globalThis.__NUVIO_PS5__ && AuthManager.isAuthenticated &&
++      !ExperienceModeStore.getForProfile(profileId).mode &&
++      !LayoutPreferences.getForProfile(profileId).hasChosenLayout) {
++    await ProfileSettingsSyncService.pull(profileId);
++  }
+   const experience = ExperienceModeStore.getForProfile(profileId);
+   const layout = LayoutPreferences.getForProfile(profileId);
+   const effectiveMode = experience.mode || (layout.hasChosenLayout ? "ADVANCED" : null);
+--- a/js/core/profile/profileSelectionScreenMethods-01-mount.js
++++ b/js/core/profile/profileSelectionScreenMethods-01-mount.js
+@@ -204,7 +204,7 @@
+         : t("profile_selection_subtitle", {}, "Select a profile to continue");
+       const hint = this.isManagementMode
+         ? t("profile_manage_hint", {}, "Select a profile to manage")
+-        : t("profile_selection_hint", {}, "Hold to manage profile");
++        : (globalThis.__NUVIO_PS5__ ? "Press Square or Options to manage profile" : t("profile_selection_hint", {}, "Hold to manage profile"));
+       const renderedPinState = this.getRenderedPinOverlayState();
+       const isPinActive = Boolean(renderedPinState);
+       const pinScreenPhaseClass = isPinActive ? ` is-pin-${escapeHtml(this.pinOverlayPhase || "open")}` : "";
+--- a/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
++++ b/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
+@@ -77,9 +77,14 @@
+       const url = `${TMDB_BASE_URL}/collection/${encodeURIComponent(String(collectionId))}?api_key=${encodeURIComponent(apiKey)}&language=${encodeURIComponent(lang)}`;
+       const response = await fetch(url);
+       if (!response.ok) {
+-        return [];
+-      }
+-      const data = await response.json();
++        globalThis.__nuvioPs5TmdbResponse?.(response, null, -1);
++        return [];
++      }
++      const data = await response.json().catch(error => {
++        globalThis.__nuvioPs5TmdbResponse?.(response, null, 0);
++        throw error;
++      });
++      globalThis.__nuvioPs5TmdbResponse?.(response, data, 1);
+       return sortCollectionPartsByReleaseDate(data?.parts)
+         .map((item) => ({
+           id: item?.id ? `tmdb:${String(item.id)}` : "",
+--- a/js/data/local/collectionsStore.js
++++ b/js/data/local/collectionsStore.js
+@@ -52,9 +52,9 @@
+     withoutGenres: stringOrNull(raw.withoutGenres),
+     releaseDateGte: stringOrNull(raw.releaseDateGte),
+     releaseDateLte: stringOrNull(raw.releaseDateLte),
+-    voteAverageGte: Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
+-    voteAverageLte: Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
+-    voteCountGte: Number.isFinite(Number(raw.voteCountGte))
++    voteAverageGte: raw.voteAverageGte != null && Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
++    voteAverageLte: raw.voteAverageLte != null && Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
++    voteCountGte: raw.voteCountGte != null && Number.isFinite(Number(raw.voteCountGte))
+       ? Math.trunc(Number(raw.voteCountGte))
+       : null,
+     withOriginalLanguage: stringOrNull(raw.withOriginalLanguage),
+--- a/js/platform/adapters/browserAdapter.js
++++ b/js/platform/adapters/browserAdapter.js
+@@ -22,7 +22,7 @@
+   },
+ 
+   getDeviceLabel() {
+-    return "Web Browser";
++    return globalThis.__NUVIO_PS5__ ? "PS5" : "Web Browser";
+   },
+ 
+   getCapabilities() {
 --- a/js/ui/navigation/focusEngine.js
 +++ b/js/ui/navigation/focusEngine.js
 @@ -1,4 +1,5 @@
@@ -109,6 +382,48 @@
          return null;
        }
        const snapshot = LocalStore.get(WEBOS_RESUME_ROUTE_KEY, null);
+--- a/js/ui/screens/collection/folderDetailScreenHelpers-02-build-fallback-streaming-sources.js
++++ b/js/ui/screens/collection/folderDetailScreenHelpers-02-build-fallback-streaming-sources.js
+@@ -188,7 +188,9 @@
+ 
+ export async function fetchJson(url, options = {}) {
+   const response = await fetch(url, options);
+-  const payload = await response.json().catch(() => null);
++  let jsonState = 1;
++  const payload = await response.json().catch(() => { jsonState = 0; return null; });
++  globalThis.__nuvioPs5TmdbResponse?.(response, payload, jsonState);
+   if (!response.ok) {
+     throw new Error(String(payload?.message || payload?.error || response.statusText || "Request failed"));
+   }
+--- a/js/ui/screens/collection/folderDetailScreenHelpers-04-map-trakt-entity.js
++++ b/js/ui/screens/collection/folderDetailScreenHelpers-04-map-trakt-entity.js
+@@ -83,6 +83,7 @@
+   const url = new URL(
+     `${String(TRAKT_API_URL || "https://api.trakt.tv").replace(/\/+$/, "")}/lists/${encodeURIComponent(String(source.traktListId || ""))}/items/${mediaType}`
+   );
++  url.searchParams.set("extended", "full,images");
+   url.searchParams.set("page", String(page));
+   url.searchParams.set("limit", String(TRAKT_PAGE_SIZE));
+   url.searchParams.set("sort_by", String(source.sortBy || "rank"));
+--- a/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
++++ b/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
+@@ -261,6 +261,7 @@
+     },
+     navigateBackFromDetail() {
+       if (this.params?.returnToSearchOnBack) {
++        if (globalThis.__NUVIO_PS5__ && Router.popToExistingRoute?.("search", {})) return true;
+         Router.navigate(
+           "search",
+           {},
+@@ -272,7 +273,7 @@
+         );
+         return true;
+       }
+-      if (this.params?.returnHomeOnBack) {
++      if (this.params?.returnHomeOnBack || (globalThis.__NUVIO_PS5__ && Router.stack.length === 0)) {
+         Router.navigate(
+           "home",
+           {},
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
 @@ -239,6 +239,7 @@
@@ -143,6 +458,145 @@
          return;
        }
  
+--- a/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
++++ b/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
+@@ -78,7 +78,7 @@
+           label: t("cw_action_go_to_details", {}, "Go to details")
+         });
+       }
+-      if (!isCloud && this.showContinueWatchingManualPlayOption) {
++      if (!isCloud && (globalThis.__NUVIO_PS5__ || this.showContinueWatchingManualPlayOption)) {
+         options.push({ action: "playManually", label: t("play_manually", {}, "Play manually") });
+       }
+       if (!item.isNextUp) {
+--- a/js/ui/screens/plugin/catalogOrderScreen.js
++++ b/js/ui/screens/plugin/catalogOrderScreen.js
+@@ -181,14 +181,16 @@
+           </div>
+           <div class="catalog-order-card-actions">
+             <button type="button"
++                    aria-label="Move up"
+                     class="catalog-order-action ${item.canMoveUp ? "catalog-order-focusable" : "is-disabled"}"
+                     ${item.canMoveUp ? `data-row="${index}" data-col="0" data-action="up" data-key="${escapeHtml(item.key)}" tabindex="-1"` : 'tabindex="-1" aria-disabled="true"'}>
+-              <span class="material-icons" aria-hidden="true">arrow_upward</span>
++              ${globalThis.__NUVIO_PS5__ ? "Move up" : '<span class="material-icons" aria-hidden="true">arrow_upward</span>'}
+             </button>
+             <button type="button"
++                    aria-label="Move down"
+                     class="catalog-order-action ${item.canMoveDown ? "catalog-order-focusable" : "is-disabled"}"
+                     ${item.canMoveDown ? `data-row="${index}" data-col="1" data-action="down" data-key="${escapeHtml(item.key)}" tabindex="-1"` : 'tabindex="-1" aria-disabled="true"'}>
+-              <span class="material-icons" aria-hidden="true">arrow_downward</span>
++              ${globalThis.__NUVIO_PS5__ ? "Move down" : '<span class="material-icons" aria-hidden="true">arrow_downward</span>'}
+             </button>
+             <button type="button"
+                     class="catalog-order-action catalog-order-focusable catalog-order-toggle${item.isDisabled ? " is-disabled-state" : ""}"
+--- a/js/ui/screens/search/searchScreenMethods-01-get-route-state-key.js
++++ b/js/ui/screens/search/searchScreenMethods-01-get-route-state-key.js
+@@ -1,4 +1,5 @@
+ /* eslint-disable no-unused-vars */
++import { requestPs5SearchKeyboard } from "../../navigation/ps5-text-input.js";
+ import * as internals from "./searchScreen.js";
+ 
+ export function createSearchScreenMethods01() {
+@@ -134,6 +135,10 @@
+         if (!this.container || Router.getCurrent() !== "search") {
+           return;
+         }
++        if (globalThis.__NUVIO_PS5__ && this.shouldPatchResultsWithoutReplacingInput()) {
++          this.renderResultsOnly();
++          return;
++        }
+         this.render();
+       });
+     },
+@@ -178,11 +183,16 @@
+         console.warn("Search sidebar profile failed to load", err);
+         return null;
+       });
+-      try {
+-        this.sidebarProfile = await getSidebarProfileState({ cacheOnly: true });
+-      } catch (err) {
+-        console.warn("Search cached sidebar profile failed to load", err);
+-        this.sidebarProfile = null;
++      // PS5 Search must paint within the Triangle user gesture so
++      // focusing its real input can request the browser's native keyboard.
++      // The existing background profile request still refreshes the avatar.
++      if (!globalThis.__NUVIO_PS5__) {
++        try {
++          this.sidebarProfile = await getSidebarProfileState({ cacheOnly: true });
++        } catch (err) {
++          console.warn("Search cached sidebar profile failed to load", err);
++          this.sidebarProfile = null;
++        }
+       }
+       this.sidebarExpanded = false;
+       this.focusZone = "content";
+@@ -229,6 +239,7 @@
+       // completes. Paint the Smart TV shell now so the native input and sidebar
+       // remain usable while the row request runs in the background.
+       this.render();
++      void requestPs5SearchKeyboard(navigationContext);
+ 
+       void sidebarProfilePromise.then((profile) => {
+         if (!profile || routeLoadToken !== this.loadToken || Router.getCurrent() !== "search") {
+--- a/js/ui/screens/search/searchScreenMethods-02-load-discover-rows.js
++++ b/js/ui/screens/search/searchScreenMethods-02-load-discover-rows.js
+@@ -238,7 +238,7 @@
+         if (this.mode === "search") {
+           return `
+               <div class="search-empty-state search-empty-state-results">
+-                <span class="search-empty-icon material-icons" aria-hidden="true">search</span>
++                ${globalThis.__NUVIO_PS5__ ? '<svg class="search-empty-icon" width="136" height="136" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>' : '<span class="search-empty-icon material-icons" aria-hidden="true">search</span>'}
+                 <h2>${escapeHtml(t("search_no_results_title", {}, "No Results"))}</h2>
+                 <p>${escapeHtml(t("search_no_results_subtitle", {}, "Try searching with different keywords"))}</p>
+               </div>
+@@ -249,7 +249,7 @@
+         }
+         return `
+             <div class="search-empty-state">
+-              <span class="search-empty-icon material-icons" aria-hidden="true">search</span>
++              ${globalThis.__NUVIO_PS5__ ? '<svg class="search-empty-icon" width="136" height="136" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>' : '<span class="search-empty-icon material-icons" aria-hidden="true">search</span>'}
+               <h2>${escapeHtml(t("search_start_title", {}, "Start Searching"))}</h2>
+               <p>${escapeHtml(
+                 this.layoutPrefs?.discoverLocation === "in_search"
+--- a/js/ui/screens/search/searchScreenMethods-03-render-recent-searches.js
++++ b/js/ui/screens/search/searchScreenMethods-03-render-recent-searches.js
+@@ -55,7 +55,7 @@
+                         data-query="${escapeHtml(query)}"
+                         data-row-key="${escapeHtml(rowKey)}"
+                         aria-label="${escapeHtml(`${closeLabel} ${query}`)}"
+-                      ><span class="material-icons" aria-hidden="true">close</span></button>
++                      >${globalThis.__NUVIO_PS5__ ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>' : '<span class="material-icons" aria-hidden="true">close</span>'}</button>
+                     </div>
+                   `;
+                 })
+@@ -81,8 +81,8 @@
+                 ${
+                   this.layoutPrefs?.discoverLocation === "in_search"
+                     ? `
+-                  <button class="search-discover-btn focusable" data-action="openDiscover">
+-                    <span class="search-action-icon material-icons" aria-hidden="true">explore</span>
++                  <button class="search-discover-btn focusable" data-action="openDiscover" aria-label="${escapeHtml(t("discover_title", {}, "Discover"))}">
++                    ${globalThis.__NUVIO_PS5__ ? '<svg class="search-action-icon" width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg>' : '<span class="search-action-icon material-icons" aria-hidden="true">explore</span>'}
+                   </button>
+                 `
+                     : ""
+--- a/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
++++ b/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
+@@ -298,7 +298,12 @@
+       }
+     },
+     consumeBackRequest() {
+-      return this.closePosterOptionsMenu();
++      if (this.closePosterOptionsMenu()) return true;
++      if (globalThis.__NUVIO_PS5__ && Router.stack.length === 0) {
++        void Router.navigate("home", {}, { replaceHistory: true, skipStackPush: true });
++        return true;
++      }
++      return false;
+     },
+     cleanup() {
+       this.loadToken = (this.loadToken || 0) + 1;
 --- a/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
 +++ b/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
 @@ -8,6 +8,9 @@
@@ -176,3 +630,18 @@
            <div class="settings-group-card settings-group-card-fill">
              <div class="settings-stack">
                ${this.renderCollapsibleRow({
+--- a/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
++++ b/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
+@@ -24,6 +24,12 @@
+       if (this.autoResumeAttempted) {
+         return;
+       }
++      // Manual selection must also bypass the progress stream identity.
++      // Disabling only stored-link reuse still allowed an automatic launch.
++      if (globalThis.__NUVIO_PS5__ && this.params?.manualSelection) {
++        this.autoResumeUiActive = false;
++        return;
++      }
+       const settings = PlayerSettingsStore.get();
+       const reusableStream = settings.streamReuseLastLinkEnabled
+         ? StreamPreferencesStore.getValid(

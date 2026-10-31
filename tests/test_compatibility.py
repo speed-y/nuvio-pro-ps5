@@ -43,8 +43,9 @@ int sceKernelGetAppInfo(pid_t pid, void *out) {
     if (getenv("MISSING") || (pid==41 && target_queries++ && getenv("IDENTITY_CHANGED"))) {
         memcpy(bytes+offset,"PPSA99998",10);
     }
-    else memcpy(bytes+offset,"PPSA99997",10);
-    if (getenv("DOUBLE_TITLE")) memcpy(bytes+40,"PPSA99997",10);
+    else if (getenv("UPSTREAM_TITLE")) memcpy(bytes+offset,"PPSA99997",10);
+    else memcpy(bytes+offset,"PPSA99996",10);
+    if (getenv("DOUBLE_TITLE")) memcpy(bytes+40,"PPSA99996",10);
     if (getenv("UNTERMINATED")) bytes[offset+9]='X';
     return 0;
 }
@@ -139,7 +140,7 @@ int kill(pid_t pid, int signal) {
                 for firmware in ('3000001', '4030001', '9600001', '12600001', '12700001', '13600001'):
                     for offset in (16, 20, 86):
                         for failure in ('', 'MISSING', 'DUPLICATE', 'DOUBLE_TITLE',
-                                        'TARGET_QUERY_FAIL', 'UNTERMINATED', 'BAD_RECORD', 'IDENTITY_CHANGED'):
+                                        'TARGET_QUERY_FAIL', 'UNTERMINATED', 'BAD_RECORD', 'IDENTITY_CHANGED', 'UPSTREAM_TITLE'):
                             with self.subTest(mode=mode, firmware=firmware, offset=offset, failure=failure):
                                 env = {'FIRMWARE': firmware, 'TITLE_OFFSET': str(offset)}
                                 if failure:
@@ -148,7 +149,7 @@ int kill(pid_t pid, int signal) {
                                                         capture_output=True, text=True, timeout=5)
                                 allowed = (not experimental or firmware == '12700001') and not failure
                                 no_target = mode == 'close' and failure in (
-                                    'MISSING', 'DOUBLE_TITLE', 'TARGET_QUERY_FAIL', 'UNTERMINATED')
+                                    'MISSING', 'DOUBLE_TITLE', 'TARGET_QUERY_FAIL', 'UNTERMINATED', 'UPSTREAM_TITLE')
                                 self.assertEqual(result.returncode, 0 if allowed or no_target else 1, result.stdout)
                                 success = ('process exited' if mode == 'close' else 'native network privileges applied')
                                 self.assertEqual(success in result.stdout, allowed)
@@ -164,7 +165,8 @@ int kill(pid_t pid, int signal) {
             (root/'eboot.bin').write_bytes(installed)
             source = (ROOT/'vendor/control.c').read_text().replace('AURORA', 'NUVIO')
             source = source.replace('../../payloads/common/sha256.h', str(ROOT/'vendor/sha256.h'))
-            source = source.replace('/data/homebrew/PPSA99997', str(root))
+            source = source.replace('PPSA99997', 'PPSA99996').replace('PPSA99998', 'PPSA99996')
+            source = source.replace('/data/homebrew/PPSA99996', str(root))
             source = source.replace('/data/homebrew/ps5-homebrew-dev', str(root/'no-backup'))
             (root/'control.c').write_text(source)
             exe = root/'verify'

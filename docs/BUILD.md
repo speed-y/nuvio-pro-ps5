@@ -2,8 +2,8 @@
 
 ## Get a release instead
 
-Most users do not build anything. Download `PPSA99997.zip` from the
-[latest release](https://github.com/bilawalriaz/nuvio-ps5-homebrew/releases)
+Most users do not build anything. Download `PPSA99996.zip`, when published, from the
+[fork releases](https://github.com/speed-y/nuvio-ps5-homebrew/releases)
 and follow [Operations](OPERATIONS.md). Build from source only to change the
 port or to test native code.
 
@@ -131,7 +131,7 @@ artifacts. It does not certify console execution. The builder leaves
 | Path | Contents |
 |---|---|
 | `build/ui/` | Browser UI and public runtime configuration |
-| `build/EVO-PLAYER-PS5-*/output/app/PPSA99997/` | Native folder title |
+| `build/EVO-PLAYER-PS5-*/output/app/PPSA99996/` | Native folder title |
 | `build/control-1.elf` | Registration helper |
 | `build/control-2.elf` | Title information helper |
 | `build/control-3.elf` | Launch helper |
@@ -228,7 +228,7 @@ Build the packaged UI responder with:
 NUVIO_WORK_DIR=/tmp/nuvio-title-ui python3 scripts/build.py --title-ui
 ```
 
-This variant serves `/data/homebrew/PPSA99997/webui` through EVO's existing
+This variant serves `/data/homebrew/PPSA99996/webui` through EVO's existing
 browser listener and injects the existing Nuvio bridge into HTML entry pages.
 It sets the default Nuvio provider address without reading a helper-generated
 configuration file. Existing configuration remains the browser storage key.

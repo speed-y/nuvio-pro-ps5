@@ -27,7 +27,7 @@
 /* The browser UI now lives on the console, inside the installed title folder,
  * and this payload serves it on 127.0.0.1, the address the title's own proxy
  * reaches. The document root is derived from the title identity, not scanned. */
-#define NUVIO_UI_ROOT "/data/homebrew/PPSA99997/webui"
+#define NUVIO_UI_ROOT "/data/homebrew/PPSA99996/webui"
 #define NUVIO_UI_CONF "/data/nuvio/nuvio.conf"
 #define NUVIO_UI_PORT 4173
 /* Milliseconds to wait after the title appears before changing its credentials.
@@ -46,7 +46,7 @@ int nuvio_ui_server_poll(int timeout_ms);
 static int promote_once(int quiet) {
 #ifdef NUVIO_TEST_FW_1270
     if((kernel_get_fw_version() & UINT32_C(0xffff0000))!=UINT32_C(0x12700000)) { puts("NUVIO test refused: requires firmware 12.70"); return 1; }
-    puts("NUVIO experimental permission test: firmware 12.70, PPSA99997 only");
+    puts("NUVIO experimental permission test: firmware 12.70, PPSA99996 only");
 #endif
     int mib[4]={CTL_KERN,KERN_PROC,KERN_PROC_PROC,0};
     size_t size=0;
@@ -113,7 +113,7 @@ int main(void) {
 #ifdef NUVIO_WATCH
     /* Loader closes its output socket after the host stops capturing. */
     if(signal(SIGPIPE,SIG_IGN)==SIG_ERR) return 1;
-    puts("NUVIO payload ready: PPSA99997 only, firmware support checked by SDK");
+    puts("NUVIO payload ready: PPSA99996 only, firmware support checked by SDK");
     ensure_conf();
     if(nuvio_ui_server_open(NUVIO_UI_ROOT,NUVIO_UI_PORT)==0)
         printf("NUVIO ui: serving %s on 127.0.0.1:%d\n",NUVIO_UI_ROOT,NUVIO_UI_PORT);

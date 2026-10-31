@@ -25,7 +25,7 @@ These releases are not marked latest.
 They retain the app's content version and are test candidates, not store updates.
 The release notes explicitly state that console validation remains pending.
 
-Download `PPSA99997.zip` and `SHA256SUMS` for installation.
+Download `PPSA99996.zip` and `SHA256SUMS` for installation.
 Download `nuvio-ps5-<version>.zip` for source and build receipts.
 CI artifacts remain available for 14 days. GitHub Release assets do not use that expiration.
 Asset URLs use the current repository, not the upstream repository.
@@ -64,11 +64,11 @@ make release
 
 | Artifact | Contents |
 |---|---|
-| `PPSA99997.zip` | The `<TITLEID>/` app folder, including `webui/`. This is the store artifact. |
+| `PPSA99996.zip` | The `<TITLEID>/` app folder, including `webui/`. This is the store artifact. |
 | `nuvio-ps5-<version>.zip` | The complete package: app, development helpers, UI source and receipts. |
 | `SHA256SUMS` | Hashes for the release assets. |
 
-`PPSA99997.zip` unpacks to a single `PPSA99997/` folder. Users copy that folder to
+`PPSA99996.zip` unpacks to a single `PPSA99996/` folder. Users copy that folder to
 `/data/homebrew/` and open Nuvio after the current boot's jailbreak starts ShadowMount and the ELF loader. The complete package keeps
 the source, the browser UI and the build helpers for a scripted install.
 
@@ -82,15 +82,18 @@ and the helpers. The archive manifest covers the packaged UI and source files.
 
 ## Store listing
 
-The [PS5 Homebrew Store catalog](https://github.com/blackbearreloaded/ps5-homebrew-catalog)
-lists native PS5 homebrew by title ID. The record lives at `apps/PPSA99997.json`
-in that repository and pins one release asset by SHA-256.
+The [PS5 Homebrew Store catalog](https://github.com/darkxex/ps5-homebrew-catalog)
+lists native PS5 homebrew by title ID and pins release assets by SHA-256.
+Its existing `apps/PPSA99997.json` belongs to Bilawal Riaz's upstream port, not this fork.
+This fork selects `PPSA99996` locally. It has no submitted reservation or approved catalog listing.
+Check availability again before requesting a reservation through a catalog pull request.
+The catalog's derivative-app policy also requires substantial differences and a distinct name.
 
 The catalog needs:
 
 - A native title with `eboot.bin` and `sce_sys/param.json`, which this project
   builds.
-- A public GitHub release with the `PPSA99997.zip` asset attached.
+- A public GitHub release with the `PPSA99996.zip` asset attached.
 - An icon at a stable HTTPS URL, pinned to a tag. Use `assets/icon.png`.
 - The SHA-256 of the release asset.
 
@@ -116,5 +119,5 @@ Development and recovery helpers stay in the complete source package.
 
 ## Announce the release
 
-[Announcement notes](LAUNCH.md) hold a short description, the demonstration plan
-and drafts for Hacker News and r/ps5homebrew.
+Describe the tested build and its remaining limits. Credit Bilawal Riaz, NuvioMedia and the EVO contributors.
+Use real console footage for hardware demonstrations, and keep QR codes, private settings and stream URLs out of public captures.

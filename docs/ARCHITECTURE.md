@@ -3,7 +3,7 @@
 ## Component boundaries
 
 [SOURCE-VERIFIED] The port uses the source revisions in [Sources](SOURCES.md).
-The console runs an EVO-derived native title with the identity `PPSA99997`. The
+The console runs an EVO-derived native title with the identity `PPSA99996`. The
 browser UI travels inside the title folder. The title loads its embedded
 permission helper through the existing ELF loader and serves the UI over loopback.
 
@@ -30,7 +30,7 @@ port never runs a browser inside the native decoder.
 
 | Area | Change | Reason |
 |---|---|---|
-| Title metadata | Assign the Nuvio name and `PPSA99997` | Keep the install separate from EVO |
+| Title metadata | Assign the Nuvio name and `PPSA99996` | Keep the install separate from EVO and the upstream port |
 | Data paths | Use `/data/nuvio` | Keep settings separate from EVO |
 | Startup | Open the configured Nuvio provider automatically | Start in Nuvio browsing |
 | Browser layout | Use the full browser area | Remove the EVO navigation rail beside Nuvio |
@@ -42,13 +42,15 @@ port never runs a browser inside the native decoder.
 | Playback exit | Stop Nuvio playback on Circle | Return without the hidden native confirmation |
 | Playback overlays | Keep active playback screens visible | Preserve native controls and dialogs |
 | Route state | Enable the Nuvio resume methods for the PS5 flag | Keep browsing state across browser recreation |
-| Public login configuration | Read selected values from the official TV package | Enable the official QR login path |
+| Public browser configuration | Read selected login and metadata values from the pinned official TV package | Enable QR login, TMDB metadata and Trakt catalogue requests |
 | Browser UI hosting | Serve `webui/` from the title over loopback | Remove the computer that served the UI |
 | Host build | Select Linux or macOS toolchains and host zlib | Build the same PS5 sources on either host |
 
 `sce_sys/param.json` in this repository holds the title identity and content
 version. The build copies those values into the generated title, so a release tag
 carries the metadata a store needs.
+It also copies category `0` and badge `1` for Games classification and home-screen selection music.
+The old upstream identity is `PPSA99997`. Historical evidence retains that identity.
 
 `scripts/build.py` and `scripts/polish.py` apply these changes. The generated
 patches show changes to upstream files. The adapters also copy the loading
@@ -65,12 +67,37 @@ A recursion guard prevents duplicate activation.
 
 The existing native pad reader forwards Options and Triangle edges while the browser is active.
 The adapter polls counters through the title's `/evo/controller` endpoint.
+Either analog stick also supplies directional navigation through this bridge while the browser is active.
+The adapter selects the dominant axis beyond the existing approximately 55% tilt threshold and reuses EVO's directional repeat policy.
+The left stick takes priority if both sticks move. Diagonals produce one direction, not two.
+The frontend converts each new navigation report into standard arrow-key events for the current modal or screen.
+It coalesces delayed repeats and discards stale reports after backgrounding or connection failure.
+Physical D-pad events remain browser-owned. Native player and keyboard controls retain their existing stick behavior.
 Options calls the focused item's existing context-menu method.
-Triangle opens a controller menu containing Player settings.
+Triangle opens the existing Search screen and focuses its real text box within the browser key event.
+On PS5, Search paints before awaiting profile decoration. Background result refreshes preserve an active text box.
+The owner confirms navigation works, but browser focus alone does not open the system keyboard on 12.70.
+The native text-entry adapter queues the existing EVO IME from Search and polls it on the main thread.
+It saves the selected profile and Search query, closes the browser, then opens the keyboard after confirmed browser closure.
+The owner confirms keyboard display without the browser on 12.70. Simultaneous browser/IME display failed in the recorded comparison.
+After confirmed keyboard cleanup, the adapter reopens console-hosted Search through the existing one-use profile return snapshot.
+Accepted text uses Search's normal submit path and focuses results. Cancellation keeps the query.
+Search mount requests input except during back navigation. Triangle and textbox activation remain explicit input requests.
+Returning from result details preserves Search without opening the keyboard. Merely focusing or rerendering the textbox does not reopen it.
+Detail Back pops an existing Search history entry instead of leaving a duplicate Search predecessor that blocks the next Back.
+There is no typing timeout or one-shot limit. Restored Search without a history predecessor sends Back to Home after dismissing actions.
+An unavailable native keyboard reports failure without a prompt or virtual-keyboard fallback.
+Repeatable entry and controller navigation after return remain pending console validation for the new candidate.
+The adapter leaves undocumented browser IME pointers and control bits unchanged.
+Search uses local SVGs for Discover, empty-state search and recent-history removal, without a remote icon font.
+The controller menu remains an item-action fallback containing Player settings.
 The detail page also exposes a D-pad-reachable Play options button.
 Settings > Playback exposes Player settings without a pointer.
 These native button paths still require console validation while the system browser owns the controller.
-No undocumented browser keycode or Gamepad mapping supplies these buttons.
+The owner's 12.70 browser reports Square as F2/113 and Options as F3/114.
+The newest key after an isolated Triangle test is F1/112. The adapter handles that observed shortcut too.
+Square and Options use the existing item-menu path, without waiting for native counters.
+No guessed browser event or Gamepad mapping supplies these buttons.
 
 The title's stylesheet requests a hidden cursor.
 This does not establish whether the system browser hides its own pointer overlay.
@@ -84,7 +111,34 @@ The native handoff saves a one-use profile and route snapshot and marks its retu
 Startup restores that profile and page when the native player reopens the browser.
 Title and stream pages can resume on PS5. Ordinary launches retain profile selection.
 The return check rejects changed, deleted or expired profile snapshots.
+Playback return restores stream selection with the existing manual-selection override.
+For restored title details, it removes the one-use Play and Continue Watching triggers.
+This prevents browser recreation from starting the same video again.
+The saved autoplay setting stays unchanged, so a fresh Play action can still select the first stream.
 It does not enable the webOS services.
+
+The player handoff reads the live route's resume timestamp, not browser history.
+Start over uses zero. Percentage-only progress requires a saved duration.
+EVO receives the offset through its existing startup-seek path.
+Unknown duration or a rejected demuxer seek can still prevent startup resume.
+
+Before browser closure, the frontend saves an opaque session ID with the originating profile and PlayerController's progress context.
+EVO samples position and duration during playback and immediately before native teardown.
+Both sampling paths skip uncommitted scrub previews and retain the last measured position instead.
+Its console-local `/evo/progress` endpoint exposes only the matching session's finished report.
+On return, the frontend verifies the saved profile and session before rendering the restored route.
+PlayerController's existing progress writer saves the movie or exact episode and applies its normal 90% watched threshold.
+Failed starts without a positive position cannot erase saved progress.
+Pending imports retain their return identity until success or a terminal missing report, allowing retries after transport or writer failures.
+An active seek to zero invalidates an older positive sample. Teardown's zero duration does not replace a valid sample.
+The native report stays in memory until return. Abrupt title termination or power loss has no recovery checkpoint.
+This bridge does not implement live Trakt or Simkl scrobbling.
+
+The storage hook rejects failed or incomplete reads rather than saving an empty or partial snapshot.
+It tracks explicit Storage API removals so sign-out and reset can still delete saved keys.
+Restore or tracking failure disables saves for that document, preserving the disk copy.
+Serialized synchronous loopback POSTs advance the baseline only after acknowledgement. This avoids asynchronous write reordering but can block the browser.
+Teardown rejection can lose recent unsaved changes. Native file writes remain in-place, not crash-safe or transactional.
 
 Circle stops playback that started through Nuvio, and the EVO playback pump then
 requests a browser reopen. Playback that started through the native settings
@@ -129,7 +183,7 @@ permission to bind the loopback proxy. [TESTED-ON-CONSOLE] The failed bind
 returned `errno=13` on firmware 13.60. File access alone therefore did not give
 the network permission the proxy needs.
 
-The embedded one-shot helper matches `PPSA99997` and `eboot.bin` before it changes credentials.
+The embedded one-shot helper matches `PPSA99996` and `eboot.bin` before it changes credentials.
 SDK v0.43 initializes firmware-specific support before the helper's `main` and rejects unknown versions.
 Nuvio adds no second firmware allowlist to the one-shot helper, legacy watcher or close helper.
 It refuses a missing or ambiguous process match, applies the SDK example's capability and authentication values, then reads them back.
@@ -208,6 +262,10 @@ store archive is self-contained. `nuvio.elf` serves that folder on
 own proxy fetches the pages through it exactly as it fetched a LAN server before,
 so the hook injection, route resume and playback handoff keep working.
 
+The packaged runtime configuration includes the pinned official frontend's TMDB API key and Trakt client ID.
+The build copies only selected browser configuration fields, not owner account state or unrelated client credentials.
+TMDB integration and its metadata options still follow the active profile's settings.
+
 A payload runs as its own process rather than inside the title, so the server is
 single-threaded and driven from the payload's own loop. [TESTED-ON-CONSOLE] A
 threaded accept loop bound the port and then stopped answering, while a loop on
@@ -217,7 +275,7 @@ the process's main thread served every request.
 
 | Console path | Purpose |
 |---|---|
-| `/data/homebrew/PPSA99997` | Native folder title, including `webui/` |
+| `/data/homebrew/PPSA99996` | Native folder title, including `webui/` |
 | `/data/nuvio/nuvio.conf` | Console UI origin the title opens |
 | `/data/nuvio/webui/<host>_<port>.json` | Private browser state for that origin |
 | `/data/nuvio/addons.json` | Native addon manifest list |
@@ -235,6 +293,6 @@ instead.
 
 ## Release layout
 
-`make release` writes the store artifact `PPSA99997.zip`, the complete package
+`make release` writes the store artifact `PPSA99996.zip`, the complete package
 `nuvio-ps5-<version>.zip`, the standalone helper ELFs and a `payloads.json` source
 for PS5 Payload Manager. See [Release](RELEASE.md).

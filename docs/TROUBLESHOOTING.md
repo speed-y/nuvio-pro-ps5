@@ -3,7 +3,7 @@
 ## Stuck on “Opening Nuvio”
 
 Check the current boot's jailbreak, ShadowMount and ELF loader on port 9021.
-Check that `/data/homebrew/PPSA99997/webui/` exists.
+Check that `/data/homebrew/PPSA99996/webui/` exists for the new fork build.
 The single-install title loads its helper automatically and serves the page itself.
 Release 0.1.0-alpha.2 needs its separate `nuvio.elf` boot payload.
 Collect a private copy of `/data/nuvio/evo.log` if the splash remains.
@@ -130,7 +130,9 @@ The updater names ordinary-file backups with the previous hash and the flattened
 relative path. `control-5.elf` stores raw eboot backups as
 `nuvio-eboot-backup-<sha256>.bin` below `/data/homebrew/ps5-homebrew-dev`. Do not
 verify or restore these container files with FTP `RETR`. Use on-console hashing
-and rename the matching backup back to `/data/homebrew/PPSA99997/eboot.bin`.
+and rename the matching backup back to `/data/homebrew/PPSA99996/eboot.bin`.
+
+Use backups from the same title ID. Older `PPSA99997` binaries are not replacements for this fork's new identity.
 
 Restore only files that the matching receipts list, and keep `/data/nuvio` with
 its private account state. Do not replace the runtime to diagnose an eboot

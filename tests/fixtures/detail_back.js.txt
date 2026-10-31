@@ -1,0 +1,65 @@
+// GPL-3.0. NuvioMedia NuvioTVSmart 25b984f778e4083dc6c2e768fdb5fcf46012e8b7.
+// Detail Back methods from metaDetailsScreenMethods-05 and -21.
+({
+    navigateBackFromDetail() {
+      if (this.params?.returnToSearchOnBack) {
+        Router.navigate(
+          "search",
+          {},
+          {
+            isBackNavigation: true,
+            skipStackPush: true,
+            replaceHistory: true
+          }
+        );
+        return true;
+      }
+      if (this.params?.returnHomeOnBack) {
+        Router.navigate(
+          "home",
+          {},
+          {
+            isBackNavigation: true,
+            skipStackPush: true,
+            replaceHistory: true
+          }
+        );
+        return true;
+      }
+      return false;
+    },
+    consumeBackRequest() {
+      if (this.seasonHoldMenu) {
+        this.closeSeasonHoldMenu();
+        return true;
+      }
+      if (this.episodeHoldMenu) {
+        this.closeEpisodeHoldMenu();
+        return true;
+      }
+      if (this.posterOptionsController?.dialog) {
+        this.closePosterOptionsMenu();
+        return true;
+      }
+      if (this.heroPlayMenu || this.libraryListMenu) {
+        this.closeHeroMenus();
+        return true;
+      }
+      if (this.isTrailerPlaying) {
+        this.stopTrailerPlayback();
+        return true;
+      }
+      if (this.pendingEpisodeSelection || this.pendingMovieSelection) {
+        this.closeEpisodeStreamChooser();
+        return true;
+      }
+      if (this.navigateBackFromDetail()) {
+        return true;
+      }
+      if (this.isLoadingDetail) {
+        void Router.backFromPendingNavigation();
+        return true;
+      }
+      return false;
+    }
+})

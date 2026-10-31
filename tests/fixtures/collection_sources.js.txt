@@ -1,0 +1,107 @@
+// GPL-3.0. NuvioMedia NuvioTVSmart 25b984f778e4083dc6c2e768fdb5fcf46012e8b7.
+// Unmodified collection source normalization from js/data/local/collectionsStore.js.
+function stringOrEmpty(value) {
+  return String(value || "").trim();
+}
+
+function stringOrNull(value) {
+  const normalized = stringOrEmpty(value);
+  return normalized || null;
+}
+
+function normalizeTmdbFilters(value = {}) {
+  const raw = value && typeof value === "object" ? value : {};
+  return {
+    withGenres: stringOrNull(raw.withGenres),
+    withoutGenres: stringOrNull(raw.withoutGenres),
+    releaseDateGte: stringOrNull(raw.releaseDateGte),
+    releaseDateLte: stringOrNull(raw.releaseDateLte),
+    voteAverageGte: Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
+    voteAverageLte: Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
+    voteCountGte: Number.isFinite(Number(raw.voteCountGte))
+      ? Math.trunc(Number(raw.voteCountGte))
+      : null,
+    withOriginalLanguage: stringOrNull(raw.withOriginalLanguage),
+    withOriginCountry: stringOrNull(raw.withOriginCountry),
+    withKeywords: stringOrNull(raw.withKeywords),
+    withoutKeywords: stringOrNull(raw.withoutKeywords),
+    withCompanies: stringOrNull(raw.withCompanies),
+    withoutCompanies: stringOrNull(raw.withoutCompanies),
+    withNetworks: stringOrNull(raw.withNetworks),
+    year:
+      Number.isFinite(Number(raw.year)) && Number(raw.year) > 0
+        ? Math.trunc(Number(raw.year))
+        : null,
+    watchRegion: stringOrNull(raw.watchRegion),
+    withWatchProviders: stringOrNull(raw.withWatchProviders),
+    withoutWatchProviders: stringOrNull(raw.withoutWatchProviders)
+  };
+}
+
+function normalizeCollectionSource(source = {}) {
+  const raw = source && typeof source === "object" ? source : {};
+  const provider = stringOrEmpty(raw.provider || "addon").toLowerCase();
+  if (provider === "tmdb") {
+    const tmdbSourceType = stringOrEmpty(raw.tmdbSourceType).toUpperCase();
+    if (!tmdbSourceType) {
+      return null;
+    }
+    return {
+      provider: "tmdb",
+      tmdbSourceType,
+      title: stringOrEmpty(
+        raw.title || tmdbSourceType.replace(/^./, (match) => match.toUpperCase())
+      ),
+      tmdbId: Number.isFinite(Number(raw.tmdbId)) ? Math.trunc(Number(raw.tmdbId)) : null,
+      mediaType: stringOrEmpty(raw.mediaType || "MOVIE").toUpperCase() === "TV" ? "TV" : "MOVIE",
+      sortBy: stringOrEmpty(raw.sortBy || "popularity.desc") || "popularity.desc",
+      filters: normalizeTmdbFilters(raw.filters)
+    };
+  }
+  if (provider === "trakt") {
+    const traktListId = Number(raw.traktListId);
+    if (!Number.isFinite(traktListId) || traktListId <= 0) {
+      return null;
+    }
+    return {
+      provider: "trakt",
+      title: stringOrEmpty(raw.title || `List ${Math.trunc(traktListId)}`),
+      traktListId: Math.trunc(traktListId),
+      mediaType: stringOrEmpty(raw.mediaType || "MOVIE").toUpperCase() === "TV" ? "TV" : "MOVIE",
+      sortBy: stringOrEmpty(raw.sortBy || "rank") || "rank",
+      sortHow: stringOrEmpty(raw.sortHow || "asc") || "asc"
+    };
+  }
+
+  const addonBaseUrl = stringOrNull(
+    raw.addonBaseUrl || raw.addon_base_url || raw.baseUrl || raw.base_url || raw.addonUrl || raw.url
+  );
+  const addonId = stringOrEmpty(raw.addonId || raw.addon_id || addonBaseUrl);
+  const type = stringOrEmpty(raw.type || raw.apiType || raw.api_type).toLowerCase();
+  const catalogId = stringOrEmpty(raw.catalogId || raw.catalog_id);
+  if (!addonId || !type || !catalogId) {
+    return null;
+  }
+  return {
+    provider: "addon",
+    addonId,
+    addonBaseUrl,
+    addonName: stringOrNull(raw.addonName || raw.addon_name || raw.providerName),
+    type,
+    catalogId,
+    catalogName: stringOrNull(raw.catalogName || raw.catalog_name || raw.title || raw.name),
+    title: stringOrEmpty(raw.title || raw.catalogName || raw.catalog_name || raw.name),
+    genre: stringOrNull(raw.genre)
+  };
+}
+
+export function getCollectionFolderSources(folder = {}) {
+  const primary = Array.isArray(folder.sources) ? folder.sources : [];
+  if (primary.length) {
+    return primary.map((source) => normalizeCollectionSource(source)).filter(Boolean);
+  }
+  const catalogSources = Array.isArray(folder.catalogSources) ? folder.catalogSources : [];
+  return catalogSources
+    .map((source) => normalizeCollectionSource({ ...source, provider: "addon" }))
+    .filter(Boolean);
+}

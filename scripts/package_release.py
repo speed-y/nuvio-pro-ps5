@@ -21,7 +21,7 @@ HELPER_INFO = {
     'promote.elf': ('Nuvio permission promote',
         'One-time helper that grants the Nuvio title its network privileges.'),
     'control-1.elf': ('Nuvio register title',
-        'Registers /data/homebrew/PPSA99997 with ShadowMount.'),
+        'Registers /data/homebrew/PPSA99996 with ShadowMount.'),
     'control-2.elf': ('Nuvio title information',
         'Reports whether the Nuvio folder title is installed and mounted.'),
     'control-3.elf': ('Nuvio launch title',
@@ -126,7 +126,7 @@ def write_payloads_json(version, tag, repo, helpers, target):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--tag', default=None, help='Release tag used in payloads.json URLs (default v<VERSION>)')
-    ap.add_argument('--repo', default='bilawalriaz/nuvio-ps5-homebrew', help='Repository for asset URLs')
+    ap.add_argument('--repo', default='speed-y/nuvio-ps5-homebrew', help='Repository for asset URLs')
     args = ap.parse_args()
     version = (ROOT / 'VERSION').read_text().strip()
     if any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789.-' for c in version):

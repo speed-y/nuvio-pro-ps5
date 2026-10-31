@@ -21,7 +21,7 @@ import patches
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = Path(os.environ.get('NUVIO_CACHE_DIR', str(ROOT/'.cache')))
 WORK = Path(os.environ.get('NUVIO_WORK_DIR', str(ROOT/'build')))
-TITLE = 'PPSA99997'  # Repository-assigned app identity, not a firmware constant.
+TITLE = 'PPSA99996'  # Repository-assigned app identity, not a firmware constant.
 
 
 def run(args, **kwargs):
@@ -745,7 +745,7 @@ def title_ui_sources(web, provider):
             char tag[96];
             size_t tag_len = is_html_entry(path) ? hook_tag(tag, sizeof tag) : 0;
             int status = nuvio_local_ui_send(fd,
-                "/data/homebrew/PPSA99997/webui", method, path, tag, tag_len);
+                "/data/homebrew/PPSA99996/webui", method, path, tag, tag_len);
             LOG("title-ui: response status=%d", status);
         } else
             proxy_request(fd, req, got, hl, method, path);'''),
@@ -788,7 +788,10 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     param['conceptId'] = identity['conceptId']
     param['contentId'] = identity['contentId']
     param['contentVersion'] = identity['contentVersion']
+    param['applicationCategoryType'] = identity['applicationCategoryType']
+    param['contentBadgeType'] = identity['contentBadgeType']
     param['localizedParameters']['en-US']['titleName'] = identity['localizedParameters']['en-US']['titleName']
+    param.setdefault('pubtools', {})['loudnessSnd0'] = identity['pubtools']['loudnessSnd0']
     param_path.write_text(json.dumps(param, indent=2)+'\n')
     # Separate settings from an installed EVO. All persistent writes stay /data.
     for p in app.rglob('*'):
@@ -905,8 +908,8 @@ def patch_index(html):
 
 
 def configure_ui(ui):
-    # Official release ships the publishable browser key; never use a privileged
-    # Supabase service key or copy unrelated release client settings into Git.
+    # Use the pinned release's browser login and metadata configuration only.
+    # Never copy a privileged Supabase key or unrelated client credentials.
     _, package = fetch('nuvio-official-tv-config')
     with zipfile.ZipFile(package) as z:
         raw = z.read('nuvio.env.js').decode()
@@ -923,9 +926,10 @@ def configure_ui(ui):
     source = path.read_text()
     for name in ('NUVIO_SUPABASE_URL', 'NUVIO_SUPABASE_ANON_KEY',
                  'NUVIO_SUPABASE_FALLBACK_URL', 'TV_LOGIN_WEB_BASE_URL',
-                 'DEVICE_LOGIN_WEB_BASE_URL', 'AVATAR_PUBLIC_BASE_URL'):
+                 'DEVICE_LOGIN_WEB_BASE_URL', 'AVATAR_PUBLIC_BASE_URL',
+                 'TMDB_API_KEY', 'TRAKT_CLIENT_ID'):
         value = official.get(name, '')
-        if name != 'NUVIO_SUPABASE_ANON_KEY' and value and not value.startswith('https://'):
+        if name.endswith('_URL') and value and not value.startswith('https://'):
             raise RuntimeError('Official public configuration must use HTTPS')
         source, count = re.subn(r'"'+name+r'":\s*"[^"\n]*"', lambda m: json.dumps(name)+': '+json.dumps(value), source)
         if count != 1:
@@ -1045,6 +1049,7 @@ def main():
                         'source_sha256': digest(profile_source)}
     # Reuse the reviewed, fixed-purpose controls with Nuvio's own identity.
     control = (ROOT/'vendor/control.c').read_text().replace('AURORA', 'NUVIO').replace('Aurora', 'Nuvio').replace('aurora', 'nuvio').replace('PPSA99998', TITLE)
+    control = control.replace('PPSA99997', TITLE)
     control = control.replace('../../payloads/common/sha256.h', str(ROOT/'vendor/sha256.h'))
     (WORK/'control.c').write_text(control)
     for action in (1, 2, 3, 4, 5):
@@ -1065,6 +1070,10 @@ def main():
          '-lkernel_sys', '-lkernel_web', '-o', WORK/'nuvio.elf'], env=env)
     dist = evo/'output/app'/TITLE
     (dist/'portable.txt').touch()
+    # The upstream packager omits DDS. Assemble Shell media before hashing it.
+    for name in ('pic0.dds', 'pic1.dds'):
+        shutil.copyfile(ROOT/'assets/launch.dds', dist/'sce_sys'/name)
+    shutil.copyfile(ROOT/'assets/snd0.at9', dist/'sce_sys/snd0.at9')
     # The UI travels inside the title folder, so one archive installs a working
     # app and the payload serves it over loopback with no LAN origin.
     shutil.rmtree(dist/'webui', ignore_errors=True)

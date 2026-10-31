@@ -80,14 +80,14 @@ class FeedbackTests(unittest.TestCase):
     def test_mismatched_installed_artifact_never_launches(self):
         expected = 'a' * 64
         other = 'b' * 64
-        info = json.dumps({'title_id': 'PPSA99997', 'installed': True,
+        info = json.dumps({'title_id': 'PPSA99996', 'installed': True,
                            'mounted': False, 'source_type': 'folder'})
         hashes = (f'NUVIO eboot installed bytes=100 sha256={other}\n'
                   f'NUVIO eboot backup bytes=100 sha256={other}\n'
                   'NUVIO eboot stage=absent\n')
         with tempfile.TemporaryDirectory() as tmp:
             receipt = Path(tmp) / 'build.json'
-            receipt.write_text(json.dumps({'title_id': 'PPSA99997',
+            receipt.write_text(json.dumps({'title_id': 'PPSA99996',
                                            'files': {'eboot.bin': expected}}))
             with patch.object(sys, 'argv', ['feedback', '--host', 'fixture.invalid',
                     '--ftp-port', '2121', '--receipt', str(receipt)]), \
@@ -108,7 +108,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_feedback_reports_only_the_new_launch(self):
         expected = 'a' * 64
-        info = json.dumps({'title_id': 'PPSA99997', 'installed': True,
+        info = json.dumps({'title_id': 'PPSA99996', 'installed': True,
                            'mounted': False, 'source_type': 'folder'})
         hashes = (f'NUVIO eboot installed bytes=100 sha256={expected}\n'
                   f'NUVIO eboot backup bytes=100 sha256={expected}\n'
@@ -119,7 +119,7 @@ class FeedbackTests(unittest.TestCase):
                           b'private https://private.invalid/token\npage: route home\n')
         with tempfile.TemporaryDirectory() as tmp:
             receipt = Path(tmp) / 'build.json'
-            receipt.write_text(json.dumps({'title_id': 'PPSA99997',
+            receipt.write_text(json.dumps({'title_id': 'PPSA99996',
                                            'files': {'eboot.bin': expected}}))
             output = io.StringIO()
             with patch.object(sys, 'argv', ['feedback', '--host', 'fixture.invalid',

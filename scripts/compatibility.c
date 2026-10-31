@@ -53,8 +53,8 @@ int main(void) {
                 printf("app_info_query_failed rc=0x%08x\n",(unsigned)rc);
             } else {
                 const unsigned char *bytes=(const void *)&info;
-                for (size_t pos=0; pos+sizeof("PPSA99997")<=sizeof(info); pos++) {
-                    if (!memcmp(bytes+pos,"PPSA99997",sizeof("PPSA99997"))) {
+                for (size_t pos=0; pos+sizeof("PPSA99996")<=sizeof(info); pos++) {
+                    if (!memcmp(bytes+pos,"PPSA99996",sizeof("PPSA99996"))) {
                         matches++;
                         printf("nuvio_title_match pid=%d title_offset=%zu buffer_bytes=%zu\n",
                                (int)ki.ki_pid,pos,sizeof(info));

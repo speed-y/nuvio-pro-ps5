@@ -8,7 +8,7 @@ def write_patch(archive,source,destination):
     with tarfile.open(archive) as tar:
         for member in tar.getmembers():
             relative=Path(*Path(member.name).parts[1:])
-            if member.isfile() and relative.suffix in ('.c','.h','.cpp','.hpp','.js','.json','.sh'):
+            if member.isfile() and relative.suffix in ('.c','.h','.cpp','.hpp','.js','.json','.sh','.css'):
                 target=source/relative
                 if not target.is_file():continue
                 original=tar.extractfile(member).read()

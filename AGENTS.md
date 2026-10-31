@@ -3,13 +3,13 @@
 Read README.md, docs/ARCHITECTURE.md and docs/VALIDATION.md before changes.
 Read docs/WRITING.md before editing documentation.
 
-The target is a retail PS5 on firmware 13.60 with an active jailbreak and ELF loader.
+The owner's target is a retail PS5 on firmware 12.70 with an active jailbreak and ELF loader.
 Do not update the firmware.
 Do not develop exploits.
 Do not assume Linux, a replacement OS or hypervisor access.
 Source inspection and compilation do not establish console execution.
 
-Keep the title identity PPSA99997.
+Keep the fork's title identity PPSA99996. Historical upstream builds use PPSA99997.
 Keep persistent console writes under /data.
 Require an explicit console address.
 Do not scan for a console.

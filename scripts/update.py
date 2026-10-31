@@ -36,10 +36,10 @@ def ensure_remote_dirs(ftp, path):
 
 
 def safe_param_update(before, after):
-    """Allow a content-version bump and EVO's flexible-memory declaration.
+    """Allow version, flexible-memory and fixed selection-audio metadata.
 
     EVO v0.12.0 packages kernel.flexibleMemorySize (2 MiB..1 GiB) into the
-    title metadata. Every other field must stay fixed."""
+    title metadata. Selection music uses -28 LUFS. Other fields stay fixed."""
     try:
         old=json.loads(before)
         new=json.loads(after)
@@ -53,6 +53,12 @@ def safe_param_update(before, after):
         new_memory=new_kernel.pop('flexibleMemorySize', None)
         old['kernel']=old_kernel
         new['kernel']=new_kernel
+        old_pubtools=old.pop('pubtools', {})
+        new_pubtools=new.pop('pubtools', {})
+        old_loudness=old_pubtools.pop('loudnessSnd0', None)
+        new_loudness=new_pubtools.pop('loudnessSnd0', None)
+        old['pubtools']=old_pubtools
+        new['pubtools']=new_pubtools
     except (TypeError, ValueError, AttributeError, KeyError):
         return False
     memory_ok=(old_memory is None and new_memory is None) or (
@@ -62,7 +68,8 @@ def safe_param_update(before, after):
     return (old.get('titleId')==new.get('titleId')==TITLE and
             old.get('contentId')==new.get('contentId') and
             len(old_parts)==len(new_parts)==3 and
-            new_parts>=old_parts and old==new and memory_ok)
+            new_parts>=old_parts and old==new and memory_ok and
+            (old_loudness==new_loudness or new_loudness=='-28.00'))
 
 
 def changes_are_reviewed(changed):
@@ -72,7 +79,9 @@ def changes_are_reviewed(changed):
     (webui/). EVO v0.12.0 ships changed rml screens plus the UI kit's sound
     and font assets, so assets/rml/ and assets/hui/ move with the title as
     well. Everything else stays restricted to the fixed native set."""
-    allowed={'eboot.bin','sce_sys/icon0.png','sce_sys/pic0.png','sce_sys/pic1.png','sce_sys/param.json','assets/rml/nuvio.rml','assets/icons/nuvio-wordmark.png'}
+    allowed={'eboot.bin','sce_sys/icon0.png','sce_sys/pic0.png','sce_sys/pic1.png',
+             'sce_sys/pic0.dds','sce_sys/pic1.dds','sce_sys/snd0.at9','sce_sys/param.json',
+             'assets/rml/nuvio.rml','assets/icons/nuvio-wordmark.png'}
     prefixes=('webui/','assets/rml/','assets/hui/')
     return all(name in allowed or name.startswith(prefixes) for name in changed)
 

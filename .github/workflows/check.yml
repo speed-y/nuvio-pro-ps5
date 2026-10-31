@@ -102,7 +102,7 @@ jobs:
           PR head: ${HEAD_SHA}
           Tested merge commit: ${GITHUB_SHA}
 
-          Download PPSA99997.zip for installation, and SHA256SUMS to verify it.
+          Download PPSA99996.zip for installation, and SHA256SUMS to verify it.
           The complete nuvio-ps5 package includes source and build receipts.
           Keep your working installation and /data/nuvio settings. Close Nuvio before replacing its app folder.
 

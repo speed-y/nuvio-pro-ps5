@@ -1,11 +1,16 @@
 {
-  "titleId": "PPSA99997",
-  "conceptId": "99997",
-  "contentId": "UP9000-PPSA99997_00-NUVIOPS500000000",
+  "titleId": "PPSA99996",
+  "conceptId": "99996",
+  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
+  "applicationCategoryType": 0,
+  "contentBadgeType": 1,
   "contentVersion": "01.000.007",
   "localizedParameters": {
     "en-US": {
       "titleName": "Nuvio"
     }
+  },
+  "pubtools": {
+    "loudnessSnd0": "-28.00"
   }
 }

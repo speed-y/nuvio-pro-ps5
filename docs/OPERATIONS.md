@@ -40,8 +40,8 @@ Use the verified updater to install browser changes for console testing.
 
 ## Install from the release archive
 
-Follow [Getting started](GETTING_STARTED.md) for the single-install build.
-Copy `PPSA99997/` into `/data/homebrew/`, refresh ShadowMount and open the tile.
+Follow [Start here](../README.md#start-here) for the single-install build.
+Copy `PPSA99996/` into `/data/homebrew/`, refresh ShadowMount and open the tile.
 The title loads its embedded helper through the current boot's ELF loader on 9021.
 Release 0.1.0-alpha.2 needs the older separate `nuvio.elf` boot payload.
 
@@ -64,7 +64,7 @@ python3 scripts/upload.py --file build/control-3.elf
 
 `install.py` checks local hashes before it contacts the console. It stages files
 below `/data/homebrew/ps5-homebrew-dev`, checks the staged bytes, then moves the
-folder to `/data/homebrew/PPSA99997`. `control-4` hashes the generated runtime on
+folder to `/data/homebrew/PPSA99996`. `control-4` hashes the generated runtime on
 the console, which avoids the etaHEN FTP runtime download problem.
 
 Add `--from-release <unpacked-release-dir>` to install the files from a release
