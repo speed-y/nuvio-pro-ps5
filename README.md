@@ -1,8 +1,10 @@
-# Nuvio PS5
+# Nuvio Pro
 
 <img src="assets/logo.png" width="190" alt="Nuvio">
 
-Nuvio on your PS5, built around the controller.
+Nuvio for your PS5, built around the controller.
+
+This is the standalone home for [Nuvio Pro](https://github.com/speed-y/nuvio-pro-ps5), my independently maintained PS5 fork.
 
 Browse your library, pick a stream and watch through EVO Player's native playback engine.
 The interface comes from Nuvio TV, with changes that make browsing, Search and playback return work more like a console app.
@@ -49,21 +51,22 @@ I've personally tested only **12.70**. Other SDK-recognized versions remain expe
 If you try another version, feedback is welcome. Please share your firmware, build version and what works or fails.
 Older releases can retain the 13.60 restriction. Do not update your firmware to test this app.
 
-The new single-install build includes its permission helper and browser UI.
-Open Nuvio from its home-screen tile. The app loads the helper automatically.
-After a reboot, run your jailbreak again before opening Nuvio.
+The single-install build includes its permission helper and browser UI.
+Open Nuvio Pro from its home-screen tile. The app loads the helper automatically.
+After a reboot, run your jailbreak again before opening Nuvio Pro.
 
 1. Download `PPSA99996.zip` when the new fork build is available, then unpack it.
 2. Start FTP on the PS5 and note its address and port.
 3. Connect with an FTP client, then copy `PPSA99996` into `/data/homebrew/`.
-4. Refresh ShadowMount's homebrew list and wait for the Nuvio tile.
-5. Open Nuvio. Sign in or configure your addons, then choose something to watch.
+4. Refresh ShadowMount's homebrew list and wait for the Nuvio Pro tile.
+5. Open Nuvio Pro. Sign in or configure your addons, then choose something to watch.
 
 The final path must be `/data/homebrew/PPSA99996/eboot.bin`, with `webui/`
 and `sce_sys/` beside it. Avoid an extra nested `PPSA99996` folder.
 
-To update, close Nuvio and replace only its matching app folder. Keep `/data/nuvio/` for settings and browser state.
-The new ID does not update the old `PPSA99997` title in place. Keep the old title until the new one works.
+To update, close the app and replace only its matching app folder. Keep `/data/nuvio/` for settings and browser state.
+Nuvio Pro keeps `PPSA99996` and the same data path as this fork's previous builds. The rename does not require another title migration.
+It does not update the upstream `PPSA99997` title in place. Keep the old title until the new one works.
 Do not run both titles together because they share those settings.
 
 If the tile is missing, check the folder layout and refresh ShadowMount.
@@ -110,7 +113,7 @@ This fork uses `PPSA99996`, separate from the upstream port's `PPSA99997`.
 It's a locally chosen homebrew ID, not a Sony assignment or a reserved community ID. Global uniqueness is not guaranteed.
 Local homebrew installation does not require Sony registration. See [Release](docs/RELEASE.md#store-listing) for community catalog requirements.
 
-Nuvio appears under Games so the home-screen selection music can play.
+Nuvio Pro appears under Games so the home-screen selection music can play.
 On my 12.70 console, the Games tile played it but the Media tile stayed silent with the same audio.
 It's still a media player. The classification is a workaround for that home-screen behavior.
 
@@ -126,7 +129,7 @@ It's still a media player. The classification is a workaround for that home-scre
 
 | Task | Guide |
 |---|---|
-| Install, start or update Nuvio | [Operations](docs/OPERATIONS.md) |
+| Install, start or update Nuvio Pro | [Operations](docs/OPERATIONS.md) |
 | Build the port | [Build](docs/BUILD.md) |
 | Understand the browser and native player | [Architecture](docs/ARCHITECTURE.md) |
 | Check what the console tests establish | [Validation](docs/VALIDATION.md) |
@@ -142,8 +145,8 @@ sessions all help. Send the firmware, the artifact hashes and the expected and
 observed behavior. Remove account details and private stream URLs from reports.
 See [Contributing](docs/CONTRIBUTING.md).
 
-For experimental testing, open the fork's **Releases** page and select the prerelease for your PR and tested commit.
-Download `PPSA99996.zip` and `SHA256SUMS`. The complete `nuvio-ps5` package contains source and build receipts.
+For experimental testing, open [Releases](https://github.com/speed-y/nuvio-pro-ps5/releases) and select the prerelease for your PR and tested commit.
+Download `PPSA99996.zip` and `SHA256SUMS`. The complete `nuvio-pro-ps5` package contains source and build receipts.
 Same-repository PRs publish these test candidates after Host checks and native compilation pass.
 They are not console-validated or marked latest. See [Release](docs/RELEASE.md) for details.
 Documentation-only updates skip publication when they can reuse a successful native build or contain no application changes.

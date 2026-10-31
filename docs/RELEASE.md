@@ -32,7 +32,7 @@ They retain the app's content version and are test candidates, not store updates
 The release notes explicitly state that console validation remains pending.
 
 Download `PPSA99996.zip` and `SHA256SUMS` for installation.
-Download `nuvio-ps5-<version>.zip` for source and build receipts.
+Download `nuvio-pro-ps5-<version>.zip` for source and build receipts.
 CI artifacts remain available for 14 days. GitHub Release assets do not use that expiration.
 Asset URLs use the current repository, not the upstream repository.
 
@@ -77,7 +77,7 @@ make release
 | Artifact | Contents |
 |---|---|
 | `PPSA99996.zip` | The `<TITLEID>/` app folder, including `webui/`. This is the store artifact. |
-| `nuvio-ps5-<version>.zip` | The complete package: app, development helpers, UI source and receipts. |
+| `nuvio-pro-ps5-<version>.zip` | The complete package: app, development helpers, UI source and receipts. |
 | `SHA256SUMS` | Hashes for the release assets. |
 
 `PPSA99996.zip` unpacks to a single `PPSA99996/` folder. Users copy that folder to

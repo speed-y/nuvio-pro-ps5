@@ -3340,3 +3340,34 @@ The environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.
 
 [PENDING] The new workflow orchestration and cache hit/miss behavior still need execution on GitHub runners.
 Manual macOS and tag-publication paths receive no live trigger during this task. No console action occurs.
+
+## Nuvio Pro naming, 2026-10-31
+
+[SOURCE-VERIFIED] Nuvio Pro keeps this fork's `PPSA99996` identity, content version, Games category and `/data/nuvio` storage paths.
+The rename changes the title display name, native opening message, browser document title and PS5 device-registration client name.
+Release names, package descriptions and current download links use Nuvio Pro and `speed-y/nuvio-pro-ps5`.
+Existing artwork, music, source pins, licences, upstream attribution and historical evidence remain unchanged.
+
+[HOST-TESTED] Configured `make check` passes 85 tests, with zero hard documentation findings.
+The existing index regression now also checks the Nuvio Pro document title.
+A disposable Node harness runs the generated device-registration functions with synthetic values and no backend requests.
+It verifies `Nuvio Pro / PS5 / PS5` registration metadata and unchanged non-PS5 browser metadata.
+Its first run lacks the imported `AuthManager` stub and fails before assertions. Adding inert import stubs makes the probe pass.
+Chromium loads the generated UI with external domains blocked. The DOM contains exactly one title, `Nuvio Pro`, and the account-login region.
+The native RML screen and PS5 home-screen tile cannot run in this orb. Their rendered appearance remains unverified.
+
+[LOCALLY BUILT] `NUVIO_WORK_DIR="$PWD/build/presentation" make build` succeeds as `9ee9a542-nuvio_1031-2103`, with signed-container `integrity: valid`.
+The exact receipt matches 240 title files and eight unstripped helpers. Packaged metadata and loading assets carry the new name.
+`make release` succeeds. Both ZIPs pass CRC, unique-path and safe-path checks, with exact store inventory and complete archive-manifest verification.
+`SHA256SUMS` verifies both release assets. The complete archive is now `nuvio-pro-ps5-0.1.0-alpha.7.zip`.
+The environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Naming-build artifact | SHA-256 |
+|---|---|
+| `PPSA99996.zip` | `ece8e4a7d0d3ec84a18a3ff55ccfa7d10cb9b5ceeb36a3681734f12675c773dd` |
+| Signed `eboot.bin` | `93a040448496cf7e77884fdd5145cd15be3a85fd4bb6b6eff061bd0a4174739c` |
+| `sce_sys/param.json` | `1af93060fd0d2a33ec0eab6c4ae062a30bc9f5a8f9222445910c0b2b5395d9fb` |
+| `webui/index.html` | `531a5b7344d5d4a8728bc339ddf5c8d8f0ba82512cab8a5a30a7a301a6795c34` |
+
+[PENDING CONSOLE TEST] No installation or console execution occurs for this renamed build.
+Verify the displayed tile name, loading message and device-registration label on hardware before claiming those results.

@@ -731,8 +731,11 @@ class UIIndexTests(unittest.TestCase):
 
     def test_ps5_index_paints_black_before_the_app_css(self):
         source=('<!doctype html>\n<html lang="en">\n  <head>\n'
+                '    <title>Nuvio TV</title>\n'
                 '    <link rel="stylesheet" href="css/bundle.css" />\n  </head>\n  <body></body>\n</html>\n')
         html=build.patch_index(source)
+        self.assertIn('<title>Nuvio Pro</title>',html)
+        self.assertNotIn('<title>Nuvio TV</title>',html)
         self.assertLess(html.index('background-color:#000'),html.index('css/bundle.css'))
         self.assertEqual(html.count('ps5-input.js'),1)
         self.assertLess(html.index('ps5-input.js'),html.index('</head>'))

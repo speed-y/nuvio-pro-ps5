@@ -46,8 +46,8 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     ShowOnlyScreen(m_nuvio_doc);
     if (m_nav_doc) m_nav_doc->Hide();
     Rml::Element* status = m_nuvio_doc->GetElementById("nuvio-status");
-    if (status && status->GetInnerRML() != (message ? message : "Opening Nuvio"))
-        status->SetInnerRML(message ? message : "Opening Nuvio");
+    if (status && status->GetInnerRML() != (message ? message : "Opening Nuvio Pro"))
+        status->SetInnerRML(message ? message : "Opening Nuvio Pro");
     m_context->Update();
     RenderCachedScreen(30, framebuffer, width, height);
 }
@@ -97,7 +97,7 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     before,after=source.rsplit(anchor,1)
     application.write_text(before+'''                if (nuvioShell)
                     evo_rmlui_render_nuvio(m_uiScratch, DisplayWidth, DisplayHeight,
-                        g_nuvio_preparing ? "Preparing playback" : "Opening Nuvio");
+                        g_nuvio_preparing ? "Preparing playback" : "Opening Nuvio Pro");
                 else
                     m_screenManager->render(m_uiScratch, DisplayWidth, DisplayHeight);'''+after)
     asset=Path(__file__).resolve().parent.parent/'assets'
@@ -221,7 +221,7 @@ def patch_nuvio(nuvio):
     replace(nuvio/'js/core/auth/deviceSessionRegistration.js',
         '  const platformName = normalizedText(platform.getName?.()).toLowerCase();',
         '''  if (runtime.__NUVIO_PS5__) {
-    return { clientName: CLIENT_NAME, deviceName: "PS5", platform: "PS5" };
+    return { clientName: "Nuvio Pro", deviceName: "PS5", platform: "PS5" };
   }
   const platformName = normalizedText(platform.getName?.()).toLowerCase();''')
     replace(nuvio/'js/core/profile/profileSelectionScreenMethods-01-mount.js',

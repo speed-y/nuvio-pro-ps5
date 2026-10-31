@@ -3,7 +3,7 @@
 ## Get a release instead
 
 Most users do not build anything. Download `PPSA99996.zip`, when published, from the
-[fork releases](https://github.com/speed-y/nuvio-ps5-homebrew/releases)
+[Nuvio Pro releases](https://github.com/speed-y/nuvio-pro-ps5/releases)
 and follow [Operations](OPERATIONS.md). Build from source only to change the
 port or to test native code.
 

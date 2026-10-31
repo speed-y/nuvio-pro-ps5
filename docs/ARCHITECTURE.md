@@ -294,5 +294,5 @@ instead.
 ## Release layout
 
 `make release` writes the store artifact `PPSA99996.zip`, the complete package
-`nuvio-ps5-<version>.zip`, the standalone helper ELFs and a `payloads.json` source
+`nuvio-pro-ps5-<version>.zip`, the standalone helper ELFs and a `payloads.json` source
 for PS5 Payload Manager. See [Release](RELEASE.md).

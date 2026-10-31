@@ -16,21 +16,21 @@ from elfcheck import validate
 
 # Short descriptions for the PS5 Payload Manager source file.
 HELPER_INFO = {
-    'nuvio.elf': ('Nuvio',
-        'Single boot payload: grants the Nuvio title its network privilege and serves the browser UI from the console. Run once per boot.'),
-    'promote.elf': ('Nuvio permission promote',
-        'One-time helper that grants the Nuvio title its network privileges.'),
-    'control-1.elf': ('Nuvio register title',
+    'nuvio.elf': ('Nuvio Pro',
+        'Single boot payload: grants the Nuvio Pro title its network privilege and serves the browser UI from the console. Run once per boot.'),
+    'promote.elf': ('Nuvio Pro permission promote',
+        'One-time helper that grants the Nuvio Pro title its network privileges.'),
+    'control-1.elf': ('Nuvio Pro register title',
         'Registers /data/homebrew/PPSA99996 with ShadowMount.'),
-    'control-2.elf': ('Nuvio title information',
-        'Reports whether the Nuvio folder title is installed and mounted.'),
-    'control-3.elf': ('Nuvio launch title',
-        'Launches the Nuvio folder title when it is installed and no other app runs.'),
-    'control-4.elf': ('Nuvio runtime hash',
+    'control-2.elf': ('Nuvio Pro title information',
+        'Reports whether the Nuvio Pro folder title is installed and mounted.'),
+    'control-3.elf': ('Nuvio Pro launch title',
+        'Launches the Nuvio Pro folder title when it is installed and no other app runs.'),
+    'control-4.elf': ('Nuvio Pro runtime hash',
         'Hashes the staged libc.prx runtime on the console.'),
-    'close.elf': ('Nuvio close title',
-        'Closes the running Nuvio title for development and recovery.'),
-    'control-5.elf': ('Nuvio eboot verification',
+    'close.elf': ('Nuvio Pro close title',
+        'Closes the running Nuvio Pro title for development and recovery.'),
+    'control-5.elf': ('Nuvio Pro eboot verification',
         'Hashes and preserves the installed eboot on the console, then checks a staged replacement.'),
 }
 
@@ -116,17 +116,17 @@ def write_payloads_json(version, tag, repo, helpers, target):
             'url': f'https://github.com/{repo}/releases/download/{tag}/{name}',
             'description': description,
             'version': version,
-            'category': 'Nuvio',
+            'category': 'Nuvio Pro',
             'checksum': digest(WORK / name),
         })
-    document = {'name': 'Nuvio PS5', 'payloads': entries}
+    document = {'name': 'Nuvio Pro', 'payloads': entries}
     target.write_text(json.dumps(document, indent=2) + '\n')
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--tag', default=None, help='Release tag used in payloads.json URLs (default v<VERSION>)')
-    ap.add_argument('--repo', default='speed-y/nuvio-ps5-homebrew', help='Repository for asset URLs')
+    ap.add_argument('--repo', default='speed-y/nuvio-pro-ps5', help='Repository for asset URLs')
     args = ap.parse_args()
     version = (ROOT / 'VERSION').read_text().strip()
     if any(c not in 'abcdefghijklmnopqrstuvwxyz0123456789.-' for c in version):
@@ -153,7 +153,7 @@ def main():
     store = out / (TITLE + '.zip')
     write_store_zip(receipt, dist, store)
     assets.append(store)
-    full = out / f'nuvio-ps5-{version}.zip'
+    full = out / f'nuvio-pro-ps5-{version}.zip'
     write_full_zip(receipt, dist, full, helpers)
     assets.append(full)
     helper_dir = out / 'helpers'

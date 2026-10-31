@@ -119,8 +119,8 @@ jobs:
           Tested merge commit: ${GITHUB_SHA}
 
           Download PPSA99996.zip for installation, and SHA256SUMS to verify it.
-          The complete nuvio-ps5 package includes source and build receipts.
-          Keep your working installation and /data/nuvio settings. Close Nuvio before replacing its app folder.
+          The complete nuvio-pro-ps5 package includes source and build receipts.
+          Keep your working installation and /data/nuvio settings. Close Nuvio Pro before replacing its app folder.
 
           Host checks and native compilation passed. This does not establish real PS5 controller or playback behavior.
           EOF

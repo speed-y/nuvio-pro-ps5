@@ -47,7 +47,7 @@ jobs:
             echo "Preserving existing release $TAG and its original assets."
             exit 0
           fi
-          args=(--draft --title "Nuvio PS5 ${TAG}" --generate-notes --target "$GITHUB_SHA")
+          args=(--draft --title "Nuvio Pro ${TAG}" --generate-notes --target "$GITHUB_SHA")
           case "$TAG" in *alpha*|*beta*|*rc*) args+=(--prerelease) ;; esac
           mapfile -t assets < release/ASSETS
           gh release create "$TAG" "${args[@]}" "${assets[@]}"

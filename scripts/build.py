@@ -908,6 +908,7 @@ def patch_index(html):
         raise RuntimeError('Pinned UI index head anchors changed')
     if 'ps5-input.js' in html:
         raise RuntimeError('UI index already carries the PS5 bridge')
+    html = html.replace('<title>Nuvio TV</title>', '<title>Nuvio Pro</title>')
     html = html.replace('<head>',
                         '<head>\n    <style>html,body{background-color:#000;margin:0}'
                         'html,body,body *{cursor:none!important}'
