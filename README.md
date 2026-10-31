@@ -43,9 +43,11 @@ See [Validation](docs/VALIDATION.md) for tested builds, known failures and pendi
 You need a PS5 jailbroken for the current boot, with ShadowMount and an ELF loader
 listening on port **9021**. Do not update the firmware.
 
-I develop on **12.70**. Earlier builds also have console evidence on **13.60**.
-The pinned SDK v0.43 checks firmware support and rejects unknown versions.
-Other SDK-recognized versions remain experimental. Older releases can retain the 13.60 restriction.
+This fork extends firmware support through SDK v0.43, rather than keeping the older 13.60-only restriction.
+The SDK checks firmware support and rejects unknown versions.
+I've personally tested only **12.70**. Other SDK-recognized versions remain experimental, not confirmed compatible.
+If you try another version, feedback is welcome. Please share your firmware, build version and what works or fails.
+Older releases can retain the 13.60 restriction. Do not update your firmware to test this app.
 
 The new single-install build includes its permission helper and browser UI.
 Open Nuvio from its home-screen tile. The app loads the helper automatically.
@@ -115,7 +117,7 @@ It's still a media player. The classification is a workaround for that home-scre
 ## Requirements and codec support
 
 - Firmware recognized by SDK v0.43, ShadowMount and the current boot's ELF loader on port 9021.
-- Only 12.70 and 13.60 have console evidence. See [Validation](docs/VALIDATION.md) for tested artifact identities and remaining checks.
+- Personally tested on **12.70** only. Other SDK-recognized firmware versions need community testing. See [Validation](docs/VALIDATION.md) for build-specific evidence.
 - Use FTP for manual installation and updates.
 - Software AV1 through dav1d is not included.
 - Build from source on Linux or macOS. See [Build](docs/BUILD.md) for the host tools.
