@@ -1,20 +1,14 @@
-/* PS5's browser sends X as a pointer click at the stationary cursor. Nuvio
- * moves its own focus with the D-pad. Activate that focus when the pointer is
- * anywhere except the focused element itself. D-pad focus owns activation. */
+/* Loaded before the app. The frontend adapter owns activation and focus.
+ * Do not infer physical buttons from undocumented browser keycodes. */
 (function () {
   'use strict';
   window.__NUVIO_PS5__ = true;
-  var redirecting = false;
+  ['pointerdown', 'mousedown'].forEach(function (type) {
+    document.addEventListener(type, function (event) {
+      if (window.__nuvioPs5PointerDown) window.__nuvioPs5PointerDown(event);
+    }, true);
+  });
   document.addEventListener('click', function (event) {
-    if (redirecting || event.button !== 0) return;
-    var target = event.target;
-    if (target && target.closest && target.closest("#__evoClose")) return;
-    var focused = document.querySelector('.focusable.focused');
-    if (focused && target && (target === focused || focused.contains(target))) return;
-    if (!focused) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    redirecting = true;
-    try { focused.click(); } finally { redirecting = false; }
+    if (window.__nuvioPs5Activate) window.__nuvioPs5Activate(event);
   }, true);
 }());

@@ -115,7 +115,19 @@
          evo_webui_pump();   /* #101: the system browser, when a web UI is open */
          webui_playback_pump();
  
-@@ -1467,6 +1479,9 @@
+@@ -1421,7 +1433,10 @@
+             }
+ 
+             if (evo_webui_active()) {
+-                /* #101: the system browser is up and owns the controller. */
++                /* Keep D-pad/X/Circle with the browser. Forward only buttons
++                 * whose DOM representation has not been established. */
++                evo_webui_controller(pressed & PadButtons::Options,
++                                     pressed & PadButtons::Triangle);
+             } else if (evo_keyboard_is_open()) {
+                 evo_keyboard_update();
+                 if (pressed) {
+@@ -1467,6 +1482,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -125,7 +137,7 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1579,7 +1594,7 @@
+@@ -1579,7 +1597,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -134,7 +146,7 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1803,7 +1818,11 @@
+@@ -1803,7 +1821,11 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -248,7 +260,7 @@
   * Public surface:
 --- a/projects/evoplayer/include/evo_webui.h
 +++ b/projects/evoplayer/include/evo_webui.h
-@@ -88,3 +88,8 @@
+@@ -88,3 +88,13 @@
  #endif
  
  #endif /* EVO_WEBUI_H */
@@ -257,6 +269,11 @@
 +extern "C"
 +#endif
 +int evo_webui_native_requested(void);
++
++#ifdef __cplusplus
++extern "C"
++#endif
++void evo_webui_controller(int options, int menu);
 --- a/projects/evoplayer/media/src/evo_stream_io.c
 +++ b/projects/evoplayer/media/src/evo_stream_io.c
 @@ -229,6 +229,8 @@
@@ -427,15 +444,50 @@
      { "2: beside the rail, parts=0x7 control=0",    2, 108,  0, 1812, 1080, 0x7, 0x0 },
      { "3: inset card, parts=0 control=0x1",         2, 148, 40, 1732, 1000, 0x0, 0x1 },
      { "4: inset card, parts=0xFF control=0xFF",     2, 148, 40, 1732, 1000, 0xFF, 0xFF },
-@@ -179,6 +181,7 @@
+@@ -179,7 +181,9 @@
  static int  s_hold_frames = 25 * 60;
  
  static char s_url[1024];
+-static char s_hook_profile[16];      /* "" = media server, "nuvio" */
 +static int s_native_requested;
- static char s_hook_profile[16];      /* "" = media server, "nuvio" */
++static char s_hook_profile[16];
++static uint32_t s_controller_options, s_controller_menu;      /* "" = media server, "nuvio" */
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
-@@ -488,9 +491,11 @@
+ 
+@@ -439,11 +443,8 @@
+ "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
+ "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
+ "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
+-/* Nuvio's hold-able buttons (Play, add-to-library, episode / season / more-
+- * like cards) start a press-and-hold timer on activation and only act on the
+- * key-up. A click - which is what the PS5 browser's X is - never sends one,
+- * so Play did nothing (reproduced in desktop Chromium too; Enter works). On
+- * those, turn the click into Enter down + up on the focused element. */
++/* The PS5 frontend adapter owns focused activation and item menus.
++ * Preserve title capture for the native stream handoff. */
+ "var nvTitle='';function nvNoteTitle(){var tt=document.querySelector('#stream .stream-route-title'),"
+ " lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code');"
+ " var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').trim();"
+@@ -451,15 +452,8 @@
+ /* Picking a stream (click or Enter) is the last moment the stream screen,
+  * and so the title, is on the page: Nuvio clears it while the player mounts. */
+ "if(NUVIO){document.addEventListener('keydown',function(e){if(e.keyCode===13)nvNoteTitle();},true);}"
+-"if(NUVIO){document.addEventListener('click',function(e){nvNoteTitle();"
+-" var t=e.target&&e.target.closest?e.target.closest('[data-action=playDefault],[data-action=toggleLibrary],"
+-".series-episode-card,.series-season-btn,.detail-morelike-card,.stream-route-card'):null;"
+-" if(!t)return;e.preventDefault();e.stopImmediatePropagation();"
+-" function k(ty){var ev=new KeyboardEvent(ty,{key:'Enter',code:'Enter',bubbles:true,cancelable:true});"
+-"  try{Object.defineProperty(ev,'keyCode',{get:function(){return 13;}});"
+-"   Object.defineProperty(ev,'which',{get:function(){return 13;}});}catch(x){}"
+-"  (document.activeElement||document.body).dispatchEvent(ev);}"
+-" k('keydown');setTimeout(function(){k('keyup');},60);},true);}"
++"if(NUVIO){document.addEventListener('click',nvNoteTitle,true);}"
++
+ /* Where to come back to: the last page that is not the site's own player.
+  * By the time the hook fires, the site has already routed to its player
+  * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
+@@ -488,9 +482,11 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
@@ -449,7 +501,7 @@
  " if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=['title','name','metaTitle','itemTitle','showTitle'],t='';"
  "  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]==='string')t=pr[ks[q]];}"
  /* The stream screen, still in the DOM under the player, has it in text. */
-@@ -532,7 +537,7 @@
+@@ -532,7 +528,7 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -458,7 +510,18 @@
  " b.setAttribute('style','position:fixed;right:28px;bottom:28px;z-index:2147483647;padding:14px 30px;"
  "border-radius:30px;background:rgba(0,0,0,.75);color:#fff;font:24px sans-serif;cursor:pointer;"
  "border:2px solid rgba(255,255,255,.55)');"
-@@ -814,6 +819,7 @@
+@@ -810,10 +806,18 @@
+         s_hook_seen = 1;
+         pthread_mutex_unlock(&s_mx);
+         respond(fd, "200 OK", "application/javascript", k_hook_js, sizeof k_hook_js - 1);
++    } else if (!strcmp(path, "/evo/controller")) {
++        char body[96];
++        pthread_mutex_lock(&s_mx);
++        int n = snprintf(body, sizeof body, "{\"options\":%u,\"menu\":%u}",
++                         (unsigned)s_controller_options, (unsigned)s_controller_menu);
++        pthread_mutex_unlock(&s_mx);
++        respond(fd, "200 OK", "application/json", body, (size_t)n);
+     } else if (!strncmp(path, "/evo/close", 10)) {
          tlog("close requested by the page");
          pthread_mutex_lock(&s_mx);
          s_close_req = 1;
@@ -466,7 +529,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -1126,7 +1132,13 @@
+@@ -1126,7 +1130,13 @@
              serve_storage(fd, method, req, got, hl);
          else if (!strncmp(path, "/evo/", 5) || !s_up.enabled)
              serve_evo(fd, path);
@@ -481,7 +544,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1140,6 +1152,7 @@
+@@ -1140,6 +1150,7 @@
      while (!s_srv_stop) {
          int c = accept(s_listen_fd, NULL, NULL);
          if (c >= 0 && s_srv_stop) { close(c); break; }
@@ -489,7 +552,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1161,8 +1174,16 @@
+@@ -1161,8 +1172,16 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -507,7 +570,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1170,11 +1191,20 @@
+@@ -1170,11 +1189,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -530,7 +593,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1229,6 +1259,7 @@
+@@ -1229,6 +1257,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -538,7 +601,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1253,6 +1284,7 @@
+@@ -1253,6 +1282,7 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -546,7 +609,7 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1401,6 +1433,15 @@
+@@ -1401,6 +1431,15 @@
      LOG("open: %s via %s hook=%s", s_open_url, s_up.base,
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
@@ -562,7 +625,7 @@
      s_check_rc = 0;
      pthread_t t;
      pthread_attr_t at;
-@@ -1547,3 +1588,10 @@
+@@ -1547,3 +1586,19 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -572,6 +635,15 @@
 +    int result = s_native_requested;
 +    pthread_mutex_unlock(&s_mx);
 +    return result;
++}
++
++void evo_webui_controller(int options, int menu) {
++    pthread_mutex_lock(&s_mx);
++    if (options) ++s_controller_options;
++    if (menu) ++s_controller_menu;
++    pthread_mutex_unlock(&s_mx);
++    if (options) tlog("controller: Options");
++    if (menu) tlog("controller: Triangle");
 +}
 --- a/projects/evoplayer/ui_rml/include/evo_rmlui_app.h
 +++ b/projects/evoplayer/ui_rml/include/evo_rmlui_app.h

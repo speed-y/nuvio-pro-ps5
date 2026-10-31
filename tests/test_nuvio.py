@@ -84,7 +84,7 @@ class NuvioHTTPTests(unittest.TestCase):
 
 
 class PS5InputTests(unittest.TestCase):
-    def test_x_uses_dpad_focus_instead_of_pointer(self):
+    def test_x_activates_screen_or_modal_focus_once(self):
         import shutil
         import subprocess
         node = shutil.which('node')
@@ -92,18 +92,63 @@ class PS5InputTests(unittest.TestCase):
             self.skipTest('Node unavailable; HTTP tests still run without it')
         script = r"""
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-let listener,focused=null,clicks=0,stopped=0;
-const context={window:{},document:{addEventListener:(name,fn)=>{listener=fn;},querySelector:()=>focused}};
-vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),context);
-const target={};
-const e=()=>({button:0,target,preventDefault(){stopped++;},stopImmediatePropagation(){stopped++;}});
-listener(e()); assert.equal(stopped,0); // A page without app focus retains its click.
-focused={contains:t=>t===focused,click(){clicks++;listener(e());}};
-listener(e());assert.equal(clicks,1);assert.equal(stopped,2); // Background or another button activates focus once.
-listener({...e(),target:focused});assert.equal(clicks,1); // Actual focused target is not double-activated.
-listener({...e(),button:2});assert.equal(clicks,1); // Secondary browser click retains its behavior.
+let listener,focused=null,overlay=null,modal=false,dialog=null,stopped=0;
+const body={classList:{contains:()=>modal}};
+const screen={container:{classList:{contains:()=>false},querySelector:s=>s.includes('overlay')?overlay:focused}};
+const document={body,addEventListener:(name,fn)=>{listener=fn;},querySelectorAll:()=>dialog?[dialog]:[]};
+const context={window:{addEventListener(){}},document,__NUVIO_PS5__:true,
+  Router:{getCurrentScreen:()=>screen},KeyboardEvent:class{constructor(type,init){Object.assign(this,init);this.type=type;this.keyCode=0;this.which=0;}}};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1],'utf8'),context);
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*$/mg,'').replace('export function','function')+'\ninitPs5Navigation();',context);
+const e=(target={})=>({button:0,target,preventDefault(){stopped++;},stopImmediatePropagation(){stopped++;}});
+function node(text=false){return {events:[],clicks:0,isConnected:true,disabled:false,
+  getAttribute:()=>null,getClientRects:()=>[{}],matches:()=>text,focus(){this.domFocused=true;},
+  contains(target){return target===this;},
+  click(){this.clicks++;listener(e(this));},dispatchEvent(e){assert.equal(e.keyCode,13);assert.equal(e.which,13);this.events.push(e.type);}};}
+listener(e()); assert.equal(stopped,2); // No focus never activates the stationary pointer.
+focused=node();listener(e());assert.deepEqual(focused.events,['keydown','keyup']);
+let pointerPrevented=false;context.window.__nuvioPs5PointerDown({button:0,target:{},preventDefault(){pointerPrevented=true;}});
+assert.equal(pointerPrevented,true);
+listener(e(focused));assert.equal(focused.events.length,4); // Pointer on focus also activates once.
+listener({...e(),button:2});assert.equal(focused.events.length,4);
+modal=true;const button=node();dialog={classList:{contains:()=>false},querySelector:()=>button};
+listener(e());assert.deepEqual(button.events,['keydown','keyup']);assert.equal(focused.events.length,4);
+dialog.querySelector=()=>null;listener(e());assert.equal(focused.events.length,4); // Modal mounting.
+dialog.classList.contains=()=>true;listener(e());assert.equal(focused.events.length,4); // Modal exiting.
+modal=false;const field=node(true);overlay={querySelector:()=>field};listener(e());
+assert.equal(field.domFocused,true);assert.equal(field.clicks,1);assert.equal(focused.events.length,4);
+field.disabled=true;listener(e());assert.equal(field.clicks,1); // Disabled overlay cannot fall through.
+overlay=null;focused.isConnected=false;listener(e());assert.equal(focused.events.length,4);
 """
-        subprocess.run([node, '-e', script, str(APP/'ps5-input.js')], check=True, timeout=10)
+        subprocess.run([node, '-e', script, str(APP/'ps5-input.js'), str(APP/'ps5-navigation.js')], check=True, timeout=10)
+
+    def test_native_button_poll_does_not_replay_stale_presses(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node unavailable')
+        script = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+let request,timer;const events=[];
+const document={hidden:false};
+const context={__NUVIO_PS5__:true,document,Event:class{constructor(type){this.type=type;}},
+  window:{__evoHook:true,addEventListener(){},dispatchEvent:e=>events.push(e.type)},
+  setTimeout:fn=>{timer=fn;},XMLHttpRequest:class{constructor(){request=this;}open(){}send(){}}};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/mg,'').replace('export function','function')+'\ninitPs5Navigation();',context);
+function response(options,menu,status=200){request.status=status;request.responseText=JSON.stringify({options,menu});request.onload();request.onloadend();timer();}
+response(7,2);assert.deepEqual(events,[]); // Establish a baseline, not seven old presses.
+response(8,2);assert.deepEqual(events,['nuvio:options']);
+response(8,2);assert.equal(events.length,1); // A held native button does not replay.
+response(8,3);assert.deepEqual(events,['nuvio:options','nuvio:controller-menu']);
+response(9,3,503);response(10,3);assert.equal(events.length,2); // Reconnect discards old edges.
+document.hidden=true;response(11,3);document.hidden=false;timer();response(12,3);
+assert.equal(events.length,2); // Backgrounding and a late response cannot queue a menu.
+response(13,3);assert.equal(events.length,3);
+"""
+        subprocess.run([node, '-e', script, str(APP/'ps5-navigation.js')], check=True, timeout=10)
 
 
 class ProviderSeekTests(unittest.TestCase):

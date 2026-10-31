@@ -1141,3 +1141,162 @@ Do not describe this change as universal firmware support.
 The owner requested hiding the browser mouse pointer and using the controller's Options button for the movie Play options menu.
 The reported long-press X action did not open that menu on their console.
 These requests remain deferred. This firmware change does not modify browser input or appearance.
+
+## Controller navigation candidate, 2026-10-31
+
+[SOURCE-VERIFIED] This work follows the SDK-gated firmware change without changing its helpers, source pins or title identity.
+The owner's console runs firmware 12.70 with an active jailbreak, ShadowMount and an ELF loader.
+The installed, owner-tested eboot remains `5d1b4ac2e6191ec6e94c594b5cdf8fc2f0132f8fb4273c6757d1882ecbf88511`.
+No console connection, installation, firmware update or hardware test occurred during this controller work.
+The earlier 13.60 results do not certify this candidate.
+
+### Source audit and fixes
+
+The audit inspected Nuvio revision `25b984f778e4083dc6c2e768fdb5fcf46012e8b7` and EVO revision `9ee9a5420c73b5be448610e5f0a90a29a75592f3`.
+It also inspected the pinned SDK declarations and existing native browser and pad paths.
+EVO declares `PadButtons::Options` and `PadButtons::Triangle` in `core/include/evo/Common.hpp`.
+Its `Application.cpp` already reads the controller through `scePadReadState` before dispatching browser or native input.
+The candidate uses those existing press edges, not guessed DOM events or Gamepad indexes.
+
+| Area | Finding and candidate behavior |
+|---|---|
+| Primary activation | Redirected `.click()` does not cover keyboard-only actions. X now invokes the existing Enter handlers once. |
+| Dialogs | Shared dialog buttons lack `.focusable`. Modal focus now takes precedence over the background page. |
+| Profile editing | Editor controls use `.profile-overlay-focusable`. The adapter accepts the editor's existing focus instead of requiring `.focusable`. |
+| Streams and catalogues | Stream cards and See All cards have Enter handlers without equivalent click handlers. The adapter uses those Enter paths. |
+| Discover | Filter handlers reject synthetic clicks. Enter now opens and selects filters through existing screen handlers. |
+| Play options | The old native click adapter generated a fixed 60 ms Enter cycle. It could not preserve a physical X hold. |
+| Item menus | Native Options counters call existing profile, poster, home, library, hero, season and episode menu methods. |
+| Menu fallback | Movie and series details expose a D-pad-reachable Play options button, including the existing Play manually action. |
+| Text entry | Inputs retain focus, click and input handling. PS5 settings dialogs let Up and Down reach their action buttons. |
+| Native settings | Triangle opens a controller menu. Settings > Playback also exposes Player settings without a pointer. |
+| Pointer | CSS requests `cursor:none`. Pointer presses cannot move DOM focus away from the D-pad selection before X activation. |
+| Playback | Native playback buttons, stop handling, stream handoff and browser-return code remain unchanged. |
+
+The adapter blocks activation when focus is hidden, disabled, disconnected or unavailable during a modal transition.
+The serial controller poll discards stale counters after backgrounding, a failed request or reconnection.
+The native endpoint shares the existing title listener and needs no computer-hosted UI.
+The original pointer-only Player settings control remains hidden, with its save-and-close handler available to the new actions.
+
+Search and Discover retain their existing route-history Back dispatch.
+Their sidebar-specific Back code differs from that dispatch, but D-pad routes to the sidebar remain available.
+No unrelated routing redesign forms part of this candidate.
+
+### Host evidence
+
+[LOCALLY BUILT] The host used Linux x86-64, Python 3.13.7, Node.js 22.23.2 and LLVM/Clang/lld 19.1.7.
+The complete native title and eight unstripped helpers compiled with SDK v0.43 and pacbrew v0.39.
+The clean-room runtime hash remains `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+The embedded permission helper remains `0d7979ff8787680f97a992637c700f5301ce3aa4ec74c2a2d491821b3c469f5b`.
+
+```sh
+. .cache/orb-tools/env
+make check
+NUVIO_WORK_DIR="$PWD/build/controller" make build
+NUVIO_WORK_DIR="$PWD/build/controller" make release
+unzip -t release/PPSA99997.zip
+```
+
+All 63 host tests, documentation checks and private-artifact checks passed.
+Input regressions cover one activation, modal precedence, transition blocking, profile fields and stale native counters.
+They also cover browsers that ignore legacy numeric fields in `KeyboardEventInit`.
+An isolated GCC 12.2.0 host harness compiled the actual native counter and JSON code with address and undefined-behavior sanitizers.
+Asymmetric presses and four concurrent writers produced the expected counters without sanitizer errors.
+This does not test real `scePadReadState` delivery during system-browser use.
+
+Build `9ee9a542-nuvio_1031-0047` completed with the default authority and the `libkernel.prx` import.
+Receipt verification matched all 237 title files and eight unstripped helpers.
+Local packaging passed receipt and ZIP integrity checks.
+Generated packages remain outside Git.
+
+| Final local candidate artifact | SHA-256 |
+|---|---|
+| Signed `eboot.bin`, 35989860 bytes | `308f1f0e68b53ee80c096e7dfde95425365dddb4042b765461ccbf3491c34e1f` |
+| `webui/app.bundle.js`, 3168000 bytes | `3796dbc329cbe3641c03d2bdc43287232f8d25262a22f8f62ab28ce2a9c794e2` |
+| `webui/ps5-input.js` | `5aaf931420da91b1a49f09dfd597adf7e29d1de25683074149d6688a39795c8f` |
+| `webui/index.html` | `6198d774053d2eba88ba6021d03a55ef191c45263c0dd648ef0bb1d09359ddc1` |
+| `release/PPSA99997.zip` | `547dc446381d6bcd0a3bed25704f9c66cd7bcb9a9f43387c771998fc83cd0b02` |
+| `release/nuvio-ps5-0.1.0-alpha.7.zip` | `3742e847dcfd7ca281ceda3e82217cccb3feed31b432008d56861cb82de1a7e2` |
+
+These hashes identify the final local build, not a future CI rebuild with another timestamp.
+Earlier local build `9ee9a542-nuvio_1031-0039` had eboot hash `e645592a53ea01cb3bee86f6b2fa6a4f865296f9641e660a2678e5cdad03e3cb`.
+The final build supersedes it and preserves numeric Enter compatibility with the former native adapter.
+Neither build has console evidence.
+
+Chromium 156 rendered the patched frontend at 1920x1080 and 1280x720 with device scale 2.
+A disposable preview exposed screen objects for host fixtures, without changing the packaged production bundle.
+Movie, episode, stream and catalogue fixtures intercepted terminal playback or navigation calls to inspect their arguments.
+No stream playback result comes from these probes.
+
+| Executed browser check | Observed result |
+|---|---|
+| Guest onboarding and profiles | Stationary-pointer activation followed D-pad focus. Profile Options opened Edit. |
+| Profile editor | The name field acquired DOM focus. Category selection and Save/Cancel remained visible and reachable. |
+| Movie details | Play options fit the action row. D-pad selection and a stationary click opened the existing dialog. |
+| Play manually | Modal D-pad selection and X reached the existing action with `manualSelection:true` and `startOver:false`. |
+| Episode details | Two Down presses reached episode one. The host Options signal opened its existing menu, including Play manually. |
+| Episode selection | Right moved to episode two. Stationary X reached the chooser with episode two's ID. |
+| Stream selection | Down selected the second of two streams. Stationary X reached `playStream` with the second ID. |
+| Catalogue See All | Right selected the second card. Stationary X reached that card's detail action. |
+| Discover filters | Stationary X opened Type. Down and X selected Series. |
+| Search | Stationary X retained the search field. Host keyboard entry produced `Controller search`. |
+| Multiline settings | Down focused Save. Stationary X saved both lines unchanged and closed the dialog. |
+| Player settings | The Playback section rendered its new row with visible D-pad focus. |
+| Modal dismissal | Escape closed the episode dialog after its exit animation. Focus returned to the original episode. |
+| Pointer styling | Computed `cursor` was `none`. Recording used an automation cursor overlay to show pointer movement. |
+| Final production bundle | The packaged UI initialized the adapter. Stationary X dismissed App Update without activating the background. |
+| Production Home | D-pad movement and stationary X opened a title detail page from Home. |
+
+Screenshots show movie details, Play manually, episode options, profile editing, multiline Save and the native-settings row.
+The inspected recording shows real pointer movement, a D-pad focus change and stationary activation of Play options.
+Its final frames show modal dismissal starting, not the settled return state.
+The separate DOM check above establishes settled dismissal on the host.
+Scrollable background content can extend beyond the viewport. The focused modal actions remained visible.
+
+Failed host attempts remain part of this record:
+
+- An initial input mock lacked `classList`. The corrected mock passed.
+- A Python quoting error stopped one patching attempt before compilation. The corrected build passed.
+- A preview portal selected the wrong port. Browser checks used the working local preview, not that portal.
+- The first recording captured an empty browser session. It does not count as UI evidence.
+- A 4K recording overflowed its encoder buffer. The replacement 1280x720, scale-2 recording passed inspection.
+- The initial profile capture preceded avatar loading. The replacement capture shows the loaded grid.
+
+### Remaining console checks
+
+[UNKNOWN] This controller candidate has not run on the owner's 12.70 console or a 13.60 console.
+Host keyboard events and internal Options signals do not establish physical controller behavior.
+The existing native reader might not receive Options or Triangle while the system browser owns the pad.
+If Options fails, use the visible Play options button and report the failure without assuming a browser keycode.
+CSS might not hide the system browser's own pointer overlay.
+Synthetic field focus and click might not open the console keyboard.
+Search, profile names and settings entry all require separate console checks.
+Long-press X remains unsupported by the click bridge. Use Options or the visible Play options action instead.
+
+Keep the working installation and its settings until the candidate passes a controlled test.
+Do not overwrite files while Nuvio runs.
+Install the complete candidate folder, including `webui/`, rather than replacing only `eboot.bin`.
+Keep all persistent console writes under `/data`.
+Keep `/data/nuvio/` and account state intact.
+The PS5 continues to host the UI after installation.
+
+For the owner, give installation help one action at a time when they return.
+Ask for the current console address only if network access becomes necessary.
+Do not scan for it.
+After installation, check these actions in order and record each observed result:
+
+1. Open Nuvio from the tile.
+2. Select a profile with the D-pad and X.
+3. Check whether the pointer remains visible.
+4. Focus Play on a movie, then press Options once.
+5. Select Play manually with the D-pad and X.
+6. Repeat through the visible Play options button.
+7. Check profiles, sidebar navigation, catalogues, episodes, streams, menus and dialogs.
+8. Check Search, profile-name entry and settings fields with the console keyboard.
+9. Check Triangle and Settings > Playback > Player settings.
+10. Start playback and check the existing pause and seek controls.
+11. Press Circle, then check the restored browser page and focus.
+12. Repeat playback and perform a fresh launch.
+
+Record failures without clearing account state or changing firmware.
+This branch has no recorded CI result or confirmed downloadable GitHub artifact.

@@ -898,7 +898,9 @@ def patch_index(html):
     if 'ps5-input.js' in html:
         raise RuntimeError('UI index already carries the PS5 bridge')
     html = html.replace('<head>',
-                        '<head>\n    <style>html,body{background-color:#000;margin:0}</style>')
+                        '<head>\n    <style>html,body{background-color:#000;margin:0}'
+                        'html,body,body *{cursor:none!important}'
+                        '#__evoClose{display:none!important}</style>')
     return html.replace('</head>', '<script src="ps5-input.js"></script></head>')
 
 

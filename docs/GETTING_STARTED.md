@@ -45,6 +45,21 @@ During playback, use the player controls to pause or seek.
 Press Circle to stop a Nuvio video and return to browsing.
 Player settings opens EVO's native settings.
 
+The experimental controller candidate adds these browsing controls:
+
+- Options opens the focused item's existing action menu.
+- On title details, Play options opens the same menu without a hold.
+- Play manually remains inside the existing Play options menu.
+- Triangle opens the controller menu, which contains Player settings.
+- Settings > Playback > Player settings opens the native interface without a pointer.
+- In a settings text dialog, Down moves from the field to Save.
+- Up returns to the field. Cancel remains available in the action row.
+
+The candidate requests a hidden pointer and uses Nuvio's visible focus instead.
+Physical Options, Triangle, cursor hiding and console keyboard behavior still need PS5 validation.
+Do not use long-press X as the test for opening menus.
+See [Validation](VALIDATION.md#controller-navigation-candidate-2026-10-31) for the candidate checks and remaining gaps.
+
 ## After a reboot
 
 Run your jailbreak again and start ShadowMount and the ELF loader.

@@ -28,6 +28,7 @@ def apply(evo,nuvio):
     h=app/'include/evo_webui.h';h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nint evo_webui_native_requested(void);\n')
     replace(web,"b.textContent='Back to EVO'", "b.textContent='Player settings'")
     web.write_text(fix_playback_handoff(web.read_text()))
+    web.write_text(patch_controller_hook(web.read_text()))
     header=app/'ui_rml/include/evo_rmlui_app.h'
     replace(header,'    void RenderLaunch(uint32_t* framebuffer, int width, int height);','    void RenderLaunch(uint32_t* framebuffer, int width, int height);\n    void RenderNuvio(uint32_t* framebuffer, int width, int height, const char* message);')
     replace(header,'    Rml::ElementDocument* m_launch_doc = nullptr;','    Rml::ElementDocument* m_nuvio_doc = nullptr;\n    Rml::ElementDocument* m_launch_doc = nullptr;')
@@ -54,6 +55,14 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     player=app/'core/src/screens/PlayerScreen.cpp'
     player.write_text(fix_player_back(player.read_text()))
     application=app/'core/src/Application.cpp'
+    replace(application, '''            if (evo_webui_active()) {
+                /* #101: the system browser is up and owns the controller. */''', '''            if (evo_webui_active()) {
+                /* Keep D-pad/X/Circle with the browser. Forward only buttons
+                 * whose DOM representation has not been established. */
+                evo_webui_controller(pressed & PadButtons::Options,
+                                     pressed & PadButtons::Triangle);''')
+    h=app/'include/evo_webui.h'
+    h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nvoid evo_webui_controller(int options, int menu);\n')
     replace(application,'std::atomic<bool> g_web_done{false};','std::atomic<bool> g_web_done{false};\nbool g_nuvio_preparing = false;')
     replace(application,'        g_web_src = PlaybackSource();','        g_nuvio_preparing = true;\n        g_web_src = PlaybackSource();')
     replace(application,'        pthread_join(g_web_thread, nullptr);','        pthread_join(g_web_thread, nullptr);\n        g_nuvio_preparing = false;')
@@ -92,6 +101,43 @@ def patch_resume_router(text):
 
 
 def patch_nuvio(nuvio):
+    navigation=nuvio/'js/ui/navigation'
+    shutil.copyfile(Path(__file__).parent/'ps5-navigation.js', navigation/'ps5-navigation.js')
+    replace(navigation/'focusEngine.js',
+        'import { Router } from "./routerState.js";',
+        'import { Router } from "./routerState.js";\nimport { initPs5Navigation } from "./ps5-navigation.js";')
+    replace(navigation/'focusEngine.js', '  init() {', '  init() {\n    initPs5Navigation();')
+    detail=nuvio/'js/ui/screens/detail'
+    replace(detail/'metaDetailsScreenMethods-07-merge-stream-items.js',
+        '                ${this.getActiveResumeProgress() ? `<button',
+        '''                ${globalThis.__NUVIO_PS5__ ? '<button class="series-secondary-btn focusable" data-action="ps5PlayOptions">Play options</button>' : ""}
+                ${this.getActiveResumeProgress() ? `<button''')
+    replace(detail/'metaDetailsScreenMethods-08-render-external-ratings-row.js',
+        '            <div class="card focusable" data-action="toggleLibrary">',
+        '''            ${globalThis.__NUVIO_PS5__ ? '<div class="card focusable" data-action="ps5PlayOptions">Play options</div>' : ""}
+            <div class="card focusable" data-action="toggleLibrary">''')
+    replace(detail/'metaDetailsScreenMethods-26-on-key-down.js',
+        '      if (action === "playDefault") {',
+        '''      if (globalThis.__NUVIO_PS5__ && action === "ps5PlayOptions") {
+        this.openHeroPlayMenu();
+        return;
+      }
+
+      if (action === "playDefault") {''')
+    settings=nuvio/'js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js'
+    replace(settings,
+        'if ((code === 38 || code === 40) && !(activeField && this.textDialog.multiline)) {',
+        'if ((code === 38 || code === 40) && (globalThis.__NUVIO_PS5__ || !(activeField && this.textDialog.multiline))) {')
+    replace(nuvio/'js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js',
+        '      registerPlaybackActionsPart02.call(this, model);',
+        '''      registerPlaybackActionsPart02.call(this, model);
+      if (globalThis.__NUVIO_PS5__) {
+        this.actionMap.set("playback:ps5-native", () => document.getElementById("__evoClose")?.click());
+      }''')
+    replace(nuvio/'js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js',
+        '          ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}',
+        '''          ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
+          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-native", title: "Player settings", subtitle: "Open the native PS5 player settings" }) : ""}''')
     router=nuvio/'js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js'
     router.write_text(patch_resume_router(router.read_text()))
     app=nuvio/'js/app.js'
@@ -105,6 +151,53 @@ def patch_nuvio(nuvio):
         '            ProfileManager.isRememberLastProfileEnabled() &&\n'
         '            ProfileManager.hasEverSelectedProfile()\n'
         '          )')
+
+
+def patch_controller_hook(source):
+    # The upstream click adapter fabricates a 60 ms hold for a small subset of
+    # cards. The frontend adapter now sends one Enter cycle for every X click.
+    comment_start="/* Nuvio's hold-able buttons"
+    comment_end="\"var nvTitle='';function nvNoteTitle()"
+    if source.count(comment_start)!=1 or source.count(comment_end)!=1:
+        raise RuntimeError('Pinned native click comment changed')
+    begin=source.index(comment_start)
+    finish=source.index(comment_end, begin)
+    source=source[:begin]+'''/* The PS5 frontend adapter owns focused activation and item menus.
+ * Preserve title capture for the native stream handoff. */
+'''+source[finish:]
+    start='"if(NUVIO){document.addEventListener(\'click\',function(e){nvNoteTitle();"'
+    end='''" k('keydown');setTimeout(function(){k('keyup');},60);},true);}"'''
+    if source.count(start)!=1 or source.count(end)!=1:
+        raise RuntimeError('Pinned native click adapter changed')
+    begin=source.index(start)
+    finish=source.index(end, begin)+len(end)
+    source=source[:begin]+'''"if(NUVIO){document.addEventListener('click',nvNoteTitle,true);}"
+'''+source[finish:]
+    anchor='static char s_hook_profile[16];'
+    if source.count(anchor)!=1:
+        raise RuntimeError('Pinned controller state anchor changed')
+    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu;')
+    anchor='    } else if (!strncmp(path, "/evo/close", 10)) {'
+    if source.count(anchor)!=1:
+        raise RuntimeError('Pinned controller endpoint anchor changed')
+    source=source.replace(anchor, '''    } else if (!strcmp(path, "/evo/controller")) {
+        char body[96];
+        pthread_mutex_lock(&s_mx);
+        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u}",
+                         (unsigned)s_controller_options, (unsigned)s_controller_menu);
+        pthread_mutex_unlock(&s_mx);
+        respond(fd, "200 OK", "application/json", body, (size_t)n);
+'''+anchor)
+    return source+'''
+void evo_webui_controller(int options, int menu) {
+    pthread_mutex_lock(&s_mx);
+    if (options) ++s_controller_options;
+    if (menu) ++s_controller_menu;
+    pthread_mutex_unlock(&s_mx);
+    if (options) tlog("controller: Options");
+    if (menu) tlog("controller: Triangle");
+}
+'''
 
 
 def fix_player_back(source):

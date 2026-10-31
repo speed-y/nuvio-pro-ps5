@@ -57,9 +57,26 @@ artwork and the RML assets. The patches alone do not perform the full build.
 ## Controller and screen state
 
 The PS5 browser sends X as a click at its stationary pointer. Nuvio moves its own
-focus with the D-pad. `scripts/ps5-input.js` gives the focused Nuvio element
-control of primary activation and keeps the Player settings button reachable. A
-recursion guard stops the redirected click from activating twice.
+focus with the D-pad. `scripts/ps5-input.js` forwards primary activation to
+`scripts/ps5-navigation.js`, which uses the pinned frontend's Enter handlers.
+The adapter chooses the current modal or screen before activation.
+It blocks background activation during modal transitions and preserves text-field focus and click handling.
+A recursion guard prevents duplicate activation.
+
+The existing native pad reader forwards Options and Triangle edges while the browser is active.
+The adapter polls counters through the title's `/evo/controller` endpoint.
+Options calls the focused item's existing context-menu method.
+Triangle opens a controller menu containing Player settings.
+The detail page also exposes a D-pad-reachable Play options button.
+Settings > Playback exposes Player settings without a pointer.
+These native button paths still require console validation while the system browser owns the controller.
+No undocumented browser keycode or Gamepad mapping supplies these buttons.
+
+The title's stylesheet requests a hidden cursor.
+This does not establish whether the system browser hides its own pointer overlay.
+The adapter leaves D-pad, Circle, text entry and native playback controls with their existing owners.
+On PS5, Up and Down move between a settings text field and its action buttons.
+The console keyboard's actual behavior remains a hardware check.
 
 The Nuvio build sets `window.__NUVIO_PS5__`, and the router uses that flag for its
 route resume methods. The flag preserves the previous browsing route when playback starts.

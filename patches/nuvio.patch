@@ -64,6 +64,22 @@
          ) {
            enterWithLastProfile({ restoreWebOsRoute: true }).catch((error) => {
              console.warn("Failed to enter with last profile", error);
+--- a/js/ui/navigation/focusEngine.js
++++ b/js/ui/navigation/focusEngine.js
+@@ -1,4 +1,5 @@
+ import { Router } from "./routerState.js";
++import { initPs5Navigation } from "./ps5-navigation.js";
+ import { Platform } from "../../platform/index.js";
+ 
+ function buildNormalizedEvent(event) {
+@@ -53,6 +54,7 @@
+   activeBackKeyIdentities: new Set(),
+ 
+   init() {
++    initPs5Navigation();
+     this.boundHandleKey = this.handleKey.bind(this);
+     this.boundHandleKeyUp = this.handleKeyUp.bind(this);
+     this.boundHandlePointerMove = this.handlePointerMove.bind(this);
 --- a/js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js
 +++ b/js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js
 @@ -37,14 +37,15 @@
@@ -93,3 +109,70 @@
          return null;
        }
        const snapshot = LocalStore.get(WEBOS_RESUME_ROUTE_KEY, null);
+--- a/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
++++ b/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
+@@ -239,6 +239,7 @@
+                   <span class="series-btn-icon">${renderPlayGlyph()}</span>
+                   <span>${escapeHtml(playLabel)}</span>
+                 </button>
++                ${globalThis.__NUVIO_PS5__ ? '<button class="series-secondary-btn focusable" data-action="ps5PlayOptions">Play options</button>' : ""}
+                 ${this.getActiveResumeProgress() ? `<button class="series-secondary-btn focusable" data-action="playFromBeginning">${escapeHtml(t("detail.playFromBeginning", {}, "Play from Beginning"))}</button>` : ""}
+                 <button class="series-circle-btn focusable${this.isSavedInLibrary ? " is-library-selected" : ""}" data-action="toggleLibrary">
+                   ${renderLibraryGlyph(this.isSavedInLibrary)}
+--- a/js/ui/screens/detail/metaDetailsScreenMethods-08-render-external-ratings-row.js
++++ b/js/ui/screens/detail/metaDetailsScreenMethods-08-render-external-ratings-row.js
+@@ -79,6 +79,7 @@
+           </div>
+           <div class="row">
+             <div class="card focusable" data-action="playDefault">${isSeries ? t("detail.playNextEpisode", {}, "Play Next Episode") : t("detail.play", {}, "Play")}</div>
++            ${globalThis.__NUVIO_PS5__ ? '<div class="card focusable" data-action="ps5PlayOptions">Play options</div>' : ""}
+             <div class="card focusable" data-action="toggleLibrary">${this.isSavedInLibrary ? t("detail.removeFromLibrary", {}, "Remove from Library") : t("detail.addToLibrary", {}, "Add to Library")}</div>
+             <div class="card focusable" data-action="toggleWatched">${this.isMarkedWatched ? t("common.markUnwatched", {}, "Mark Unwatched") : t("common.markWatched", {}, "Mark Watched")}</div>
+             <div class="card focusable" data-action="openSearch">${t("detail.searchSimilar", {}, "Search Similar")}</div>
+--- a/js/ui/screens/detail/metaDetailsScreenMethods-26-on-key-down.js
++++ b/js/ui/screens/detail/metaDetailsScreenMethods-26-on-key-down.js
+@@ -199,6 +199,11 @@
+         Router.navigate("search", {
+           query: this.params?.fallbackTitle || this.params?.itemId || ""
+         });
++        return;
++      }
++
++      if (globalThis.__NUVIO_PS5__ && action === "ps5PlayOptions") {
++        this.openHeroPlayMenu();
+         return;
+       }
+ 
+--- a/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
++++ b/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
+@@ -8,6 +8,9 @@
+       this.ensureExpandedState("playback");
+       registerPlaybackActionsPart01.call(this, model);
+       registerPlaybackActionsPart02.call(this, model);
++      if (globalThis.__NUVIO_PS5__) {
++        this.actionMap.set("playback:ps5-native", () => document.getElementById("__evoClose")?.click());
++      }
+       return renderPlaybackSectionMarkup.call(this, model);
+     }
+   };
+--- a/js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js
++++ b/js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js
+@@ -148,7 +148,7 @@
+ 
+       if (this.textDialog) {
+         const activeField = document.activeElement?.matches?.("[data-text-dialog-role='field']");
+-        if ((code === 38 || code === 40) && !(activeField && this.textDialog.multiline)) {
++        if ((code === 38 || code === 40) && (globalThis.__NUVIO_PS5__ || !(activeField && this.textDialog.multiline))) {
+           event?.preventDefault?.();
+           const delta = code === 38 ? -1 : 1;
+           this.dialogFocusIndex = clamp(this.dialogFocusIndex + delta, 0, this.getTextDialogMaxFocusIndex());
+--- a/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
++++ b/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
+@@ -25,6 +25,7 @@
+   });
+   return `
+           ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
++          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-native", title: "Player settings", subtitle: "Open the native PS5 player settings" }) : ""}
+           <div class="settings-group-card settings-group-card-fill">
+             <div class="settings-stack">
+               ${this.renderCollapsibleRow({
