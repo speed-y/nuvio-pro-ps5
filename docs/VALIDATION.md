@@ -1299,4 +1299,35 @@ After installation, check these actions in order and record each observed result
 12. Repeat playback and perform a fresh launch.
 
 Record failures without clearing account state or changing firmware.
-This branch has no recorded CI result or confirmed downloadable GitHub artifact.
+GitHub Host checks completed successfully for controller commit `2a6fec2047feeda88d0f355d6c6713d37aadb777`.
+Both `check` and `native-linux` passed in the push and pull-request runs.
+These results do not establish console behavior.
+
+## PR prerelease distribution, 2026-10-31
+
+[SOURCE-VERIFIED] The previous workflow uploaded temporary Actions artifacts but did not publish PR builds as GitHub Releases.
+The version-tag workflow created draft releases only.
+Its packaging command also used the packager's upstream repository default for asset URLs.
+
+The updated Host checks workflow publishes same-repository PR builds after both check jobs pass.
+External fork PRs and push-only runs cannot enter the publishing job.
+Publication reuses the uploaded packages and checks their SHA-256 values before creating a fixed-commit prerelease.
+The tag identifies the tested merge commit. Release notes also identify the PR head.
+Reruns preserve existing release files rather than replace timestamp-dependent builds.
+PR releases are experimental, not latest, and retain the existing content version.
+Versioned draft releases keep their existing process. Both workflows now use the current repository for asset URLs.
+
+[HOST-TESTED] Linux x86-64, Python 3.13.7 and Node.js 22.23.2 passed all 63 tests and `make check`.
+Documentation and source-pin checks passed. The existing advisory writing warning remains.
+Checksum-verified actionlint 1.7.7 accepted both workflows without findings.
+A disposable probe executed the actual workflow shell blocks with mocked packaging and GitHub commands.
+It checked PR versus push tags, fork URLs, exact merge targets, prerelease flags and preservation on reruns.
+Real checksum verification accepted matching asymmetric fixtures and rejected a corrupted package.
+The probe inspected publication dependencies and the same-repository guard. It did not simulate GitHub's permission engine.
+
+The first documentation check rejected a new semicolon and flagged passive wording. The corrected text passed the repeated check.
+No native source or console file changed. This workflow-only change required no new local native build.
+The earlier controller candidate hashes above remain separate from future CI builds.
+[UNKNOWN] Actual GitHub publication and release-download verification remain pending at this commit.
+Published assets must retain their own `SHA256SUMS`. Local candidate hashes cannot verify a timestamp-dependent CI rebuild.
+No console compatibility result comes from workflow validation.

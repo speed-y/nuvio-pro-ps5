@@ -59,7 +59,7 @@ jobs:
             fi
           done
       - name: Package
-        run: python3 scripts/package_release.py --tag "${GITHUB_REF_NAME}"
+        run: python3 scripts/package_release.py --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME"
       - name: Save build inputs
         if: always() && steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0

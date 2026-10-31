@@ -12,6 +12,24 @@ tag.
 The PS5 Homebrew Store catalog accepts pre-release tags. Use a fixed tag such as
 `v0.1.0-alpha.1`, never a moving tag such as `latest` or `nightly`.
 
+## PR test releases
+
+Successful pull requests within the same repository publish an experimental GitHub prerelease after both Host checks jobs pass.
+External fork pull requests cannot publish releases.
+Find the download in the repository's Releases page or the publishing job's summary.
+
+The fixed tag is `pr-<number>-<tested-merge-commit-prefix>`.
+The release records the PR head and tested merge commit.
+It attaches the existing CI packages without rebuilding them, verifies their checksums, and does not replace earlier release assets on reruns.
+These releases are not marked latest.
+They retain the app's content version and are test candidates, not store updates.
+The release notes explicitly state that console validation remains pending.
+
+Download `PPSA99997.zip` and `SHA256SUMS` for installation.
+Download `nuvio-ps5-<version>.zip` for source and build receipts.
+CI artifacts remain available for 14 days. GitHub Release assets do not use that expiration.
+Asset URLs use the current repository, not the upstream repository.
+
 ## Cut a release
 
 1. Raise `VERSION` and the `contentVersion` in the build template.

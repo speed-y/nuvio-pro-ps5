@@ -96,10 +96,11 @@ sessions all help. Send the firmware, the artifact hashes and the expected and
 observed behavior. Remove account details and private stream URLs from reports.
 See [Contributing](docs/CONTRIBUTING.md).
 
-For experimental firmware testing, open the fork's **Actions** tab and select a successful **Host checks** run.
-Download its `nuvio-experimental-<commit>` artifact, then extract it.
-It contains `PPSA99997.zip`, the complete source package and `SHA256SUMS`.
-These temporary CI packages expire after 14 days. They are not published releases or proof of firmware compatibility.
+For experimental testing, open the fork's **Releases** page and select the prerelease for your PR and tested commit.
+Download `PPSA99997.zip` and `SHA256SUMS`. The complete `nuvio-ps5` package contains source and build receipts.
+Same-repository PRs publish these test candidates after Host checks and native compilation pass.
+They are not console-validated or marked latest. See [Release](docs/RELEASE.md) for details.
+The **Actions** tab also provides `nuvio-experimental-<commit>` packages, which expire after 14 days.
 Report the commit, firmware, loader and HEN versions, startup, playback and return behavior.
 Do not update firmware to participate.
 
