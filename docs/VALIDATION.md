@@ -1328,6 +1328,26 @@ The probe inspected publication dependencies and the same-repository guard. It d
 The first documentation check rejected a new semicolon and flagged passive wording. The corrected text passed the repeated check.
 No native source or console file changed. This workflow-only change required no new local native build.
 The earlier controller candidate hashes above remain separate from future CI builds.
-[UNKNOWN] Actual GitHub publication and release-download verification remain pending at this commit.
 Published assets must retain their own `SHA256SUMS`. Local candidate hashes cannot verify a timestamp-dependent CI rebuild.
 No console compatibility result comes from workflow validation.
+
+[CI-TESTED] [Run 41187681236](https://github.com/speed-y/nuvio-ps5-homebrew/actions/runs/41187681236) passed host checks, native compilation and release publication.
+The configured runner used Ubuntu 24.04, Python 3.13.7, Node.js 22.23.2 and the LLVM 19 packages.
+This record omits the exact LLVM package patch version.
+The push-only run correctly skipped publication.
+
+[DOWNLOAD-VERIFIED] [Test release pr-1-56ca0a5cf18d](https://github.com/speed-y/nuvio-ps5-homebrew/releases/tag/pr-1-56ca0a5cf18d) is public and marked prerelease.
+Its tag resolves to tested merge commit `56ca0a5cf18d9cb3a09e466521621f1fab264fae`.
+Its PR head was `748f97ea2522f616f99ff4ba95cb256402db4c30`.
+All three downloaded release assets matched the original CI artifacts byte-for-byte.
+`sha256sum --check SHA256SUMS` reported both ZIPs OK. Both ZIP CRC checks passed.
+The complete package contains integration sources, pinned dependency metadata, notices and `build.json`.
+
+| Downloaded artifact | SHA-256 |
+|---|---|
+| `PPSA99997.zip` | `241423af643d3ce43fb9232d802418b369f9540c7a209e67e9ac10f006d440d2` |
+| `nuvio-ps5-0.1.0-alpha.7.zip` | `f4f73d996b8da2873e55aadc9aec86c0aab8428146e85189215f5a12996da371` |
+| Packaged `PPSA99997/eboot.bin`, 35989860 bytes | `31b3d3be29a641291bbae2541e30c66a2436f89945ee8381be6635b2c2e5e495` |
+
+These hashes identify this fixed tag only. Later rebuilds can differ.
+[UNKNOWN] This downloaded candidate still needs console validation on 12.70.
