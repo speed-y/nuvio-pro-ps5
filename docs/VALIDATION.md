@@ -4853,3 +4853,13 @@ Signed eboot: 48,629,860 bytes, SHA-256 `e604be30b27655cecae046c43241302d1673661
 Host environment remains Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
 The target build uses SDK v0.43 and FFmpeg 7.1.1.
 The corrected build remains local. Crash resolution and the separate movie-ending report remain hardware checks.
+
+## v0.2.0-alpha.1 preparation, 2026-11-10
+
+[LOCALLY BUILT] The candidate starts from merged `main` at `4cfde196b21ddadfe1fa94f2902198477400d400`.
+Public version: `0.2.0-alpha.1`. Title: `PPSA99996`. PS5 content version: `01.000.008`.
+`make build` completes as `f6e43e65-nuvio_1110-1246` with valid signed-container integrity and 268 matching title receipt hashes.
+Signed eboot: 48,629,860 bytes, SHA-256 `d421c228aa1c5c0d60c648720844657593edf663b71ca90e21734c4a5261182f`.
+`make check` passes 150 tests without skips, with zero documentation hard findings and passing source/private-artifact checks.
+Environment: Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0, LLVM 19.1.7, SDK v0.43 and target FFmpeg 7.1.1.
+The versioned candidate remains untested on PS5. Preparation does not publish a release or authorize console deployment.
