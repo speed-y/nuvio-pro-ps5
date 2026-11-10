@@ -17,7 +17,7 @@ class CloseTests(unittest.TestCase):
         for name in ('close.elf', 'control-2.elf'):
             (root/name).write_bytes(name.encode())
             helpers[name]=hashlib.sha256(name.encode()).hexdigest()
-        (root/'build.json').write_text(json.dumps({'title_id':'PPSA99996','helpers':helpers}))
+        (root/'build.json').write_text(json.dumps({'title_id':'PPSA99995','helpers':helpers}))
 
     def test_successful_transfer_without_process_evidence_is_not_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -31,8 +31,8 @@ class CloseTests(unittest.TestCase):
     def test_process_exit_waits_for_unmounted_title(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.fixture(root)
-            responses=[json.dumps({'title_id':'PPSA99996','mounted':True}),
-                       json.dumps({'title_id':'PPSA99996','mounted':False})]
+            responses=[json.dumps({'title_id':'PPSA99995','mounted':True}),
+                       json.dumps({'title_id':'PPSA99995','mounted':False})]
             with patch.object(close,'WORK',root), patch.dict(close.os.environ,PS5_HOST='fixture.invalid'), \
                     patch.object(close.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout='NUVIO close: process exited\n')), \
                     patch.object(close,'helper',side_effect=responses) as helper, \

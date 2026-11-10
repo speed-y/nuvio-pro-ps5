@@ -11,11 +11,11 @@ from pathlib import Path
 import re
 import time
 
-from build import WORK, TITLE
+from build import WORK, TITLE, DATA_DIR
 from install import helper
 from update import parse_eboot_report
 
-LOG_PATH = '/data/nuvio/evo.log'
+LOG_PATH = f'{DATA_DIR}/evo.log'
 LOG_LIMIT = 8 * 1024 * 1024
 # Extract complete events, never the rest of a line: logs also hold private URLs.
 EVENT = re.compile(

@@ -1,13 +1,13 @@
 {
-  "titleId": "PPSA99996",
-  "conceptId": "99996",
-  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
+  "titleId": "PPSA99995",
+  "conceptId": "99995",
+  "contentId": "UP9000-PPSA99995_00-NUVIOPOC00000000",
   "applicationCategoryType": 0,
   "contentBadgeType": 1,
   "contentVersion": "01.000.013",
   "localizedParameters": {
     "en-US": {
-      "titleName": "Nuvio Pro"
+      "titleName": "Nuvio Native PoC"
     }
   },
   "pubtools": {

@@ -175,7 +175,7 @@ def patch_application(app):
 
 
 def patch_boot_flag(app):
-    """Prefer the native proof when /data/nuvio/native_ui_poc exists. Keep browser otherwise."""
+    """Open the native proof by default on this PoC title. Opt into browser with a flag."""
     application = app / 'core/src/Application.cpp'
     old = '''        /* Nuvio starts once its durable settings are reachable. Existing
          * EVO code owns browser, playback handoff and shutdown lifetimes. */
@@ -187,21 +187,18 @@ def patch_boot_flag(app):
                 nuvio_opened = true;
         }
         evo_webui_pump();   /* #101: the system browser, when a web UI is open */'''
-    new = '''        /* Nuvio starts once its durable settings are reachable. Existing
-         * EVO code owns browser, playback handoff and shutdown lifetimes.
-         * /data/nuvio/native_ui_poc opts into the Phase 1 native shelf proof
-         * without deleting the browser path. */
+    new = '''        /* PoC title: open the native shelf by default. Keep the browser path
+         * intact; /data/nuvio-poc/use_browser opts back into it for comparison. */
         static bool nuvio_opened = false;
         if (!nuvio_opened && evo_jailbreak_is_open()) {
-            if (access("/data/nuvio/native_ui_poc", F_OK) == 0) {
-                if (m_screenManager)
-                    m_screenManager->navigateTo(ScreenId::NuvioPoc);
-                nuvio_opened = true;
-            } else {
+            if (access("/data/nuvio-poc/use_browser", F_OK) == 0) {
                 const evo_provider_t *nv = evo_provider_find("nuvio");
                 if (nv && nv->is_configured() &&
                     evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio") == 0)
                     nuvio_opened = true;
+            } else if (m_screenManager) {
+                m_screenManager->navigateTo(ScreenId::NuvioPoc);
+                nuvio_opened = true;
             }
         }
         evo_webui_pump();   /* #101: the system browser, when a web UI is open */'''

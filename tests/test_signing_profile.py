@@ -34,7 +34,7 @@ class SigningProfileTests(unittest.TestCase):
             root = Path(tmp)
             (root / 'VERSION').write_text('0.1.0-test')
             (root / 'build.json').write_text(json.dumps({
-                'title_id': 'PPSA99996', 'auth_profile': 'sdk-install-app'}))
+                'title_id': 'PPSA99995', 'auth_profile': 'sdk-install-app'}))
             with patch.object(package_release, 'ROOT', root), \
                  patch.object(package_release, 'WORK', root), \
                  patch.object(sys, 'argv', ['package_release']), \

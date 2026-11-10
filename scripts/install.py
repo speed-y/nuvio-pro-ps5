@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import urllib.parse
 
-from build import ROOT, WORK, TITLE
+from build import ROOT, WORK, TITLE, DATA_DIR
 
 # The UI is served from the console by nuvio.elf, so a first install needs no
 # LAN origin. The loopback origin matches the port the payload binds and the
@@ -138,10 +138,10 @@ def main():
             raise RuntimeError('Console runtime hash does not match receipt')
         for name in ('eboot.bin','sce_module/libc.prx'):
             ftp.sendcmd('SITE CHMOD 755 '+stage+'/'+name)
-        mkdir('/data/nuvio')
+        mkdir(DATA_DIR)
         # No overwrite of pre-existing settings. First install can supply only
         # its non-secret server origin; addon/account credentials stay user-owned.
-        config = '/data/nuvio/nuvio.conf'
+        config = f'{DATA_DIR}/nuvio.conf'
         try:
             existing = bytearray()
             ftp.retrbinary('RETR '+config, existing.extend)

@@ -56,7 +56,7 @@ static void ui_note(const char *fmt, ...)
     int n = vsnprintf(line, sizeof line, fmt, ap);
     va_end(ap);
     if (n <= 0 || s_log_bytes >= UI_LOG_CAP) return;
-    FILE *f = fopen("/data/nuvio/ui.log", "a");
+    FILE *f = fopen("/data/nuvio-poc/ui.log", "a");
     if (!f) return;
     s_log_bytes += (size_t)fwrite(line, 1, (size_t)n, f);
     fputc('\n', f);

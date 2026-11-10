@@ -64,12 +64,12 @@ typedef struct nuvio_poc_params {
 
 static inline nuvio_poc_theme_t nuvio_poc_default_theme(void)
 {
-    /* Dark Nuvio-like proof palette. Not the EVO MIDNIGHT blue rail look. */
+    /* Dark Nuvio-like proof palette. Accent matches the browser loading RML. */
     nuvio_poc_theme_t t;
     t.bg_top = 0x0b0d10;
     t.bg_bottom = 0x050607;
     t.surface = 0x161a20;
-    t.accent = 0x3dd6c6;
+    t.accent = 0x7b62ff;
     t.text = 0xf2f4f7;
     t.text_muted = 0x9aa3af;
     t.poster_w = 176.0f;

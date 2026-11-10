@@ -3,9 +3,13 @@
 ## Component boundaries
 
 [SOURCE-VERIFIED] The port uses the source revisions in [Sources](SOURCES.md).
-The console runs an EVO-derived native title with the identity `PPSA99996`. The
-browser UI travels inside the title folder. The title loads its embedded
-permission helper through the existing ELF loader and serves the UI over loopback.
+The product console title uses the identity `PPSA99996` and `/data/nuvio`.
+The native-UI PoC feature branch builds a separate title `PPSA99995` named
+Nuvio Native PoC with persistent files under `/data/nuvio-poc`. See
+[Native UI proof](NATIVE_UI_POC.md). Outside that branch, the console runs an
+EVO-derived native title with the identity `PPSA99996`. The browser UI travels
+inside the title folder. The title loads its embedded permission helper through
+the existing ELF loader and serves the UI over loopback.
 
 ```mermaid
 flowchart LR
@@ -375,11 +379,12 @@ The release packager rejects this experimental profile.
 
 ## Native UI proof
 
-Phase 1 adds one optional native shelf on the existing `hui` DrawList and `sceAgc`
+Phase 1 adds one native shelf on the existing `hui` DrawList and `sceAgc`
 path. See [Native UI proof](NATIVE_UI_POC.md). The browser UI and `webui/` remain
-installed. Default startup still opens the console-hosted browser. The flag file
-`/data/nuvio/native_ui_poc` opens the proof screen instead. Play calls the current
-EVO player and returns to the same native card. UI sounds stay off on that screen.
+installed. On the PoC title (`PPSA99995`), startup opens the native shelf by
+default. Create `/data/nuvio-poc/use_browser` to open the packaged browser for
+comparison. Play calls the current EVO player and returns to the same native
+card. UI sounds stay off on that screen.
 
 ## Browser UI hosting
 

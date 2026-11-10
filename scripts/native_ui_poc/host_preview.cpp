@@ -155,7 +155,7 @@ int main(int argc, char **argv)
     evo::kit::Palette palette;
     palette.bg_top = hui::gfx::Color::rgb(0x0b0d10);
     palette.bg_bottom = hui::gfx::Color::rgb(0x050607);
-    palette.accent = hui::gfx::Color::rgb(0x3dd6c6);
+    palette.accent = hui::gfx::Color::rgb(0x7b62ff);
     palette.text = hui::gfx::Color::rgb(0xf2f4f7);
     palette.text_muted = hui::gfx::Color::rgb(0x9aa3af);
 

@@ -18,8 +18,8 @@ static inline int nuvio_app_matches(pid_t pid) {
     if(sceKernelGetAppInfo(pid,&info)) return 0;
     const unsigned char *bytes=(const void *)&info;
     unsigned matches=0;
-    for(size_t pos=0;pos+sizeof("PPSA99996")<=sizeof(info);pos++) {
-        if(!memcmp(bytes+pos,"PPSA99996",sizeof("PPSA99996"))) matches++;
+    for(size_t pos=0;pos+sizeof("PPSA99995")<=sizeof(info);pos++) {
+        if(!memcmp(bytes+pos,"PPSA99995",sizeof("PPSA99995"))) matches++;
     }
     return matches==1;
 }

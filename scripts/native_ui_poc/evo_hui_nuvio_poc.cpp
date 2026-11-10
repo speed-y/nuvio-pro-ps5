@@ -37,7 +37,7 @@ Color hex(uint32_t rgb, float a = 1.0f)
 void NuvioPocScreen::set(const nuvio_poc_params_t &params)
 {
     theme_ = params.theme.poster_w > 1.0f ? params.theme : nuvio_poc_default_theme();
-    brand_ = params.brand ? params.brand : "Nuvio";
+    brand_ = params.brand ? params.brand : "Nuvio Native PoC";
     hero_title_ = params.hero_title ? params.hero_title : "";
     hero_detail_ = params.hero_detail ? params.hero_detail : "";
     shelf_title_ = params.shelf_title ? params.shelf_title : "Featured";

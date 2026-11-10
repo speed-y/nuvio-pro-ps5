@@ -38,7 +38,7 @@ void fill_builtin(std::vector<NuvioPocScreen::CatalogItem> *out)
     static const Seed kSeeds[] = {
         {"Night Circuit", "Movie · 2024",
          "A driver returns to a closed city loop after years away. The shelf proof uses this title for focus and Play.",
-         "", 0x0f3d3e, 0x3fd0b0},
+         "", 0x1a1040, 0x7b62ff},
         {"Harbor Light", "Series · S01E03",
          "A coastal town keeps a lighthouse running after the mainland grid fails.", "", 0x2b1055,
          0xd16ba5},
@@ -172,11 +172,11 @@ NuvioPocScreen::NuvioPocScreen() : StatefulScreen("NuvioPocScreen")
     theme_ = nuvio_poc_default_theme();
     hero_w_ = 960;
     hero_h_ = 540;
-    hero_art_ = makePoster(0x101820, 0x3dd6c6, 0.2f);
+    hero_art_ = makePoster(0x101820, 0x7b62ff, 0.2f);
     /* Widen the hero gradient canvas. */
     hero_art_.assign(static_cast<std::size_t>(hero_w_ * hero_h_), 0);
     {
-        auto full = makePoster(0x101820, 0x3dd6c6, 0.2f);
+        auto full = makePoster(0x101820, 0x7b62ff, 0.2f);
         for (int y = 0; y < hero_h_; ++y)
         {
             for (int x = 0; x < hero_w_; ++x)
@@ -232,7 +232,7 @@ void NuvioPocScreen::startMetadataFetch()
 
         /* Optional console file. Missing or bad JSON must not freeze the UI. */
         std::string body;
-        const char *paths[] = {"/data/nuvio/poc_catalog.json", "/app0/assets/nuvio_poc_catalog.json"};
+        const char *paths[] = {"/data/nuvio-poc/poc_catalog.json", "/app0/assets/nuvio_poc_catalog.json"};
         int got = -1;
         for (const char *path : paths)
         {
@@ -252,7 +252,7 @@ void NuvioPocScreen::startMetadataFetch()
         {
             /* Intentional fail path: ask for a missing remote hint file. */
             std::string hint;
-            if (read_file("/data/nuvio/poc_catalog.remote", &hint) == 0)
+            if (read_file("/data/nuvio-poc/poc_catalog.remote", &hint) == 0)
             {
                 error = 1;
                 status = "Remote metadata unavailable";
@@ -334,10 +334,10 @@ void NuvioPocScreen::playFocused()
     if (url.empty())
     {
         /* Prefer an owner-provided clip for console proof installs. */
-        if (access("/data/nuvio/poc_sample.mp4", R_OK) == 0)
-            url = "/data/nuvio/poc_sample.mp4";
-        else if (access("/data/nuvio/poc_sample.mkv", R_OK) == 0)
-            url = "/data/nuvio/poc_sample.mkv";
+        if (access("/data/nuvio-poc/poc_sample.mp4", R_OK) == 0)
+            url = "/data/nuvio-poc/poc_sample.mp4";
+        else if (access("/data/nuvio-poc/poc_sample.mkv", R_OK) == 0)
+            url = "/data/nuvio-poc/poc_sample.mkv";
     }
     if (url.empty())
     {
@@ -366,7 +366,7 @@ void NuvioPocScreen::fillParams(nuvio_poc_params_t *params) const
 {
     std::memset(params, 0, sizeof(*params));
     params->theme = theme_;
-    params->brand = "Nuvio";
+    params->brand = "Nuvio Native PoC";
     params->shelf_title = "Featured";
     params->status = status_.c_str();
     params->status_is_error = status_is_error_;

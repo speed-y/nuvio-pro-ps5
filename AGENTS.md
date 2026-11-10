@@ -9,7 +9,10 @@ Do not develop exploits.
 Do not assume Linux, a replacement OS or hypervisor access.
 Source inspection and compilation do not establish console execution.
 
-Keep the fork's title identity PPSA99996. Historical upstream builds use PPSA99997.
+Keep the fork's product title identity PPSA99996. Historical upstream builds use PPSA99997.
+This PoC feature branch temporarily uses PPSA99995, the tile name "Nuvio Native PoC",
+and `/data/nuvio-poc` so it can sit beside an installed product title. Do not carry
+that identity onto main without an explicit decision.
 Keep persistent console writes under /data.
 Require an explicit console address.
 Do not scan for a console.

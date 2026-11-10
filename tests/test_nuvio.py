@@ -597,7 +597,7 @@ class UpdateMetadataTests(unittest.TestCase):
     def test_update_allows_only_a_content_version_bump(self):
         import json
         import update
-        before={'titleId':'PPSA99996','contentId':'UP9000-PPSA99996_00-NUVIOPS500000000',
+        before={'titleId':'PPSA99995','contentId':'UP9000-PPSA99995_00-NUVIOPOC00000000',
                 'contentVersion':'01.000.001','localizedParameters':{'en-US':{'titleName':'Nuvio'}}}
         after={**before,'contentVersion':'01.000.002'}
         self.assertTrue(update.safe_param_update(json.dumps(before).encode(),
@@ -651,8 +651,8 @@ class UpdateMetadataTests(unittest.TestCase):
 
     def test_update_remote_dirs_lists_parent_chain(self):
         import update
-        self.assertEqual(update.remote_dirs('/data/homebrew/PPSA99996/assets/hui/sfx/focus_01.wav'),
-                         ['/data','/data/homebrew','/data/homebrew/PPSA99996','/data/homebrew/PPSA99996/assets','/data/homebrew/PPSA99996/assets/hui','/data/homebrew/PPSA99996/assets/hui/sfx'])
+        self.assertEqual(update.remote_dirs('/data/homebrew/PPSA99995/assets/hui/sfx/focus_01.wav'),
+                         ['/data','/data/homebrew','/data/homebrew/PPSA99995','/data/homebrew/PPSA99995/assets','/data/homebrew/PPSA99995/assets/hui','/data/homebrew/PPSA99995/assets/hui/sfx'])
         self.assertEqual(update.remote_dirs('/x.txt'), [])
 
     def test_update_allowlist_covers_evo_assets_and_keeps_the_native_set(self):
@@ -1453,12 +1453,12 @@ int main() {
 using std::isfinite;
 static pthread_mutex_t s_mx=PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t s_store_mx=PTHREAD_MUTEX_INITIALIZER;
-static char s_store_path[512]="/data/nuvio/state.json";
+static char s_store_path[512]="/data/nuvio-poc/state.json";
 static std::string root;
 static uint64_t now_ms=1000;
 static bool tear_write=false;
 static std::string mapped(const char *path) {
- assert(!strncmp(path,"/data/nuvio/",12));return root+"/"+(path+12);
+ assert(!strncmp(path,"/data/nuvio-poc/",16));return root+"/"+(path+16);
 }
 static int checkpoint_open(const char *path,int flags,int mode) {
  assert(flags&O_SYNC);return open(mapped(path).c_str(),flags,mode);

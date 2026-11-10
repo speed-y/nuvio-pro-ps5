@@ -4,7 +4,7 @@ static void fill_nuvio_poc_fixture(nuvio_poc_params_t &p, std::vector<uint32_t> 
 {
     p = {};
     p.theme = nuvio_poc_default_theme();
-    p.brand = "Nuvio";
+    p.brand = "Nuvio Native PoC";
     p.shelf_title = "Featured";
     p.status = "Host preview";
     p.status_is_error = 0;
@@ -13,7 +13,7 @@ static void fill_nuvio_poc_fixture(nuvio_poc_params_t &p, std::vector<uint32_t> 
     p.detail_open = 0;
     p.play_focused = 0;
 
-    hero = fake_art(960, 540, 0x101820, 0x3dd6c6, 0.25f);
+    hero = fake_art(960, 540, 0x101820, 0x7b62ff, 0.25f);
     p.hero_art = hero.data();
     p.hero_art_w = 960;
     p.hero_art_h = 540;

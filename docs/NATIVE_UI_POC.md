@@ -4,6 +4,21 @@ This is Phase 1 from [Native UI feasibility](NATIVE_UI_FEASIBILITY.md).
 It proves one Nuvio-like shelf on the existing `hui` and `sceAgc` path.
 It does not replace the browser UI.
 
+## Side-by-side identity on this branch
+
+This feature branch builds a **separate** console title so the installed product
+Nuvio stays untouched:
+
+| | Product (main / installed) | This PoC branch |
+|---|---|---|
+| Title ID | `PPSA99996` | `PPSA99995` |
+| Home tile name | Nuvio Pro | Nuvio Native PoC |
+| Install folder | `/data/homebrew/PPSA99996` | `/data/homebrew/PPSA99995` |
+| Persistent data | `/data/nuvio` | `/data/nuvio-poc` |
+
+Do not merge this identity onto `main` without an explicit decision. Product
+builds keep `PPSA99996` and `/data/nuvio`.
+
 ## What it adds
 
 - One themed native shelf with a dark full-frame background and a hero block
@@ -43,20 +58,18 @@ A full EVO `tools/hui_preview.sh` run also gains `nuvio_poc*` fixtures after a
 normal title build unpacks and polishes the player tree. Set
 `NUVIO_HUI_PREVIEW_LOCAL=1` to skip Docker when EGL is available on the host.
 
-## Console opt-in
+## Console install (safe beside product Nuvio)
 
-Default startup still opens the console-hosted browser UI.
-
-To open the native proof instead:
-
-1. Build and install the title as usual.
-2. Create the empty flag file `/data/nuvio/native_ui_poc` on the console.
-3. Optional: put a playable clip at `/data/nuvio/poc_sample.mp4` or
-   `/data/nuvio/poc_sample.mkv`.
-4. Optional: put `/data/nuvio/poc_catalog.json` for a small local catalogue.
-5. Optional: create `/data/nuvio/poc_catalog.remote` to force the failed
+1. Build this branch and install only into `/data/homebrew/PPSA99995`.
+2. Leave `/data/homebrew/PPSA99996` and `/data/nuvio` alone.
+3. Optional: put a playable clip at `/data/nuvio-poc/poc_sample.mp4` or
+   `/data/nuvio-poc/poc_sample.mkv`.
+4. Optional: put `/data/nuvio-poc/poc_catalog.json` for a small local catalogue.
+5. Optional: create `/data/nuvio-poc/poc_catalog.remote` to force the failed
    metadata path.
-6. Open Nuvio Pro.
+6. Open the **Nuvio Native PoC** tile. It opens the native shelf by default.
+7. To compare the packaged browser UI on the same PoC title, create the empty
+   flag `/data/nuvio-poc/use_browser` and relaunch.
 
 Controls on the proof screen:
 
@@ -70,6 +83,38 @@ Controls on the proof screen:
 
 UI sounds stay off on this screen.
 
+## Parity: what to judge now
+
+Phase 1 is an **identity gate**, not pixel parity with the browser Home.
+
+You are not looking too early for that gate. You *are* looking too early if the
+goal is “looks identical to current Nuvio.”
+
+### Check now (host PNG or console PoC tile)
+
+- Dark full-bleed background (not EVO’s blue rail chrome)
+- Large brand text reading **Nuvio Native PoC**
+- One hero block and one horizontal poster shelf
+- Focus ring moves with Left/Right
+- Accent reads purple (`#7b62ff`), matching the browser loading accent
+- Typography hierarchy: brand > hero title > shelf labels
+
+### Do not fail Phase 1 for these yet
+
+- Missing sidebar, Continue Watching, profiles, addons, Trakt, settings
+- Placeholder gradient posters instead of real artwork
+- Different layout density than browser Home
+- Missing browser chrome, search, or category rows
+- Exact CSS spacing, radii, or font metrics
+
+Those belong to later phases after measuring the live browser CSS.
+
+### Useful side-by-side check on the console
+
+1. Open installed **Nuvio Pro** (`PPSA99996`) → browser Home (unchanged).
+2. Open **Nuvio Native PoC** (`PPSA99995`) → native shelf.
+3. Ask only: same dark media-app identity, or still “another homebrew shell”?
+
 ## Out of scope
 
 - Accounts, profiles, addons, Trakt, and the full catalogue
@@ -79,7 +124,7 @@ UI sounds stay off on this screen.
 
 ## Pass gate
 
-Pass needs the host frames, controller movement on console, a failed metadata
-state that stays live, and Play that returns to the same card. Record console
-results in [Validation](VALIDATION.md). If the proof fails the gate in the
-feasibility report, keep the browser as the Nuvio UI.
+Host preview frames compile and render. On console, the PoC title opens the
+native shelf, moves focus, opens detail, starts Play on a local sample when
+present, returns to the same card, and survives a failed metadata path without
+freezing. Product Nuvio under `PPSA99996` remains usable afterward.

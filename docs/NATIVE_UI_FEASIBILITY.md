@@ -49,7 +49,10 @@ flowchart LR
 
 The two lifetimes matter. Search text shows the split. [VERIFIED] [scripts/ps5-text-input-session.c](../scripts/ps5-text-input-session.c) calls `sceWebBrowserDialogClose` before `evo_keyboard_open_native`. The owner confirmed that the keyboard appears without the browser on 12.70. Simultaneous browser and IME display failed in the recorded comparison. See [Architecture](ARCHITECTURE.md#controller-and-screen-state).
 
-[VERIFIED] The title identity is `PPSA99996` in [sce_sys/param.json](../sce_sys/param.json). That file sets the name, category, and content version. It does not select a UI toolkit.
+[VERIFIED] The product title identity is `PPSA99996` in `sce_sys/param.json` on
+`main`. That file sets the name, category, and content version. It does not
+select a UI toolkit. The Phase 1 PoC branch temporarily uses `PPSA99995` and
+`/data/nuvio-poc` for side-by-side installs. See [Native UI proof](NATIVE_UI_POC.md).
 
 [VERIFIED] Persistent browser state is a JSON file under `/data/nuvio/webui/`. Playback recovery uses two checksummed files beside that snapshot. Native addon data uses `/data/nuvio/addons.json`. See [Architecture](ARCHITECTURE.md#persistent-files).
 

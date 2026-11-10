@@ -5414,4 +5414,19 @@ It does not establish console execution.
 [PENDING] Firmware 12.70 install after the owner accepts the host layout.
 Pending console checks: D-pad or stick focus movement, failed metadata live frame,
 Play into the existing EVO player, and return to the same native card.
-The browser path remains the default until `/data/nuvio/native_ui_poc` exists.
+
+## Native UI PoC side-by-side identity, 2026-11-10
+
+[SOURCE-VERIFIED] This PoC branch builds title `PPSA99995` ("Nuvio Native PoC")
+with persistent files under `/data/nuvio-poc`, separate from product
+`PPSA99996` / `/data/nuvio`. Startup opens the native shelf by default.
+`/data/nuvio-poc/use_browser` opts into the packaged browser for comparison.
+
+[LOCALLY BUILT] Host accent tokens move from teal placeholders to the browser
+loading accent `#7b62ff`. Host frames under `output/uiview/` need a fresh
+preview run after that palette change.
+
+[PENDING] Side-by-side console install into `/data/homebrew/PPSA99995` only.
+Confirm product `PPSA99996` and `/data/nuvio` remain untouched afterward.
+Judge Phase 1 identity (dark field, brand, hero, shelf, focus, purple accent),
+not pixel parity with browser Home.

@@ -21,7 +21,10 @@ import patches
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = Path(os.environ.get('NUVIO_CACHE_DIR', str(ROOT/'.cache')))
 WORK = Path(os.environ.get('NUVIO_WORK_DIR', str(ROOT/'build')))
-TITLE = 'PPSA99996'  # Repository-assigned app identity, not a firmware constant.
+# Side-by-side PoC identity on this branch. Product main stays PPSA99996 / /data/nuvio.
+TITLE = 'PPSA99995'
+DATA_DIR = '/data/nuvio-poc'
+DOWNLOAD0_DIR = '/download0/nuvio-poc'
 
 
 def run(args, **kwargs):
@@ -754,13 +757,13 @@ def title_ui_sources(web, provider):
     replacements = (
         ('#include "evo_webui.h"', '#include "evo_webui.h"\n#include "local_ui.h"'),
         ('        else\n            proxy_request(fd, req, got, hl, method, path);',
-         '''        else if (!strcmp(s_hook_profile, "nuvio")) {
+         f'''        else if (!strcmp(s_hook_profile, "nuvio")) {{
             char tag[96];
             size_t tag_len = is_html_entry(path) ? hook_tag(tag, sizeof tag) : 0;
             int status = nuvio_local_ui_send(fd,
                 nuvio_local_ui_root(), method, path, tag, tag_len);
             LOG("title-ui: response status=%d", status);
-        } else
+        }} else
             proxy_request(fd, req, got, hl, method, path);'''),
         ('    if (s_local_root[0]) {\n        s_check_rc = 1;',
          '''    /* Keep the configured origin as the existing browser-storage key;
@@ -887,6 +890,24 @@ const char *evo_nuvio_startup_status(void)
 """
 
 
+def specialize_data_paths(evo):
+    """Rewrite product /data/nuvio paths injected by patches onto DATA_DIR."""
+    if DATA_DIR == '/data/nuvio':
+        return
+    import re
+    data_re = re.compile(r'/data/nuvio(?!-poc)')
+    download_re = re.compile(r'/download0/nuvio(?!-poc)')
+    for p in evo.rglob('*'):
+        if not p.is_file() or p.suffix not in (
+                '.c', '.h', '.cpp', '.hpp', '.inc', '.json', '.txt', '.md', '.py', '.sh'):
+            continue
+        text = p.read_text(errors='ignore')
+        updated = data_re.sub(DATA_DIR, text)
+        updated = download_re.sub(DOWNLOAD0_DIR, updated)
+        if updated != text:
+            p.write_text(updated)
+
+
 def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     """Keep the native player; open its existing Nuvio bridge at startup."""
     app = evo/'projects/evoplayer'
@@ -906,12 +927,14 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     param['localizedParameters']['en-US']['titleName'] = identity['localizedParameters']['en-US']['titleName']
     param.setdefault('pubtools', {})['loudnessSnd0'] = identity['pubtools']['loudnessSnd0']
     param_path.write_text(json.dumps(param, indent=2)+'\n')
-    # Separate settings from an installed EVO. All persistent writes stay /data.
+    # Separate settings from an installed EVO and from product Nuvio on main.
+    # All persistent writes stay under /data.
     for p in app.rglob('*'):
         if p.suffix in ('.c', '.h', '.cpp', '.hpp'):
             s = p.read_text()
             if '/data/evoplayer' in s or '/download0/evoplayer' in s:
-                p.write_text(s.replace('/data/evoplayer', '/data/nuvio').replace('/download0/evoplayer', '/download0/nuvio'))
+                p.write_text(s.replace('/data/evoplayer', DATA_DIR).replace(
+                    '/download0/evoplayer', DOWNLOAD0_DIR))
     replace_once(app/'core/src/Application.cpp',
                  '        evo_webui_pump();   /* #101: the system browser, when a web UI is open */',
                  '''        /* Nuvio starts once its durable settings are reachable. Existing
@@ -977,7 +1000,7 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     stream_io = app/'media/src/evo_stream_io.c'
     stream_io.write_text(fix_network_reader(stream_io.read_text()))
     # Keep diagnostics available without a USB stick on this console.
-    replace_once(app/'src/evo_boot_log.c', '"/mnt/usb0/evo.log"', '"/data/nuvio/evo.log"')
+    replace_once(app/'src/evo_boot_log.c', '"/mnt/usb0/evo.log"', f'"{DATA_DIR}/evo.log"')
     # Omit the unused AV1 add-on archive from the baseline pacbrew build.
     # No stub decoder is substituted; FFmpeg's available decoders are unchanged.
     script = evo/'scripts/package-app.sh'
@@ -1174,6 +1197,7 @@ def main():
     provide_hui(evo)
     adapt(evo, loopback_diagnostic=loopback_diagnostic, title_ui=args.title_ui, auto_bootstrap=args.auto_bootstrap is not None)
     polish.apply(evo, nv)
+    specialize_data_paths(evo)
     import native_remote
     native_remote.patch_native(evo / 'projects/evoplayer')
     patches.write_patch(fetch('evo-player-nuvio-source')[1], evo, ROOT/'patches/evo.patch')

@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import urllib.parse
 import uuid
-from build import WORK, ROOT, TITLE
+from build import WORK, ROOT, TITLE, DATA_DIR
 from install import helper
 
 
@@ -144,11 +144,11 @@ def main():
             if hashlib.sha256(read(temp)).digest()!=hashlib.sha256(data).digest():raise RuntimeError('Console staging verification failed')
             ftp.rename(temp,path)
         if args.sync_addons:
-            conf=read('/data/nuvio/nuvio.conf').decode()
+            conf=read(f'{DATA_DIR}/nuvio.conf').decode()
             fields=dict(line.split('=',1) for line in conf.splitlines() if '=' in line)
             host=fields['host'];port=int(fields['port'])
             if '/' in host or '..' in host:raise RuntimeError('Invalid stored UI host')
-            store_path=f'/data/nuvio/webui/{host}_{port}.json'
+            store_path=f'{DATA_DIR}/webui/{host}_{port}.json'
             original=read(store_path);store=json.loads(original)
             profile=str(json.loads(store.get('activeProfileId','"1"')))
             envelope=json.loads(store.get('installedAddonUrls','[]'))
@@ -160,7 +160,7 @@ def main():
             if len(manifests)>12 or any(len(u.encode())>=512 or urllib.parse.urlsplit(u).scheme not in ('http','https') for u in manifests):
                 raise RuntimeError('Synced addons exceed native provider limits')
             # Private backup stays on the console; never print addon URLs/tokens.
-            backup='/data/nuvio/webui/backup-'+hashlib.sha256(original).hexdigest()+'.json'
+            backup=f'{DATA_DIR}/webui/backup-'+hashlib.sha256(original).hexdigest()+'.json'
             ftp.storbinary('STOR '+backup,io.BytesIO(original))
             if args.test_addon:
                 if isinstance(envelope,dict):envelope['profiles'][profile]=urls
@@ -168,7 +168,7 @@ def main():
                 store['installedAddonUrls']=json.dumps(envelope)
                 write(store_path,json.dumps(store).encode())
             config=json.dumps({'addons':manifests}).encode()
-            write('/data/nuvio/addons.json',config)
+            write(f'{DATA_DIR}/addons.json',config)
             # Also configure an existing standalone EVO settings root when present.
             try:ftp.cwd('/data/evoplayer')
             except ftplib.error_perm as exc:

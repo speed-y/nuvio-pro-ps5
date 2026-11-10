@@ -21,7 +21,7 @@ HELPER_INFO = {
     'promote.elf': ('Nuvio Pro permission promote',
         'One-time helper that grants the Nuvio Pro title its network privileges.'),
     'control-1.elf': ('Nuvio Pro register title',
-        'Registers /data/homebrew/PPSA99996 with ShadowMount.'),
+        f'Registers /data/homebrew/{TITLE} with ShadowMount.'),
     'control-2.elf': ('Nuvio Pro title information',
         'Reports whether the Nuvio Pro folder title is installed and mounted.'),
     'control-3.elf': ('Nuvio Pro launch title',

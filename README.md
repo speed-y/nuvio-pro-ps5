@@ -2,6 +2,11 @@
 
 <img src="assets/logo.png" width="190" alt="Nuvio">
 
+> **PoC branch note:** `cursor/native-ui-poc-6fe1` builds a separate title
+> `PPSA99995` / Nuvio Native PoC with data under `/data/nuvio-poc` so it can sit
+> beside an installed product Nuvio. See [docs/NATIVE_UI_POC.md](docs/NATIVE_UI_POC.md).
+> Product identity on `main` remains `PPSA99996` / `/data/nuvio`.
+
 Nuvio for your PS5, built around the controller.
 
 This is the standalone home for [Nuvio Pro](https://github.com/speed-y/nuvio-pro-ps5), my independently maintained PS5 fork.

@@ -15,7 +15,7 @@ class NativeUiPocSourceTests(unittest.TestCase):
     def test_theme_defaults_are_dark_nuvio_like(self):
         header = (ROOT / 'scripts/native_ui_poc/nuvio_poc_params.h').read_text()
         self.assertIn('0x0b0d10', header)
-        self.assertIn('0x3dd6c6', header)
+        self.assertIn('0x7b62ff', header)
         self.assertIn('NUVIO_POC_MAX_ITEMS', header)
 
     def test_sample_catalog_is_small_json_array(self):
@@ -102,7 +102,7 @@ class NativeUiPocPolishTests(unittest.TestCase):
                 '        evo_webui_pump();   /* #101: the system browser, when a web UI is open */\n')
             native_ui_poc.patch_boot_flag(app)
             text = path.read_text()
-            self.assertIn('/data/nuvio/native_ui_poc', text)
+            self.assertIn('/data/nuvio-poc/use_browser', text)
             self.assertIn('evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio")', text)
             self.assertIn('ScreenId::NuvioPoc', text)
 

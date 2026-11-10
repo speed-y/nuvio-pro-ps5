@@ -44,8 +44,8 @@ int sceKernelGetAppInfo(pid_t pid, void *out) {
         memcpy(bytes+offset,"PPSA99998",10);
     }
     else if (getenv("UPSTREAM_TITLE")) memcpy(bytes+offset,"PPSA99997",10);
-    else memcpy(bytes+offset,"PPSA99996",10);
-    if (getenv("DOUBLE_TITLE")) memcpy(bytes+40,"PPSA99996",10);
+    else memcpy(bytes+offset,"PPSA99995",10);
+    if (getenv("DOUBLE_TITLE")) memcpy(bytes+40,"PPSA99995",10);
     if (getenv("UNTERMINATED")) bytes[offset+9]='X';
     return 0;
 }
@@ -165,8 +165,8 @@ int kill(pid_t pid, int signal) {
             (root/'eboot.bin').write_bytes(installed)
             source = (ROOT/'vendor/control.c').read_text().replace('AURORA', 'NUVIO')
             source = source.replace('../../payloads/common/sha256.h', str(ROOT/'vendor/sha256.h'))
-            source = source.replace('PPSA99997', 'PPSA99996').replace('PPSA99998', 'PPSA99996')
-            source = source.replace('/data/homebrew/PPSA99996', str(root))
+            source = source.replace('PPSA99997', 'PPSA99995').replace('PPSA99998', 'PPSA99995')
+            source = source.replace('/data/homebrew/PPSA99995', str(root))
             source = source.replace('/data/homebrew/ps5-homebrew-dev', str(root/'no-backup'))
             (root/'control.c').write_text(source)
             exe = root/'verify'
