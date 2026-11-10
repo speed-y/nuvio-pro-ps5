@@ -179,6 +179,8 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     native_preferences.patch_native(app)
     import native_skin
     native_skin.patch_native(app)
+    import native_ui_poc
+    native_ui_poc.patch_native(app, evo)
 
 
 def patch_speedtest(app):

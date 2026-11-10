@@ -5352,7 +5352,6 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Launched title via `control-3.elf` (`pid 1243`, `app_id 8218`).
   - Read `/data/nuvio/evo.log`: recorded `status=200`, storage restoration of 1,049,100 bytes, `route profileSelection`, and stable AGC rendering at 60 FPS (1200 frames, 0 timeouts).
 
-
 ## ShadowMountPlus webui roots and M.2 installs, 2026-11-12
 
 - Owner result for `v0.2.0-alpha.5`: `[OWNER-REPORTED ON 12.70]` the release opens normally. The install location and eboot hash were not recorded.
@@ -5394,3 +5393,25 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Launched title via `control-3.elf` (`pid 1326`, `app_id 16410`).
   - Confirmed title mounted and active via `control-2.elf`.
   - Read `/data/nuvio/evo.log`. The log confirmed promotion, loopback server listening on 8686, route `profileSelection`, and user navigation to `home`.
+
+## Native UI proof host frames, 2026-11-10
+
+[LOCALLY BUILT] Phase 1 native UI proof sources land under `scripts/native_ui_poc/`.
+`bash scripts/native_ui_poc_preview.sh 1920 1080` draws the PoC screen through the
+pinned EVO hui OpenGL path and writes host frames under `output/uiview/`.
+
+Observed host frames:
+
+| Frame | Role |
+|---|---|
+| `hui_nuvio_poc.png` | Dark hero, Featured shelf, focus ring, poster row |
+| `hui_nuvio_poc_detail.png` | Detail card with Play |
+| `hui_nuvio_poc_error.png` | Failed metadata state without a frozen frame |
+
+Host preview uses EVO `f6e43e65` and `ps5-homebrew-ui` `47f4b986`.
+It does not establish console execution.
+
+[PENDING] Firmware 12.70 install after the owner accepts the host layout.
+Pending console checks: D-pad or stick focus movement, failed metadata live frame,
+Play into the existing EVO player, and return to the same native card.
+The browser path remains the default until `/data/nuvio/native_ui_poc` exists.
