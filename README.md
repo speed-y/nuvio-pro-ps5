@@ -172,6 +172,7 @@ It's still a media player. The classification is a workaround for that home-scre
 | Install, start or update Nuvio Pro | [Operations](docs/OPERATIONS.md) |
 | Build the port | [Build](docs/BUILD.md) |
 | Understand the browser and native player | [Architecture](docs/ARCHITECTURE.md) |
+| Judge a native replacement for the browser UI | [Native UI feasibility](docs/NATIVE_UI_FEASIBILITY.md) |
 | Check what the console tests establish | [Validation](docs/VALIDATION.md) |
 | Cut a release | [Release](docs/RELEASE.md) |
 | Diagnose a failure or restore files | [Troubleshooting](docs/TROUBLESHOOTING.md) |
