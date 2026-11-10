@@ -124,6 +124,8 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     subtitle_handoff.patch_native(app)
     import native_preferences
     native_preferences.patch_native(app)
+    import native_ui_poc
+    native_ui_poc.patch_native(app, evo)
 
 
 def patch_speedtest(app):

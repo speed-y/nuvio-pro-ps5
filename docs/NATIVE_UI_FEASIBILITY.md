@@ -398,6 +398,8 @@ Proceed with the proof of concept first. Do not proceed with a full migration on
 
 The renderer problem is largely solved inside the pinned player. The product problem is not. Nuvio TV's look and its account logic are still the browser application. A small native screen can show whether the kit can carry that look. If it cannot, further native UI work is the wrong spend. Improvements to the current browser then remain the better path.
 
+Phase 1 implementation notes and host-preview steps are in [Native UI proof](NATIVE_UI_POC.md).
+
 ## 14. Sources and references
 
 Repository files:
@@ -416,6 +418,9 @@ Repository files:
 - [scripts/ps5-general-hui.cpp](../scripts/ps5-general-hui.cpp)
 - [scripts/ps5-text-input-session.c](../scripts/ps5-text-input-session.c)
 - [scripts/native_remote.py](../scripts/native_remote.py)
+- [docs/NATIVE_UI_POC.md](NATIVE_UI_POC.md)
+- [scripts/native_ui_poc/](../scripts/native_ui_poc/)
+- [scripts/native_ui_poc_preview.sh](../scripts/native_ui_poc_preview.sh)
 
 Pinned revisions, inspected 2026-11-10:
 
