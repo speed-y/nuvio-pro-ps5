@@ -62,3 +62,20 @@ function canResumePs5Playback() {
   }
   return true;
 }
+
+// Only an explicit live return can replace the browsing route with this title.
+// A recovered checkpoint must never reopen an episode or bypass profile gates.
+let ps5PlaybackDetail = null;
+globalThis.__nuvioAcceptPlaybackDetail = function (saved) {
+  if (!saved.detail?.itemId || !canResumePs5Playback()) return;
+  const params = { ...saved.detail };
+  delete params.playOnLoad;
+  delete params.autoOpenContinueWatching;
+  ps5PlaybackDetail = { profileId: saved.profileId, params };
+};
+
+globalThis.__nuvioTakePlaybackDetailRoute = function () {
+  const pending = ps5PlaybackDetail;
+  ps5PlaybackDetail = null;
+  return pending?.profileId === String(ProfileManager.getActiveProfileId()) ? pending.params : null;
+};

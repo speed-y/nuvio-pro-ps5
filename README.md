@@ -32,7 +32,13 @@ Their work made this possible. This fork preserves their history, credits and li
 - **Native Search entry.** Triangle opens Search with the PS5 keyboard, without losing your place when you return from a result.
 - **Better playback return.** Circle brings you back to browsing without automatically starting the same video again.
 - **Resume and progress handling.** Pass saved positions to native playback and bring progress back to the correct profile, movie or episode.
+  Native playback checkpoints changed progress every 30 seconds for recovery after a forced close or restart. PS5 validation remains pending.
+- **Intro, recap and credits skipping.** Honor per-segment auto-skip settings, with native R1 prompts otherwise. This feature still needs PS5 validation.
+- **Native next episode.** Show EVO's next-episode prompt, then let Nuvio select a fresh stream.
+  Circle on the prompt returns to the series episodes or movie page. Movies and final episodes also have an end card.
+  Connection retries keep their buffering indicator without warning popups. These changes still need PS5 validation.
 - **Browsing fixes.** Correct collection filters, improve Back navigation, fix focus styling and make settings actions reachable with the controller.
+- **Native download test.** Settings > Playback > Speed test measures one connection to TorBox's nearest test CDN. PS5 validation remains pending.
 - **PS5 presentation.** Custom home-screen artwork and selection music, plus PS5 naming during QR login.
 - **A self-contained install.** The PS5 serves its own browser UI and loads the bundled helper. No computer needs to host the interface.
 
@@ -96,6 +102,13 @@ to `build/EVO-PLAYER-PS5-*/output/app/PPSA99996/` and the helpers to
 - Triangle opens Search and its native keyboard. Returning from a result restores Search without reopening the keyboard.
 - Play options on title details opens the existing menu without a long press.
 - Circle stops playback that started from Nuvio and returns to browsing.
+- There is no dedicated Change stream button or player menu. Return to browsing to select another stream.
+- During native playback, Down opens the subtitle picker. Up toggles subtitles, and R2 opens the audio-track picker.
+- During a native Skip intro, Skip recap or Skip credits prompt, press R1 to skip.
+- Otherwise, R1 starts the next episode when its prompt appears. Without either prompt, R1 keeps its chapter action.
+- During the next-episode prompt, L1 selects Keep watching and cancels that episode's automatic transition.
+- Skipping requires Settings > Playback > Skip Intro and available IntroDB timestamps.
+- Native playback honors the individual Auto-skip intro, recap, outro and movie-credits settings. Disabled types keep manual prompts.
 - Player settings opens the native EVO interface. Playback started there keeps
   EVO's own stop confirmation.
 - Settings > Playback > Player settings opens that interface without a pointer.
@@ -106,6 +119,33 @@ Do not rely on long-press X for item actions. Use Square, Options or Play option
 
 In Player settings, open Settings > Audio and enable Audio Passthrough.
 Start a new stream to apply it. Your HDMI soundbar or receiver decodes the audio.
+
+Automatic and manual credit skips preserve known post-credit scenes. Timestamp coverage and accuracy depend on the title and its cut.
+The pinned movie mapping supports credits and post-credit scenes, not movie intros. Series mapping supports intros, recaps and outros.
+Missing timestamps leave playback unchanged. Lookup can add up to four seconds before native playback starts.
+Auto-skip acts when playback enters an enabled segment. Pause, buffering and scrubbing defer automatic skips until playback becomes ready.
+Otherwise, each prompt stays fully visible for ten seconds, then dims to 50% opacity. R1 remains available until the segment ends.
+The "Dims in" countdown pauses with playback. It never starts a skip automatically.
+Settings apply when starting a native playback session. Turning off Skip Intro disables both automatic skips and manual prompts.
+
+Native next episode uses Nuvio's playback threshold, autoplay, countdown and still-watching settings.
+With autoplay enabled, the default countdown lasts three seconds. Pausing or buffering freezes it.
+With autoplay disabled, the prompt requires R1 instead.
+End suggestions appear only with playback controls and disappear after ten seconds. Hiding and reopening controls permits another ten-second display.
+This display limit does not cancel autoplay. The still-watching confirmation remains separate.
+At the still-watching limit, playback pauses with a 60-second prompt. X starts the next episode, while Circle or timeout returns to details.
+The browser returns briefly to resolve the next aired episode through the existing stream-selection policy.
+Manual source selection or a failed automatic selection opens the next episode's stream picker.
+Recovery after a forced close restores progress without starting another episode automatically.
+
+Playback > General also controls native loading status, the delayed pause synopsis, parental warnings and the OSD clock.
+Post-play recommendations offer up to three related titles near the configured movie threshold or series ending.
+R1 opens the selected title's details, Triangle changes the pick, and L1 dismisses recommendations. An active skip prompt keeps R1 priority.
+These native cards do not play recommendation trailers or start another title automatically.
+Metadata preparation shares the four-second skip-lookup window. Missing or late metadata leaves the corresponding card absent.
+Known post-credit scenes delay recommendations. Settings apply when starting playback and still need console validation for this candidate.
+Remembered sources save after native playback produces a ready frame, not merely after selecting a stream.
+Source reuse matches fresh addon results instead of storing signed stream URLs. Unsupported plugin-only choices stay hidden on PS5.
 
 ## Home-screen tile and app ID
 

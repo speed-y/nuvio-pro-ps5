@@ -650,7 +650,12 @@ def provide_hui(evo):
 def fix_network_reader(text):
     """Keep provider range reads on FFmpeg's bounded single-connection reader."""
     start = text.index('    /*\n     * A big file over HTTP is fetched by several connections at once.')
-    end = text.index('    int rc = avformat_open_input', start)
+    # Stop at the HTTP block, not avformat_open_input: the new SMB and NTFS
+    # readers between them own their custom IO and must remain intact.
+    if text.count('        ctx->pio = evo_pio_open(') != 1:
+        raise RuntimeError('Pinned parallel reader block changed')
+    body = text.index('        ctx->pio = evo_pio_open(', start)
+    end = text.index('    }\n\n', body) + len('    }\n\n')
     block = text[start:end]
     if block.count('ctx->pio = evo_pio_open(') != 1 or block.count('AVFMT_FLAG_CUSTOM_IO') != 1:
         raise RuntimeError('Pinned parallel reader block changed')
@@ -757,18 +762,11 @@ def title_ui_sources(web, provider):
             LOG("title-ui: response status=%d", status);
         } else
             proxy_request(fd, req, got, hl, method, path);'''),
-        ('    s_check_rc = 0;\n    pthread_t t;',
-         '''    /* Packaged Nuvio files need no second HTTP process. Keep the
-     * configured origin as the browser-storage key for existing profiles. */
-    if (!strcmp(s_hook_profile, "nuvio")) {
-        s_check_rc = 1;
-        s_state = P_CHECK;
-        s_frames = 0;
-        LOG("title-ui: packaged assets selected");
-        return 0;
-    }
-    s_check_rc = 0;
-    pthread_t t;'''),
+        ('    if (s_local_root[0]) {\n        s_check_rc = 1;',
+         '''    /* Keep the configured origin as the existing browser-storage key;
+     * packaged Nuvio needs no external host preflight. */
+    if (!strcmp(s_hook_profile, "nuvio") || s_local_root[0]) {
+        s_check_rc = 1;'''),
     )
     for old, new in replacements:
         if web.count(old) != 1:
@@ -890,6 +888,49 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     s = s.replace('BUILD_SHA="$(git -C "${EVO}" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)"',
                   'BUILD_SHA="'+fetch('evo-player-nuvio-source')[0]['commit'][:8]+'-nuvio"')
     script.write_text(s)
+    disable_stock_services(evo)
+
+
+def disable_stock_services(evo):
+    """Do not install another title's updates or launch a new disk payload."""
+    app = evo/'projects/evoplayer'
+    updater = app/'addons/src/evo_updater.c'
+    text = updater.read_text()
+    # Keep the upstream API, including its pure formatting/version functions,
+    # but remove every network, staging and replacement entry point.
+    for name, result in (('evo_updater_check', '(void)prefer_pro;\n    set_state(EVO_UPD_FAILED, "Install updates from Nuvio Pro releases");'),
+                         ('evo_updater_download', 'return 0;'),
+                         ('evo_updater_cancel', ''),
+                         ('evo_updater_apply', 'return 0;')):
+        start = text.index('{', text.index('\n' + ('void ' if name in (
+            'evo_updater_check', 'evo_updater_cancel') else 'int ') + name))
+        end = text.index('\n}', start) + 2
+        text = text[:start] + '{\n    ' + result + '\n}' + text[end:]
+    updater.write_text(text)
+    # The new unauthenticated LAN log/phone-input server is not part of Nuvio's
+    # loopback browser bridge. Keep it inactive, including manual bind probes.
+    log_server = app/'src/evo_log_server.c'
+    text = log_server.read_text()
+    for name, result in (('void evo_log_server_start', ''),
+                         ('int evo_log_server_probe_port', '(void)port; return ENOTSUP;')):
+        start = text.index('{', text.index('\n' + name))
+        end = text.index('\n}', start) + 2
+        text = text[:start] + '{\n    ' + result + '\n}' + text[end:]
+    log_server.write_text(text)
+    replace_once(app/'core/src/Application.cpp',
+        '                    evo_updater_check(evo_direct_mem_kernel_total_mb() > 12288);',
+        '                    /* Nuvio releases are installed separately. */')
+    ntfs = app/'src/evo_ntfs.c'
+    text = ntfs.read_text()
+    start = text.index('#ifdef EVO_APP_MODULE\n/* ---- disks through the helper payload')
+    end = text.index('\n#endif', start) + len('\n#endif')
+    text = text[:start] + '/* Nuvio does not launch the upstream NTFS disk helper. */' + text[end:]
+    text = text.replace('#ifdef EVO_APP_MODULE\n    refresh_remote();\n#endif', '')
+    ntfs.write_text(text)
+    replace_once(app/'Makefile', '    src/generated/evo_ntfs_helper_elf.c \\\n', '')
+    replace_once(evo/'scripts/package-app.sh',
+        '    bash "${REPO_ROOT}/tools/gen_ntfs_helper.sh" || die "NTFS helper payload did not build"',
+        '    # Nuvio does not build or embed the upstream NTFS disk helper.')
 
 
 def patch_index(html):
@@ -1016,6 +1057,8 @@ def main():
     provide_hui(evo)
     adapt(evo, loopback_diagnostic=loopback_diagnostic, title_ui=args.title_ui, auto_bootstrap=args.auto_bootstrap is not None)
     polish.apply(evo, nv)
+    import native_remote
+    native_remote.patch_native(evo / 'projects/evoplayer')
     patches.write_patch(fetch('evo-player-nuvio-source')[1], evo, ROOT/'patches/evo.patch')
     patches.write_patch(fetch('nuvio-tv-source')[1], nv, ROOT/'patches/nuvio.patch')
     bootstrap_metadata = None

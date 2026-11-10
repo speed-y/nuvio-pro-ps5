@@ -1,0 +1,50 @@
+// Pinned NuvioTVSmart 25b984f: focus restoration in render(), and loadStreams completion.
+function renderSelection() {
+      const previousVirtualModel = this.streamVirtualized ? this.streamVirtualModel : null;
+      const previousFocusedIndex = Number(this.focusState?.row);
+      const previousFocusedKey =
+        previousVirtualModel &&
+        Number.isInteger(previousFocusedIndex) &&
+        previousFocusedIndex >= 0 &&
+        previousFocusedIndex < previousVirtualModel.keys.length
+          ? previousVirtualModel.keys[previousFocusedIndex]
+          : "";
+      const filtered = this.getFilteredStreams();
+      const allStreams = this.getFilteredStreams("all");
+      const virtualizedStreamList = Boolean(this.shouldUseStreamVirtualization(allStreams) && filtered.length);
+      if (virtualizedStreamList && previousFocusedKey && !this.streamVirtualFocusReset) {
+        const nextKeys = this.getStreamVirtualKeys(filtered);
+        const nextFocusedIndex = nextKeys.indexOf(previousFocusedKey);
+        if (nextFocusedIndex >= 0) {
+          this.focusState = {
+            ...this.focusState,
+            zone: "card",
+            row: nextFocusedIndex,
+            index: nextFocusedIndex
+          };
+        }
+      }
+}
+function completeSelection() {
+        if (this.streams.length) {
+          const visibleStreams = this.getFilteredStreams();
+          const maxCardIndex = Math.max(0, visibleStreams.length - 1);
+          let initialIndex = clamp(Number(this.focusState?.index || 0), 0, maxCardIndex);
+          const preferred = String(this.params?.preferredStreamId || "").trim();
+          if (preferred) {
+            const prefIdx = visibleStreams.findIndex((s) => String(s?.id || "") === preferred);
+            if (prefIdx >= 0) {
+              initialIndex = prefIdx;
+            }
+          }
+          const rowIndex = clamp(initialIndex, 0, this.streams.length - 1);
+          this.focusState = {
+            zone: "card",
+            index: clamp(initialIndex, 0, maxCardIndex),
+            row: rowIndex,
+            action: String(this.focusState?.action || "play")
+          };
+        } else {
+          this.focusState = { zone: "filter", index: 0 };
+        }
+}

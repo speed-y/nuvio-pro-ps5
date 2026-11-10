@@ -3371,3 +3371,1485 @@ The environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.
 
 [PENDING CONSOLE TEST] No installation or console execution occurs for this renamed build.
 Verify the displayed tile name, loading message and device-registration label on hardware before claiming those results.
+
+## Manual native intro and credits skipping, 2026-10-31
+
+[SOURCE-VERIFIED] The pinned frontend already queries IntroDB for episode intro/outro and movie credits timestamps.
+The new PS5 handoff waits up to four seconds for that repository, using the player's existing identity and profile setting.
+Failed lookups and missing data leave playback available without skip prompts.
+A changed route, selection or profile cancels the stale handoff before storage save or native start.
+Native EVO receives at most four timestamp records. No account data or additional metadata service enters the native player.
+
+R1 skips only during a valid Skip intro or Skip credits prompt. Outside a prompt, it retains chapter navigation.
+X retains pause. Native skipping stays manual even when frontend auto-skip settings contain enabled segment types.
+The target rules preserve known movie post-credit scenes. Timestamp coverage cannot verify the selected stream's cut.
+Prompts survive faded controls and hide during scrubbing, buffering, live streams, music and playback diagnostics.
+Invalid intervals and targets beyond duration produce no prompt. Each handoff replaces the preceding title's intervals.
+After activation, five-second suppression hides stale samples but permits another attempt after a failed seek.
+
+[HOST-TESTED] Configured `make check` passes 87 tests, with zero hard documentation findings.
+The new regressions cover emitted-hook timing, exact episode arguments, profile and selection changes, missing data and lookup timeout.
+Native cases cover interval boundaries, malformed data, duration mismatch, scene targets and suppression expiry.
+A disposable probe runs the generated PlayerScreen input methods and actual URL decoder with synthetic playback services.
+GCC ASan/UBSan accepts R1 intro/credits targets, unchanged X pause, chapter fallback, Circle return and eight blocked states.
+The initial probe fails on unused fixture declarations. Its corrected Clang attempt cannot link the unavailable sanitizer runtime.
+Repeating the script before changing its compiler hits the same runtime limitation. Switching the fixture to GCC succeeds.
+A separate Node probe runs the real pinned IntroDB mapping, target rules and PS5 adapter against synthetic metadata.
+It verifies the movie scene boundary and exact season/episode query without external requests.
+
+[HOST-RENDERED] EVO's existing preview workflow renders the actual native RmlUi sources through its CPU rasterizer.
+RmlUi 6.2 uses the upstream tag commit `2230d1a6e8e0848ed87a5761e2a5160b2a175ba4`.
+Host dependencies are GCC 12.2.0, FreeType 2.12.1, libpng 1.6.39 and zlib 1.2.13.
+Inspected 1080p frames show normal controls, a legible intro prompt and the conditional L1-only chapter hint.
+The inspected 4K frame shows credits skipping with the normal playback chrome hidden.
+A nine-second host sequence connects generated PlayerScreen input methods to the native renderer.
+It shows X pause/resume, R1 prompt dismissal, chapter-hint restoration and credits skipping before a known scene.
+Synthetic clocks and a stub seek service supply this sequence. It does not show PS5 decoding or physical controller input.
+The preview reports upstream browser stylesheet warnings, outside the playback prompt rules.
+An unconfigured subagent `make check` selects GCC and encounters the previously recorded promotion warning.
+The configured LLVM check succeeds without changing promotion code.
+
+[LOCALLY BUILT] `. .cache/orb-tools/env; make build` succeeds as `9ee9a542-nuvio_1031-2335`, with `integrity: valid`.
+The receipt matches all 240 title files and eight unstripped helpers. Both upstream patches regenerate.
+Environment: Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+The first build compiles FFmpeg and populates the existing build cache. Source pins and the clean-room runtime hash remain unchanged.
+
+| Manual-skip candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 35996804 | `7589f5b2c72fd7adc3a620de77ecf9891b46a091340689fd10aafda945343fb0` |
+| `webui/app.bundle.js` | 3180782 | `3828cf2ab2f8b9b2e235ec8b596673b56d0f4efc4beb5c90945c05d488010acc` |
+| Unchanged `webui/css/bundle.css` | 545529 | `d8dbe16e41e9b57dcced21886fdc5a924528eee83b9f93ac3b1813f7bead303d` |
+| Unchanged `webui/index.html` | 2643 | `531a5b7344d5d4a8728bc339ddf5c8d8f0ba82512cab8a5a30a7a301a6795c34` |
+
+[PENDING CONSOLE TEST] This candidate needs approved installation and firmware 12.70 testing.
+Verify both prompts, actual seeks, X pause, chapter fallback, subtitles, buffering and Circle return on hardware.
+Test resumed playback, absent timestamps, a second episode and a movie with a known post-credit scene.
+Confirm real metadata access through the console browser. No console connection, installation, firmware change, commit or push occurs here.
+
+## Manual skip countdown, 2026-11-01
+
+[HOST-TESTED] Both native skip prompts remain fully opaque for ten visible playing seconds, then use 50% opacity.
+The text says "Dims in 10s" through "Dims in 1s". Expiry removes the countdown text, not the skip action.
+Pausing freezes the countdown. A new interval, reappearing prompt or new title resets it.
+No countdown value initiates a seek. R1 remains available until the eligible interval ends.
+The extended regression covers millisecond boundaries, a 30-second pause, reset cases and manual skipping after expiry.
+Configured `make check` passes all 87 tests, with zero hard documentation findings. `git diff --check` passes.
+
+[HOST-RENDERED] The native RmlUi CPU preview shows both prompt labels with full and reduced opacity.
+Inspected 1080p frames show countdown values 10 and 1, then the dimmed intro prompt with ordinary controls unchanged.
+A 4K render shows credits skipping with the countdown and normal controls hidden.
+Another frame shows the dimmed credits prompt with those controls hidden.
+An inspected 13-second host fixture updates one native UI instance through the countdown, dimming and final prompt removal.
+The fixture supplies presentation values. It does not demonstrate console timing, decoding or physical controller input.
+The first recording caption overlaps the sample title. The final recording moves it into the empty centre area.
+Host renderer versions remain RmlUi 6.2, GCC 12.2.0, FreeType 2.12.1, libpng 1.6.39 and zlib 1.2.13.
+
+[LOCALLY BUILT] `. .cache/orb-tools/env; make build` succeeds as `9ee9a542-nuvio_1101-0925`, with `integrity: valid`.
+The receipt matches all 240 title files and eight helpers. Both upstream patches regenerate.
+Build versions remain Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+The signed `eboot.bin` is 36002308 bytes, SHA-256 `7f53cb2d4c69669203f7075fe389a1d8dd70b939d6123471f29a5eca5b91ab25`.
+Frontend asset hashes remain those of the preceding manual-skip candidate.
+
+[PENDING CONSOLE TEST] Verify visibility, pause/resume timing and R1 after dimming on the retail PS5 with firmware 12.70.
+The preceding manual-skip hardware cases remain pending. This candidate is not installed, committed or pushed.
+
+## Native progress recovery checkpoints, 2026-11-01
+
+[SOURCE-VERIFIED] Playback still samples measured position in memory, without file or network operations on that thread.
+The existing HTTP accept thread checks once per second and writes changed progress at 30-second intervals.
+The first usable sample and normal completion can save earlier. Unchanged samples need no additional write.
+Routine playback therefore requests at most 120 checkpoints per hour, each smaller than 256 bytes, excluding filesystem overhead.
+Two checksummed slots under `/data/nuvio/webui/` retain the preceding complete checkpoint during an interrupted write.
+The SDK's `sys/fcntl.h` declares `O_SYNC` for synchronous writes. The native code uses the existing open, write and close interfaces.
+No new runtime symbol, worker thread, metadata service or live cloud-sync request enters playback.
+
+[HOST-TESTED] Configured `make check` passes all 88 tests, with zero hard documentation findings.
+The new regression starts separate writer and reader processes, so recovery cannot use surviving native memory.
+It checks the 29.999-second and 30-second boundaries, backward seeks, unknown duration, normal completion and committed zero position.
+Truncated or checksum-damaged records fall back to the preceding checkpoint. Repeated interrupted writes preserve that fallback.
+A wrong session returns no progress. Missing files end recovery, while file-read errors return a retryable failure.
+Frontend checks cover cold startup after 48 hours, unchanged profile-selection rules and recovery after selecting the originating profile.
+Changed, deleted or mismatched profiles and sessions cannot receive the report. Existing transport and writer retry cases still pass.
+
+A disposable Linux concurrency probe delays a checkpoint write by 300 milliseconds on its background thread.
+During that delay, 100000 calls to the real playback sample function complete in 1.992 milliseconds total.
+The disk-writing thread still waits when those calls finish. This checks lock isolation, not PS5 decoding or storage latency.
+The initial disposable probe reports a missing return in its renamed fixture entry point. The corrected probe compiles without that warning.
+
+[LOCALLY BUILT] `. .cache/orb-tools/env; make build` succeeds as `9ee9a542-nuvio_1101-0940`, with `integrity: valid`.
+The receipt matches all 240 title files and eight helpers. Both upstream patches regenerate. `git diff --check` passes.
+Environment versions remain Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Progress-checkpoint candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 36004420 | `354c4963ed26833e8bbe2f0dd62288e7739e6083024526e4c994702c4bbbf332` |
+| `webui/app.bundle.js` | 3181107 | `79582257366dba5fd359d6d34b7ea65b4731875097b9c731095eb371938921b6` |
+
+The browser stylesheet, index page and clean-room runtime retain their preceding candidate hashes.
+
+[PENDING CONSOLE TEST] Confirm checkpoint timing and uninterrupted audio/video during sustained firmware 12.70 playback.
+After several checkpoints, close the title through the console interface, reopen it and select the originating profile.
+Verify Continue Watching for a movie, an exact episode, a backward seek and a second playback session.
+Power-loss durability remains unverified. Healthy writes normally limit lost progress to about 30 seconds plus scheduling delay.
+A damaged latest slot or storage failures can require an older position. This work does not deliberately interrupt console power.
+No console connection, installation, firmware change, commit or push occurs here.
+
+## Native next episode, 2026-11-01
+
+[SOURCE-VERIFIED] The browser captures the next aired episode's metadata before native handoff, not its stream URL.
+EVO receives normalized autoplay, countdown and playback-threshold policy through the existing handoff.
+The default countdown lasts three seconds. Disabling the countdown preserves Nuvio's immediate-transition setting.
+Disabling autoplay or reaching the still-watching limit leaves a manual prompt instead.
+L1 selects Keep watching for the current title session. R1 prioritizes eligible skip segments over the next-episode action.
+Pause, buffering, scrubbing and hidden playback screens freeze the timer. Rewinding before the trigger resets its elapsed time.
+Known credits advance the trigger unless their post-credit gap exceeds the configured threshold.
+No per-frame network request, metadata lookup, new thread or filesystem write enters this path.
+
+[HOST-TESTED] Configured `make check` passes all 90 tests, with zero hard documentation findings. `git diff --check` passes.
+Native regressions cover threshold boundaries, timed and immediate transitions, pause, cancellation, hidden states and fresh handoffs.
+They also cover manual actions, known post-credit gaps, invalid policies and placeholder durations.
+Frontend regressions verify aired checks, still-watching policy, matching sessions, profile changes and one-use launch authorization.
+The real progress-return adapter saves progress before accepting the next action. Cold recovery cannot authorize a transition.
+Separate-process checkpoint tests verify that automatic-launch intent never survives recovery.
+A disposable Node probe executes the pinned frontend's episode sequence and next-episode methods with synthetic playback services.
+It verifies a season boundary, fresh-source routing, consecutive count, captured binge group and manual-picker fallback.
+
+[HOST-RENDERED] The existing RmlUi 6.2 CPU preview renders the actual native playback sources at 1080p and 4K.
+Inspected frames show countdown, manual, simultaneous credits and hidden-controls states without overlapping prompts.
+The first countdown render exposes a conflicting chapter hint because EVO's later visibility update restores it.
+The corrected update hides that hint while the next-episode card owns the buttons. The inspected replacement frame confirms the correction.
+Host versions remain GCC 12.2.0, FreeType 2.12.1, libpng 1.6.39 and zlib 1.2.13.
+The disposable C++ fixture initially fails because its namespace lacks C's unqualified isfinite name.
+Importing std::isfinite fixes the fixture without changing native C. The corrected fixture passes actual generated controller branches.
+R1 skip priority, L1 cancellation, next handoff and chapter fallback all pass with synthetic playback services.
+The host preview retains the upstream browser stylesheet warnings and provider strcasestr declaration warning.
+An inspected ten-second host sequence connects the real timer and generated controller branches to the native renderer.
+It shows pause/resume, cancellation, a manual prompt and handoff dismissal, with synthetic clock and playback services.
+It does not establish physical input, decoding or execution on a console.
+
+[LOCALLY BUILT] `. .cache/orb-tools/env; make build` succeeds as `9ee9a542-nuvio_1101-1301`, with `integrity: valid`.
+The receipt matches all 240 title files and eight helpers. Both upstream patches regenerate.
+Environment: Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Native next-episode candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 36011748 | `744c4030b368d89e2e9e746cff4950003bc4c94356eca96492922baddc6abc91` |
+| `webui/app.bundle.js` | 3184068 | `dc4aadb585716990e32f3aa41709ca82cb04cd7fa14cb1e038adbdeda7a9cf56` |
+
+The browser stylesheet, index page and clean-room runtime retain their preceding candidate hashes.
+
+[PENDING CONSOLE TEST] Test the combined build on firmware 12.70 after approved installation.
+Verify automatic and manual transitions, L1 cancellation, R1 skip priority, source selection, season boundaries and the still-watching limit.
+Check pause, rewind, buffering, EOF, subtitles, progress import and recovery after a forced close.
+Real browser reopen latency, addon resolution, physical controller input and playback performance remain unverified.
+Audio drift after pause or seeking and buffering on the owner's Friends stream remain undiagnosed without affected playback logs.
+This combined candidate remains local, uncommitted, unpushed and not installed.
+
+## Native per-segment auto-skip settings, 2026-11-01
+
+[SOURCE-VERIFIED] Native playback now honors the active profile's individual intro, recap, outro and movie-credit auto-skip settings.
+The Skip Intro master switch disables automatic skips and manual prompts. Settings apply at native handoff.
+Enabled types seek immediately during ready, unpaused playback. Disabled types retain R1 prompts and their ten-second dimming countdown.
+Recaps now have a native Skip recap prompt. Outro aliases share the outro setting without enabling movie-credit auto-skip.
+The existing five-second suppression prevents repeated seeks while pre-seek samples persist. Failed seeks can retry afterward.
+No per-frame filesystem write, network request or new worker thread enters this path.
+
+[HOST-TESTED] The extended handoff and native-policy regressions first fail against the preceding manual-only implementation.
+They pass after the change, including inverse toggle combinations, master-switch changes during lookup, malformed intervals and fresh-title resets.
+A disposable Node probe runs the actual pinned IntroDB mapper, target rules and PS5 adapter without external requests.
+It verifies all four setting policies and movie-credit skipping to the known post-credit scene boundary.
+A disposable native fixture executes the generated automatic-update branch and its actual readiness guard.
+Eleven blocked states produce no automatic seek. Ready playback, manual fallback and exact scene targets pass.
+
+[HOST-RENDERED] Inspected RmlUi 6.2 CPU renders show the new recap prompt at 1080p and 4K, including hidden controls.
+An inspected nine-second host sequence shows manual actions, pause deferral, automatic seeking and the master switch disabled.
+The recording uses real generated skip code with synthetic playback services, not console decoding or physical controller input.
+The first preview snapshot encounters a temporary object-file race during the native build.
+Excluding generated objects fixes the disposable snapshot workflow. No production source change addresses that fixture failure.
+Host renderer versions remain GCC 12.2.0, FreeType 2.12.1, libpng 1.6.39 and zlib 1.2.13.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1101-1311`, with `integrity: valid`.
+The receipt matches all 240 title files and eight helpers. Both upstream patches regenerate.
+Environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Auto-skip candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 36012132 | `b8832ecca8cf75edbc394d883d5807318dffde70f23c53a1852bcfe0489c016a` |
+| `webui/app.bundle.js` | 3184293 | `77667c0e8650604ae19dbb37e5ffe0683cc0ba986a9dab3fd23522b891bb737c` |
+
+[PENDING CONSOLE TEST] Verify each toggle independently, manual fallback, paused entry, buffering, resumed playback and post-credit scenes on firmware 12.70.
+Confirm next-episode transitions and progress recovery remain correct. This candidate remains local, uncommitted, unpushed and not installed.
+The owner reports audio leading video after resume, with EVO Audio Passthrough off. The installed build hash and cause remain unverified.
+This change does not alter pause/resume clocks, audio output or decoder synchronization.
+
+## Quiet playback end and title return, 2026-11-01
+
+[SOURCE-VERIFIED] Nuvio playback now suppresses connection-lost, reconnected and retry-exhausted connection popups in the reader and demux paths.
+Recovery attempts, buffering indicators and private diagnostics remain active. Decoder failures and native-library playback retain their existing presentation.
+Source inspection alone does not identify which warning the owner saw. No affected console log establishes its trigger yet.
+
+The native next-episode card now includes Circle, Back to Nuvio. Movies and final episodes also show an end card.
+Completion waits for decoder drain and empty video/audio queues after demux EOF, rather than the end of network read-ahead.
+Explicit return opens the originating movie page or the series episodes, retaining season and episode focus.
+The live return request overrides next-episode intent. Recovery checkpoints never contain it, and ordinary mid-playback Back remains unchanged.
+
+[HOST-TESTED] Configured `make check` passes all 90 tests, with zero hard documentation findings. `git diff --check` passes.
+Extended regressions cover movie and episode returns, zero-position exits, profile gates, one-use routing and recovery without navigation intent.
+A disposable compiled probe exercises the generated completion accessor, all five connection-toast guards and the actual Circle input branch.
+Buffered packets, decoder tail, pending video packets and queued audio each block completion. Drained playback completes, and seeking clears completion.
+The probe checks native-library confirmation and ordinary Back as controls.
+
+[HOST-RENDERED] Inspected RmlUi 6.2 CPU renders cover countdown, manual next, movie end and overlapping skip prompts at 1080p and 4K.
+An inspected eleven-second recording connects the real countdown and Circle branch to native rendering with synthetic playback services and controller input.
+It shows three return requests dismissing their cards, not physical input, decoding or browser reopening on a PS5.
+Host renderer versions remain GCC 12.2.0, FreeType 2.12.1, libpng 1.6.39 and zlib 1.2.13.
+
+[LOCALLY BUILT] The first build stops at a patch-order anchor before compilation. Moving the end adapter after the existing Back adapter fixes generation.
+Configured `make build` then succeeds as `9ee9a542-nuvio_1101-1359`, with `integrity: valid`.
+The receipt matches all 240 title files and eight helpers. Both upstream patches regenerate.
+Environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+
+| Quiet-end candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 36012964 | `4a41342879e827368b9921df0c99bf2947269ac93142591b69593bbb3b30aded` |
+| `webui/app.bundle.js` | 3185310 | `3af16a793f8b1090c26927408f2377ffa14b1ef48ee7eda2efcdf4b208ce70e8` |
+
+[PENDING CONSOLE TEST] Verify clean EOF, truncated streams, recovery, exhausted retries, movie returns and final-episode returns on firmware 12.70.
+Check season and episode focus, progress import, Circle during autoplay and seeking backward from the end card.
+The warning trigger, audio drift after resume and buffering on Friends remain undiagnosed without console logs.
+This candidate remains local, uncommitted, unpushed and not installed. No new console execution or playback-performance measurement occurred.
+
+## Quiet-end candidate installation, 2026-11-01
+
+[TESTED-ON-CONSOLE] The Mac executor installed `9ee9a542-nuvio_1101-1359` at 14:24:10 UTC through the previously supplied private Minion endpoint.
+The owner confirmed Nuvio was closed. No launch, automatic close, remount or independent unmount check occurred.
+This installation supersedes the preceding not-installed status, not its pending runtime checks.
+
+The installer reread all 240 baseline files and verified backups of all four originals before replacement.
+It replaced only `eboot.bin`, `webui/app.bundle.js`, `assets/rml/playback.rcss` and `assets/rml/playback.rml`. The remaining 236 files stayed unchanged.
+Final complete raw readback matched all 240 candidate hashes and lengths. The source orb independently compared that evidence with its receipt and files.
+The installed native module and browser bundle match the hashes in the preceding candidate table.
+All 23 parent identities and modes remained unchanged. Original file modes remained 0777, and the installer did not access `/data/nuvio`.
+The installation made 2,083 HTTP requests, with zero failures, retries or ambiguous writes. Private Mac backups and evidence remain available.
+
+[PENDING CONSOLE TEST] The title was not launched. Skip policies, progress recovery, next episode and end-card return still need owner runtime testing.
+Audio-sync drift and Friends buffering remain undiagnosed. Source changes remain uncommitted and unpushed in `speed-y/nuvio-pro-ps5`.
+
+## IntroDB loopback-origin correction, 2026-11-01
+
+[TESTED-ON-CONSOLE] The owner reports no intro prompt after 1:06 in Friends S01E14 on the installed 1359 build.
+Read-only console logs confirm repeated video-queue rebuffering, not its network or reader cause.
+The first capture contains approximately 45 seconds of video. The owner's later observation extends beyond that capture.
+The later storage snapshot lacks native session records, so it cannot establish the originating profile's skip settings.
+
+[HOST-TESTED] IntroDB returns HTTP 200 for IMDb `tt0108778`, season 1, episode 14.
+It supplies intro timestamps 66 to 111 seconds and outro timestamps 1357 to 1362 seconds.
+For browser Origin `http://127.0.0.1:8686`, the response instead allows `https://introdb.app`.
+Chromium reproduces the failed CORS fetch from that loopback origin. A no-CORS control reaches the service but cannot read its response.
+This establishes a browser-access defect, not the exact console lookup result. Existing console diagnostics do not record that result.
+
+The PS5 repository now routes the default IntroDB lookup through a console-local metadata endpoint.
+The endpoint constructs a fixed HTTPS service URL from validated episode or movie fields. It accepts no arbitrary destination URL.
+EVO's existing synchronous HTTP client fetches metadata on the HTTP server thread before handoff, not the playback loop.
+Existing browser lookup timeouts, caching, interval mapping and auto-skip settings remain unchanged.
+Other platforms and custom metadata service URLs retain their direct fetch path.
+Private diagnostics record only native result code, HTTP status and response length.
+
+Configured `make check` passes 91 tests with zero hard documentation findings before this evidence update.
+The added regression exercises the emitted native endpoint's series/movie responses, invalid inputs and upstream failure behavior.
+A disposable probe runs the actual patched repository, segment rules and handoff with synthetic Friends metadata.
+It verifies exact intro/outro records, manual and automatic policies, and the ordinary-browser control.
+Another host probe runs the emitted endpoint with EVO's actual socket/TLS client against IntroDB and receives the expected intro timestamps.
+Its first compilation lacks the core include path. Adding that fixture include path makes the probe compile and pass.
+These host checks do not establish PS5 metadata access or prompt display.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1101-1441`, with signed-container `integrity: valid`.
+Environment remains Linux x86-64, Python 3.13.7, Node.js 22.23.2, LLVM 19.1.7, SDK v0.43, pacbrew v0.39 and FFmpeg 7.1.1.
+The build regenerates both upstream patches and the installable receipt.
+
+| Metadata-access candidate | Bytes | SHA-256 |
+|---|---:|---|
+| Signed `eboot.bin` | 36013988 | `1d1cea02b3c338036e7deb81736f1cd84b23e9cc0519f63ca6687318578588e7` |
+| `webui/app.bundle.js` | 3185446 | `2f29c3bd6f8db27131f51b6eb0a23e07c02c95d454c5ad3cd5a7ce79961f7a17` |
+
+[PENDING CONSOLE TEST] Verify Friends S01E14 intro and ending prompts, per-type automatic skipping and metadata failures on firmware 12.70.
+The 1441 candidate remains local, uncommitted, unpushed and not installed. No console settings or playback actions occur during this correction.
+Audio drift and the underlying buffering cause remain unresolved. This change does not alter decoding, pause/resume clocks or media reads.
+
+### Metadata-access candidate installation
+
+[INSTALLATION-VERIFIED] The Mac executor installed build `9ee9a542-nuvio_1101-1441` at 2026-11-01 14:58:00 UTC, 15:58:00 Budapest time.
+The owner authorized this exact build and confirmed Nuvio was closed. Independent unmount status remains unverified.
+The installer verified the complete 1359 baseline and both private original backups before writing.
+Only `eboot.bin` and `webui/app.bundle.js` changed. The other 238 files remained unchanged, with no additions or deletions.
+Complete final raw readbacks matched all 240 candidate hashes and sizes. The source orb independently compared the evidence against its exact receipt.
+Both installed replacement hashes match the preceding table. All 23 parent identities and original file modes remained unchanged.
+All 2,286 installation requests returned HTTP 200, with zero failures, retries or ambiguous writes.
+Private backups and installation evidence remain available on the Mac. No account or storage settings received access.
+
+[PENDING CONSOLE TEST] Installation supersedes the preceding not-installed status, not the pending runtime checks.
+The installer did not launch Nuvio. The owner can now test Friends S01E14's intro prompt from 1:06 to 1:51.
+The exact installed title still needs native metadata-access, intro/outro and automatic-policy validation on firmware 12.70.
+Source changes remain uncommitted and unpushed. Buffering and audio synchronization remain separate unresolved issues.
+
+## Preferred native HUD correction, 2026-11-01
+
+[TESTED-ON-CONSOLE] The owner reports no intro prompt on build 1441 after entering Friends S01E14's intro interval.
+The owner's image shows ordinary playback controls at 1:11, without a skip card or detailed stats overlay.
+The stable read-only log capture records successful native metadata responses, each with result 0, HTTP 200 and 468 bytes.
+Its SHA-256 is `67d5665553ade3882a14180b662728a4eda82635a4ccf7b6767df9873645de8b`.
+The observed R1 seek to 111 seconds does not establish the skip branch. The installed diagnostics cannot distinguish chapter and segment actions.
+
+[SOURCE-VERIFIED] The AGC bridge sends playback parameters to homebrew-ui and prefers its HUD before the RmlUi fallback.
+The original homebrew-ui HUD ignores all three added cards. Its labels match the owner's image.
+Earlier host previews exercised only RmlUi, so those previews missed the preferred renderer's defect.
+The adapter now draws skip, next-episode and playback-ended cards through homebrew-ui as well.
+It owns the copied skip label and draws cards independently of fading playback controls.
+R1 belongs to an active skip segment before next episode or the existing chapter action.
+Event-only diagnostics now distinguish accepted segment policies and R1 segment versus chapter actions. No per-frame logging enters this correction.
+
+[HOST-TESTED] Disposable tooling preserves the 1441 sources and applies only the homebrew-ui adapter to a separate copy.
+The actual OsdScreen, DrawList, bundled fonts and OpenGL backend render through Mesa llvmpipe.
+The unchanged HUD omits the supplied skip card. The corrected HUD displays it with the same synthetic playback parameters.
+Inspected frames cover full-opacity countdown, dimmed prompts with hidden controls, simultaneous credits and next episode, manual next episode and end-only return.
+The 4K credits/next and hidden-controls frames also show separate, unclipped cards.
+All 36 render processes finish with GL error 0. These static host frames do not establish controller handling, playback timing or AGC compositing.
+Host environment: GCC 12.2.0, Mesa 22.3.6, llvmpipe LLVM 15.0.6 and OpenGL 4.5 core.
+
+The HUD regression exercises the emitted set/draw interface with a minimal host drawing surface.
+It checks hidden controls, copied-label lifetime, full/dim opacity, simultaneous cards and empty-state removal.
+The unchanged HUD fails that regression. The corrected adapter passes it.
+Configured `make check` passes 92 tests with zero hard documentation findings. `git diff --check` also passes.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1101-1516`, with signed-container `integrity: valid`.
+The PS5 SDK, compiler, FFmpeg and source pins remain unchanged from build 1441.
+The signed native module is 36,016,356 bytes, SHA-256 `77caa9a8eda41effc7cfc20cf7ef5bd277241759c3ebfef25080e324c54caf71`.
+The browser bundle stays identical to installed build 1441, SHA-256 `2f29c3bd6f8db27131f51b6eb0a23e07c02c95d454c5ad3cd5a7ce79961f7a17`.
+Only the native module differs in the 240-file candidate inventory.
+
+### Playback General settings audit
+
+[SOURCE-VERIFIED] Native handoff consumes autoplay-next, three-second/immediate countdown, percentage/minutes thresholds, Skip Intro and all four auto-skip policies.
+Stream mode, timeout, addon scope, allowed addons, regex and preferred binge group run through Nuvio's existing stream selection.
+Remembered-source identity and cache expiry also remain browser-owned. Saving a selection does not prove that its native playback succeeded.
+Still Watching prevents unattended transitions at the configured count, but currently uses a manual next card rather than Nuvio's timed pause/exit prompt.
+
+[PENDING IMPLEMENTATION] Full General-settings parity is not part of this renderer correction.
+Loading Overlay, Detailed Loading Status, Pause Overlay, Parental Guide and OSD Clock lack native policy handoff.
+Post-play Recommendations and Movie Recommendation Timing also lack their native near-end presentation and selection flow.
+Plugin-only scope remains visible despite the frontend's browser runtime restriction. It needs capability gating or a supported plugin integration.
+These options must not receive a native-support claim from the working skip or next-episode policies.
+
+[PENDING CONSOLE TEST] Build 1516 remains local, uncommitted, unpushed and not installed.
+Verify prompt appearance on firmware 12.70, then distinguish R1 segment and chapter actions with the new event diagnostics.
+Test per-type automatic skips, next episode, ten-second dimming with hidden controls, and Circle return from the end card.
+The renderer correction does not change media reads, decoding or pause/resume clocks. Buffering and audio drift remain unresolved.
+
+### Preferred native HUD candidate installation
+
+[INSTALLATION-VERIFIED] The Mac executor installed build `9ee9a542-nuvio_1101-1516` at 2026-11-01 15:31:20 UTC, 16:31:20 Budapest time.
+The owner authorized this exact build and confirmed Nuvio was closed. Independent unmount status remains unverified.
+The installer verified the complete 1441 baseline and preserved the original native module before any upload.
+Only `eboot.bin` changed. The other 239 files remained unchanged, with no additions, directories or deletions.
+Final complete raw readbacks matched all 240 candidate hashes and sizes.
+The source orb independently compared that evidence with its exact 1516 ZIP and receipt.
+The installed native module matches the size and hash in the preceding candidate record.
+All 23 parent identities and modes remained unchanged. Original file modes remained 0777.
+All 2,249 installation requests returned HTTP 200, with zero failures, retries or ambiguous writes.
+The Mac retains the private original backup and installation evidence. No settings or account state received access.
+
+[PENDING CONSOLE TEST] Installation supersedes the preceding not-installed status, not the pending runtime checks.
+The installer did not launch Nuvio. Test Friends S01E14 from before 1:06, with automatic intro skipping disabled for the manual-prompt check.
+The prompt should remain fully visible for ten playback seconds, then dim while R1 remains available until 1:51.
+Source changes remain uncommitted and unpushed. Full General-settings parity, buffering and audio synchronization remain separate outstanding work.
+
+### Playback General native integration, 2026-11-01
+
+[OWNER-REPORTED CONSOLE RESULT] After installation of build 1516, the owner confirmed that the skip prompt works.
+This supersedes the pending prompt-appearance test above. It does not confirm automatic skip types, next episode or the other General settings.
+
+[SOURCE-VERIFIED] The new candidate carries General presentation policies through a bounded, session-scoped native handoff.
+It adds loading visibility/detail, delayed pause metadata, localized parental warnings, OSD clock and near-end recommendation cards to both native renderers.
+Recommendations use existing source/filter rules, keep known post-credit scenes, and return to selected details without autoplay or trailers.
+Still Watching pauses playback with a 60-second wall timer and explicit continue/return actions.
+Native-ready evidence gates remembered-source writes. PS5 plugin capability checks remove unsupported plugin-only settings and source scope.
+Existing skip, next/countdown/threshold, source-mode/timeout/addon/regex, cache-expiry and binge policies retain their owners.
+
+[HOST-TESTED] Configured `make check` passes 102 tests with zero hard documentation findings. `git diff --check` passes.
+Tests cover independent toggles, threshold units/boundaries, pause and warning timers, Still Watching actions/timeout, stale sessions and recommendation navigation.
+A disposable transport probe uses the pinned cJSON source and socket pairs with fragmented bodies.
+It verifies DTO parsing, session matching, playback-ready evidence, malformed requests, method rejection and the 8,192-byte body limit.
+AddressSanitizer and UndefinedBehaviorSanitizer report no findings in that probe.
+The probe substitutes HTTP-header extraction and response capture, not cJSON parsing, body reads or presentation state.
+
+[HOST-RENDERED] Actual homebrew-ui renders 15 General states at both 1080p and 4K, with GL error 0 in all 30 runs.
+Actual RmlUi renders 19 states at both sizes through EVO's CPU rasterizer.
+Inspected frames cover loading detail/on/off, pause, parental warnings, clock visibility, recommendations with skip, Still Watching and supported Unicode fallback.
+The initial fallback render exposed inline headings, a leftover pause badge and clipped recommendation actions. Corrected captures remove those defects.
+Bounded body containers keep recommendation actions visible. Unchanged card text does not rebuild its RmlUi tree every playback frame.
+The final reset matches the initial normal frame with zero differing pixels at both sizes.
+Preview source inputs match the final generated bridge, HUD source and fallback source/assets byte for byte.
+Synthetic frames do not establish controller input, decoding, AGC compositing or console playback.
+Arabic shaping and CJK font coverage retain existing limitations and do not receive a success claim from the supported Unicode sample.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1101-1555`, with signed-container `integrity: valid`.
+Environment: PS5 SDK v0.43, Clang/LLD 19.1.7, FFmpeg 7.1.1, configured Python 3.13.7 and Node 26.12.1.
+Host previews use GCC 12.2.0, Mesa 22.3.6, llvmpipe LLVM 15.0.6, RmlUi 6.2 and FreeType 2.12.1.
+The source pins remain unchanged. Native title identity remains `PPSA99996`.
+The signed native module is 36,040,388 bytes, SHA-256 `8a0990477441ae8d8c7a7bf6b853d979cb7e6cab72e67104a7b1b0be5e3d857f`.
+The browser bundle is 3,196,487 bytes, SHA-256 `99b6073fcbe34365c6fd5af29d50799ac542b3424a9646c661f1dfad641c0e3b`.
+Only the native module, browser bundle, playback RML and playback RCSS differ from installed 1516. All 240 inventory paths remain unchanged.
+The exact candidate ZIP is 54,775,843 bytes, SHA-256 `82a220cc27816d09d897eb626e411248cfc9720590a81f53a52af1c184ddb195`.
+Its receipt is 26,974 bytes, SHA-256 `7cb8fe3a6447c9e034f419de5836b86831b77958cead3d6289e0505c2948e98e`.
+Full archive CRCs, paths and all receipt hashes pass independent local readback.
+
+[STAGING-VERIFIED] The Mac executor privately staged this exact ZIP and receipt at 2026-11-01 15:58:23 UTC.
+It independently verified all 240 CRCs, safe unique regular-file paths and receipt hashes.
+The saved 1516 evidence predicts four replacements and 236 unchanged files. This comparison is not a fresh console baseline.
+No console request or write accompanied staging. Nuvio remains known open, so installation awaits fresh owner closure confirmation.
+The installer must then reread the complete baseline and verify original backups before replacing files.
+
+[PENDING CONSOLE TEST] No new installation or playback action accompanies this integration.
+Test all General options on firmware 12.70, including disabled states, metadata failure, Still Watching timeout, recommendation details and profile return.
+Metadata availability within the four-second deadline remains network-dependent. Missing data must not imply a disabled setting.
+Buffering and audio synchronization remain unresolved and unchanged by this integration.
+
+### Parental warning tags, 2026-11-01
+
+[SOURCE-VERIFIED] Build 1618 supersedes staged 1555, which must not receive installation.
+Parental warnings now use individual top-right tags below the technical badges and clock, rather than a large card.
+Homebrew-ui uses the existing technical badge dimensions, border, typography and spacing. RmlUi reuses its codec badge class.
+Long labels wrap into bounded rows. Warning visibility remains independent of fading controls and retains its existing playback timer and setting.
+Font checks now inspect individual lines in the selected font, rather than treating newline separators as missing glyphs.
+The integration also removes its new C++ streams, respecting the native CRT restriction documented in the pinned RmlUi source.
+The compiled HUD object has no stringstream or locale references.
+
+[HOST-TESTED] Configured `make check` passes 102 tests with zero hard documentation findings. `git diff --check` passes.
+Actual homebrew-ui renders 17 states at 1080p and 4K, with GL error 0 in all 34 runs.
+Actual RmlUi renders 21 states at both sizes, including ordinary, longer and hidden-controls parental tags.
+Inspected captures show separate tags without text overlap, clipping or a large card in both renderers.
+These synthetic host renders do not establish PS5 execution or AGC compositing.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1101-1618`, with signed-container `integrity: valid`.
+Toolchain versions and source pins remain those recorded for 1555. Title identity remains `PPSA99996`.
+The native module is 36,042,692 bytes, SHA-256 `25b1b7ee79f9a8fb668ebc964d0c9481d5ecbb46ca152baf69b3041b400e5110`.
+The browser bundle remains 3,196,487 bytes, SHA-256 `99b6073fcbe34365c6fd5af29d50799ac542b3424a9646c661f1dfad641c0e3b`.
+Playback RCSS is 17,323 bytes, SHA-256 `92db186b627149dadc2ed043a1f1c241783641908a488befd2a6d04fc0f1a9d9`.
+Playback RML is 7,848 bytes, SHA-256 `07bc600a0d736e911dd538ffff7b6697a50ee0e66a74e1f0e03fd3b8797b664d`.
+Only those four files differ from installed 1516, with 236 unchanged files and no inventory additions or deletions.
+The exact candidate ZIP is 54,776,946 bytes, SHA-256 `ea41a8af255fa2d844d22b2546f093372e1182c86ccdcf418f09d7678b24c12b`.
+Its receipt is 26,974 bytes, SHA-256 `620216ddb344b7e33744d0c8ad6c9999d8c1f2423d845fe391b6115ff75f7ec2`.
+All 240 archive CRCs, paths and receipt hashes pass independent local readback.
+
+[PENDING INSTALLATION AND CONSOLE TEST] Build 1516 remains the latest confirmed installation. Source changes remain uncommitted and unpushed.
+Private Mac staging of 1618 requires no console access. Installation still requires fresh owner closure, baseline verification and verified original backups.
+No new console behavior receives a success claim. The complete General-settings hardware test remains pending.
+
+[STAGING-VERIFIED] The Mac executor independently verified private staging of 1618 at 2026-11-01 16:20:44 UTC.
+Both artifact hashes and all 240 CRCs, sizes, paths and receipt hashes match the candidate above.
+The saved 1516 evidence predicts exactly four replacements and 236 unchanged files, without additions, deletions or parameter metadata changes.
+This comparison is not a fresh console baseline. Staging used no console requests or writes and performed no lifecycle or settings actions.
+Nuvio remains known open. Installation still awaits fresh owner closure and the existing backup and baseline checks.
+
+[INSTALLATION BLOCKED] The installer recorded a stopped 1618 installation attempt at 2026-11-01 21:09:38 UTC.
+The owner's go-ahead satisfied the closure gate. Independent unmount status remains unverified.
+The existing console service root preflight failed with `URLError`, before token, stat, file-read or upload requests.
+A single same-endpoint TCP diagnostic returned no retrievable result. Its outcome remains unknown.
+No fresh baseline or original backups completed. No installed files, settings or lifecycle state changed.
+Build 1516 remains the latest verified installation. Build 1618 remains privately staged, and 1555 remains prohibited from installation.
+The Mac retains private, fsynced stop evidence. Its attempted transfer ended with uncertain delivery, not a success confirmation.
+The source orb checked the exact destination, `.cache/console-1618-installation-evidence.json`, and found it absent.
+Restore existing service connectivity before continuing with fresh baseline checks and verified backups. No write retry accompanied this failure.
+
+### Build 1618 installation retry, 2026-11-02
+
+[CONSOLE FILE-VERIFIED] Exact build `9ee9a542-nuvio_1101-1618` completed installation at 12:05:45 UTC, 13:05:45 Europe/Budapest.
+The owner confirmed restored service connectivity and fresh Nuvio closure before this retry. Independent unmount status remains unverified.
+Fresh complete baseline reads matched installed 1516. The installer verified all four original backups before the first upload.
+Only `eboot.bin`, `webui/app.bundle.js`, `assets/rml/playback.rcss` and `assets/rml/playback.rml` changed. The other 236 files remained unchanged.
+Each replacement received stable raw readback and a persisted, fsynced new fingerprint before final verification.
+Final complete readbacks matched all 240 candidate files by raw bytes, size and SHA-256, using chunks no larger than 1 MiB.
+All 23 parent identities and modes remained unchanged. Original file modes remained 0777, with no additions, deletions or parameter metadata changes.
+No prepare or installation errors or retries occurred. The installer used four upload-begin and four upload-data requests.
+Private verified originals and installation evidence remain on the Mac. Build 1555 never received installation.
+
+[SOURCE-CROSS-CHECKED] The source orb verified the transferred evidence size and SHA-256, then enforced mode 0600.
+The evidence is 97,308 bytes, SHA-256 `95ea92df692e9292fea99fe10d21c948f5e5383d5c74e90b33f414673c442699`.
+All 240 evidence hashes and sizes match the exact 1618 ZIP and receipt recorded above.
+The source cross-check also confirms 236 unchanged file identities, all original modes and all 23 parent identities against successful 1516 evidence.
+This successful retry supersedes the preceding blocked and pending-installation statuses, without removing their failure record.
+
+[PENDING CONSOLE PLAYBACK TEST] The installer did not launch Nuvio or access settings, account state or storage.
+Installation verification does not establish parental-guide appearance, General-setting behavior, skip actions or decoding on firmware 12.70.
+Source changes remain uncommitted and unpushed. Buffering and audio synchronization remain separate unresolved work.
+
+### Build 1618 audio-switch and stream-list reports, 2026-11-02
+
+[OWNER-REPORTED] Switching audio from French to English left playback showing "Preparing video".
+The owner also reports stream-list lag while loading. Neither report receives a fix or recovery claim from this investigation.
+
+[BOUNDED LOG CAPTURE] The Mac captured one initial log tail from 12:18:38.370548 to 12:18:39.691346 UTC.
+The range was [701535, 4895839), exactly 4,194,304 bytes, read in four chunks no larger than 1 MiB.
+Its SHA-256 is `ab2d4389ee1ff0dc4e333d39ac20d9ebb7178ce69500928f388673b84082b8cf`.
+The log grew by 496 bytes during capture. File identity remained stable, but full stats did not.
+The capture preserved the initial range without chasing or retrying. It does not establish snapshot atomicity.
+The source orb verified the transferred log size and hash and enforced mode 0600 on both transferred files.
+Collection performed no console writes, lifecycle actions, settings, account or media reads.
+
+[LOG-OBSERVED] Analysis uses only records after the latest 1618 marker, not historical builds in the same log.
+The preceding session decoded and published frames. Its shutdown logged HTTP reconnect errors and an interrupted demux read.
+Those shutdown errors alone do not establish a network cause for the subsequent stall.
+The next session opened its video decoder and E-AC-3 passthrough successfully, then completed prebuffering at relative log time 144157.554.
+At closure, its summary records 83.7 seconds, zero decoded or published frames, and zero fatal decoder errors.
+The log does not record the selected language or the decode-thread hold and pause flags during that interval.
+
+[SOURCE HYPOTHESIS] Audio selection reopens the complete source at the current position and restores its previous pause state.
+Decode workers park while paused. The new loading presentation reports "Preparing video" whenever no display frame exists, including this paused state.
+A paused reopen can therefore remain on that label until resumed. Confirmation of the owner's pause state and X-button recovery remains pending.
+The current evidence does not identify which decode-thread gate prevented progress in this console case.
+
+[SOURCE-INSPECTED] Incremental stream results can rebuild the route markup and restore focus while other sources remain pending.
+Existing render coalescing and virtualization already limit that work. The log contains no stream-render or input-latency measurements.
+Search completion reads `focusState.index`, while ordinary card navigation can store only `row`, creating a source-derived focus-reset hypothesis.
+No host benchmark, browser reproduction or console performance measurement confirms the reported loading lag yet.
+No playback or stream-list implementation changed during this investigation.
+
+### Audio diagnostics and stream selection follow-up, 2026-11-02
+
+[OWNER-CLARIFIED] Both the initial loading animation and navigation during arriving results feel choppy.
+The owner does not think X resumed the audio-switch stall. The paused-reopen hypothesis above remains unconfirmed, not the diagnosed cause.
+
+[HOST-REPRODUCED] Synthetic addon callbacks exercised the actual pinned StreamScreen with PS5 constrained styling in Linux Chromium 156, at 1280x720 and DPR 2.
+Late higher-priority results changed selection from B-8 to A-8 without input. Search completion then selected A-0 and scrolled to the top.
+Both defects occurred at 50, 100 and 101 total streams, including trusted arrow-key input and the eager-to-virtual transition.
+Aggregate-result controls retained selection and scrolling. This establishes host focus defects, not their contribution to PS5 frame timing.
+
+[LOCALLY FIXED] Render restoration now retains stream identity for eager and virtual lists, using the existing stream keys.
+Completion retains the current card row rather than treating a missing `index` as zero. Initial aggregate selection still honors the preferred source.
+Repeated browser scenarios retain B-8 after late results and completion at 50, 100 and 101 streams.
+Aggregate controls at 50 and 101 streams retain their original selection. Explicit filter resets remain intentional.
+Scroll follows the retained card when rows appear above it. Completion no longer returns it to the top.
+A recorded trusted-input run also retains B-8. These synthetic checks use no owner sources, settings, media or console endpoints.
+
+[UNRESOLVED PERFORMANCE] Warm initial loading showed no frame gaps above 34 ms in the baseline host run.
+A cold entry showed a 121.5-ms render and 116.7-ms frame gap. Sustained spinner choppiness did not reproduce.
+Fixed-scenario frame callbacks usually stayed near 16.7 ms, but one aggregate control had a 333.3-ms outlier.
+Host callback timing does not measure PS5 presentation. No loading animation or broad rendering rewrite accompanies the focus fix.
+
+[DIAGNOSTIC ONLY] Native audio-switch logs now record numerical stream indices, resume position, pause state and worker creation results.
+First-frame waits record worker gates and queue counts at two, ten and thirty seconds, capped at three reports per wait.
+These diagnostics contain no source URLs and do not change pause, retry, seek or loading policy.
+An ASan/UBSan host harness passes exact timing boundaries, report limits, recovery reset and unchanged pause/hold and loading behavior.
+The audio stall still needs a console reproduction with these diagnostics. Build 1618 remains installed and unchanged.
+
+[BUILD FAILURE RETAINED] The first diagnostic build stopped at an adapter anchor for the audio output worker.
+The adapter expected `audio_output_thread_func`, but the pinned callback is `audio_output_thread`. Correcting that verified name allowed the rebuild.
+
+[HOST-TESTED] Configured `make check` passes 103 tests. The new selection regression fails without the fix, selecting A-8 instead of B-8.
+Configured `make build` succeeds as `9ee9a542-nuvio_1102-1244`, with signed-container `integrity: valid` and unchanged title identity `PPSA99996`.
+The build uses SDK v0.43, Clang/LLD 19.1.7 and FFmpeg 7.1.1. Configured Python is 3.13.7 and Node is 22.23.2.
+The native module is 36,043,460 bytes, SHA-256 `a4cbecacba75dd8560b15c0459dcb942aa1660912c2ce63b719aa58d7baa5991`.
+The browser bundle is 3,196,887 bytes, SHA-256 `e481bc8ac9d8b321c046e940a7ab3c0c05cd9ef3972fc478c991d14a51095332`.
+No new installation, console write, commit or push accompanies this follow-up. Native compilation does not establish console execution or an audio fix.
+
+### Build 1244 installation, 2026-11-02
+
+[CONSOLE FILE-VERIFIED] The owner authorized installation and confirmed Nuvio closed. Independent unmount status remains unverified.
+Exact build `9ee9a542-nuvio_1102-1244` completed installation at 14:03:08 UTC, 15:03:08 Europe/Budapest.
+Fresh full baseline reads matched installed 1618, including all 240 file fingerprints and 23 parent identities and modes.
+The installer backed up both originals, fsynced files and directories, then fully reread and verified them before any upload.
+Only `eboot.bin` and `webui/app.bundle.js` changed. The other 238 files, metadata, RML and RCSS remained unchanged.
+Both replacements received immediate raw readback and persisted, fsynced new fingerprints.
+Final stable-stat reads verified all 240 candidate files by raw bytes, size and SHA-256, in chunks no larger than 1 MiB.
+All 238 untouched fingerprints, 23 parent kind/device/inode/mode identities and original 0777 file modes remained unchanged.
+No request failures, retries or ambiguous writes occurred. Preparation and installation used 2,158 requests, including two upload-begin and two upload-data requests.
+Private backups and evidence remain under `/Users/shashank/Downloads/nuvio-pro-1244-private-1fndr84j/`. The temporary installer no longer exists.
+
+[SOURCE-CROSS-CHECKED] All 240 archive entries passed independent CRC, safe-path, inventory, size and receipt-hash checks before installation.
+The exact ZIP is 54,777,557 bytes, SHA-256 `02a53fb2434452fc21ea6f327119e67b491444bb3b8cf5b4f7595d2db450de54`.
+Its receipt is 26,974 bytes, SHA-256 `a9b075c1e8750c5dfaea003f84223b2ac7998632a4b4e7220c8f0b30bed5ea7d`.
+The confirmed evidence transfer is 97,486 bytes, SHA-256 `049f20c7e8ebaa7cd87ad2886b67b989c0c795e318844e2682ccf05fb63e733b`.
+The source orb verified that identity and enforced mode 0600, then matched all 240 evidence hashes and sizes against the frozen candidate.
+It also matched all original file modes, 238 unchanged fingerprints and the 23 parent identities and modes against successful 1618 evidence.
+An initial full-parent-stat comparison was too broad because directory timestamps can change. The required identity and mode fields match.
+
+[PENDING RUNTIME TEST] This installation supersedes the preceding installed-1618 status. The installer did not launch or close Nuvio.
+It accessed no settings, logs, account state or media. No Git commit or push occurred.
+The stream-selection fix still needs PS5 validation. Audio-switch diagnostics do not establish an audio-stall or spinner-performance fix.
+
+### Reproducible Friends buffering on 1244, 2026-11-02
+
+[OWNER-REPORTED] The Friends source buffers reproducibly. The owner started it during this investigation.
+[BOUNDED LOG CAPTURE] One read-only capture at 14:15:48 UTC preserved range [2315926, 6510230), exactly 4,194,304 bytes.
+Four reads used at most 1 MiB each. Available before/after stats matched, without observed growth, rotation or short reads.
+The log SHA-256 is `7e0bbafaab21126702661edfea8fb3b8ebe5d4dc91f92ed60b11a79c20d54ee7`.
+Metadata is 1,865 bytes, SHA-256 `23cd348521026edd6c95f3d2e7f34d991af5b0609e608861ec6631c95b67e2cb`.
+The source orb independently checked both transfers and enforced mode 0600. Identical available stats do not establish an atomic snapshot.
+
+[LOG-OBSERVED] The latest source session uses 3840x2160 HEVC at 23.976 fps and FFmpeg's single-connection HTTP reader.
+Five rebuffer arms reach one to three queued video packets. Four completed refills reach 96 packets after 7.276, 6.119, 6.314 and 7.605 seconds.
+The fifth refill remains pending at capture end. This confirms queue starvation, not its upstream cause.
+That captured source session contains no HTTP error, reconnect or demux-overshoot markers. Their absence does not establish healthy network delivery.
+
+[READ-ONLY HEALTH SAMPLES] Three source-verified native `/stats` GETs succeeded at 14:20:04, 14:20:09 and 14:20:14 UTC, without retries.
+All report build 1244, paused at 195.65 seconds, with zero decode FPS. These are paused-fill samples, not advancing-playback FPS measurements.
+Over 10.078 seconds, the video queue grows from 54 to 179 packets, or about 5.21 seconds of estimated media.
+Rounded queued video grows from 12.1 to 39.4 MiB, approximately 2.71 MiB/s or 22.7 Mbit/s, excluding other streams and protocol overhead.
+Read-ahead sizing logs 43,133 kbit/s. That best-effort value can fall back to the container bitrate, including audio and subtitles.
+Both queues remain below their configured limits: video 719 packets and 154.3 MiB, audio 40,000 packets and 64 MiB.
+Fatal decode flags and memory mapping failures remain zero, flexible free memory stays near 747 MiB, and rendering reports 60 FPS.
+PIO is disabled, so its zero network byte and stall counters cannot measure the active FFmpeg reader.
+Numeric sample evidence is 4,705 bytes, SHA-256 `e367441f9ab868ab6d79ac562aefdc5208157bff0e1b2aae1783520c02d95297`.
+The source orb verified its identity and enforced mode 0600. No console writes, controls, lifecycle actions, settings or media reads occurred.
+
+[NARROWED, NOT FIXED] The paused video queue fills below the estimated real-time requirement without reaching queue limits or consuming decoded frames.
+This supports a delivery/read bottleneck, not a decoder-throughput diagnosis. Source throttling, network-path limits and console read/demux overhead remain competing explanations.
+The next proposed control is one bounded same-source read from the Mac, subject to owner agreement. No source URL or media data is published.
+No runtime code or playback policy changed. Build 1244 remains installed, and the underlying cause still needs that controlled comparison.
+
+### Bounded off-console speed comparison, 2026-11-02
+
+[INCONCLUSIVE] The owner approved one capped 16 MiB comparison. The Mac issued one HTTPS range GET at 14:31:30 UTC.
+It received HTTP 404 after approximately 0.296 seconds and stopped before accepting media bytes. No throughput comparison resulted.
+There were no redirects, retries, fallback URLs, media files saved or console requests. The 16 MiB and 20-second limits were not reached.
+A local script syntax error occurred before execution and issued no request. Its correction preceded the single actual GET.
+Sanitized evidence is 1,427 bytes, SHA-256 `08f02850a025f99e01a7d5942528ce115d394da0075d14dc1f2927ddc42ef592`.
+The source orb verified the transferred size and hash, then enforced mode 0600. Zero-byte rate fields are not measured media speeds.
+
+[SOURCE-CORRECTED LIMITATION] The probe selected the latest source-open URL from the retained log, without reconstructing it.
+Subsequent inspection found that `pp_stage_bc` uses a 512-byte message buffer without an explicit truncation marker.
+The selected record fills that buffer: 511 formatted characters, including a 491-character URL. This cannot establish that the URL is complete.
+No longer matching-prefix URL appears in the preceding 250 retained lines. The original evidence's exact-source validation field overstates the verified facts.
+The evidence remains preserved unchanged with this correction. HTTP 404 cannot establish the actual source's status or its delivery speed.
+No follow-up media requests occurred. Slow console queue refill remains observed, but source/network versus console-reader attribution remains unresolved.
+A valid future comparison needs a privately supplied complete request context or bounded native read and queue-wait timing diagnostics.
+This attempt changed no runtime code, playback settings or installed files. Build 1244 remains installed.
+
+### Bounded native reader diagnostics, 2026-11-02
+
+[OWNER-REPORTED] The PS5 uses Wi-Fi. Its speed test reports approximately 400 Mbit/s.
+That test uses a different endpoint. It cannot measure delivery from the selected Friends source or isolate EVO's reader.
+
+[DIAGNOSTIC ONLY] The adapter records up to 24 numeric windows per network demux thread, at least five seconds apart.
+Each window records read calls, cumulative and maximum `av_read_frame` time, queue-wait time, packet counts, errors and pause/hold state.
+Positive `AVIOContext.bytes_read` changes count libavformat payload bytes. Counter decreases increment a reset counter instead of subtracting bytes.
+Missing AVIO contexts report `io=0`. These counters are not socket-byte or direct network-speed measurements.
+Read time includes demux/parser work. Blocked reads or queue waits delay reporting until the demux loop resumes.
+Local files emit no reader reports. Reporting stops after 24 windows. No URLs, request headers or owner identifiers enter these records.
+Packet routing, queue limits, pause, seek, recovery and buffering policy remain unchanged.
+
+[HOST-TESTED] A disposable ASan/UBSan harness executes the actual baseline and patched demux-thread bodies with deterministic timing and packet inputs.
+All 16 paired runs preserve packet, subtitle, recovery, pause and hold outcomes, with no sanitizer findings.
+Coverage includes asymmetric read/queue delays, the exact five-second boundary, missing AVIO, counter resets, negative reads and the 24-report cap.
+The first harness expectation incorrectly included a fourth read after the reporting boundary. Correcting the independently calculated expectation required no production-code change.
+Configured `make check` passes 103 tests, with zero hard documentation findings. The validated demux source exactly matches the native build input.
+
+[LOCALLY BUILT] Configured `make build` succeeds as `9ee9a542-nuvio_1102-1441`, with signed-container `integrity: valid` and title `PPSA99996`.
+The build uses SDK v0.43, Clang/LLD 19.1.7 and FFmpeg 7.1.1, with Python 3.13.7 and Node 22.23.2.
+All 240 output hashes match the new receipt. Only `eboot.bin` differs from the frozen, installed 1244 candidate.
+The native module is 36,044,420 bytes, SHA-256 `2e17cd5f000285d9863779fed52449f04de04dbf64f0a713e8708e6ca5859051`.
+The receipt SHA-256 is `7a48f0d48a069b5fab315c63f11c65a3a154f4bf12d2f98f6087c2d8cb976b47`.
+Compilation and host checks cannot establish console execution or the buffering cause. Diagnostic installation requires new owner approval and confirmed closure.
+Build 1244 remains installed. No additional media requests, console writes, installation, commit or push accompany these local diagnostics.
+
+### Build 1102-1441 installation, 2026-11-02
+
+[CONSOLE FILE-VERIFIED] The owner authorized installation and confirmed Nuvio closed. Independent unmount status remains unverified.
+Exact build `9ee9a542-nuvio_1102-1441` completed installation at 16:08:19 UTC, 17:08:19 Europe/Budapest.
+This November 2 diagnostic candidate is distinct from the older November 1 build with the same minute suffix.
+Fresh complete baseline reads matched installed 1244 across all 240 files, saved fingerprints and 23 parent identities and modes.
+The installer privately backed up current `eboot.bin`, fsynced its file and directories, then fully reread and verified it before uploading.
+Durable prewrite evidence preceded immediate file, parent, backup and original-byte rechecks.
+Only `eboot.bin` changed, through one upload-begin and one upload-data request. Its new verified fingerprint was immediately persisted and fsynced.
+Final stable-stat raw reads verified all 240 files against the candidate, using chunks no larger than 1 MiB.
+All 239 untouched fingerprints, 23 parent kind/device/inode/mode identities and original 0777 modes remained unchanged. No metadata changes occurred.
+There were zero failures, retries or ambiguous writes. The disposable installer was removed, while private artifacts, backups and evidence remain preserved.
+The backup is `/Users/shashank/Downloads/nuvio-pro-1102-1441-private-vix09nsc/originals/eboot.bin`.
+
+[SOURCE-CROSS-CHECKED] The frozen ZIP is 54,779,212 bytes, SHA-256 `02433614330f6b373c7ae6bde695c59854cdc5b8201ef13758f10c290251d4c8`.
+Its receipt and installed native hash match the preceding local-build record. All 240 archive entries passed independent validation at both endpoints.
+Transferred installation evidence is 97,445 bytes, SHA-256 `4484e2681b5bad31d571273487541f0f9535041cb65d961ae3d61912626aad95`.
+The source orb independently verified that identity and enforced mode 0600.
+It matched all 240 reported file sizes and hashes against frozen ZIP bytes and receipt hashes.
+It also matched all 239 untouched fingerprints, original modes and 23 parent identities and modes against successful 1244 evidence.
+
+[PENDING RUNTIME TEST] This installation supersedes installed 1244. Nuvio remains closed for the owner to launch.
+No runtime test, logs, settings, account state or media access accompanied installation. No Git commit or push occurred.
+Installation verification does not establish a buffering fix. The diagnostic Friends playback and subsequent bounded log collection remain pending.
+
+### Friends reader timing on 1102-1441, 2026-11-02
+
+[OWNER-REPORTED] Friends is playing, and the owner authorized log collection.
+[BOUNDED LOG CAPTURE] One read-only capture ran from 16:15:37.403085 to 16:15:38.113182 UTC, approximately 0.710 seconds.
+Four reads preserved the fixed initial tail [3707501, 7901805), exactly 4,194,304 bytes, with chunks of 1 MiB.
+The log grew 227 bytes during capture. File kind, device, inode and mode stayed stable, but full stats changed.
+Appended bytes were not chased. This is not an atomic or full-stat-stable snapshot. There were no short reads, retries or capture errors.
+Log SHA-256 is `df9fbc06a456a75ceea35a4c001069ff0be5406ff5aa5a81c804201ba386204a`.
+Capture metadata is 4,200 bytes, SHA-256 `bf71d61ceb4c0b545a262541bfc42bf71ba2baad5bda488fa294ef5c491ee380`.
+Both transfers used exclusive destinations. The source orb independently verified their identities and enforced mode 0600 under the existing private directory.
+Collection performed no playback controls, lifecycle actions, console writes, health polling, settings/account reads or separate media requests.
+
+[LOG-OBSERVED] Eight numeric reader windows follow the latest exact `9ee9a542-nuvio_1102-1441` marker, at capture line 38073.
+The source uses the single FFmpeg HTTP reader, with HEVC 3840x2160 video and a logged 23.98 FPS.
+Read-ahead sizing reports 43,513 kbit/s. This best-effort estimate can include container audio and subtitles, not just video.
+Across 40.295250 seconds, 3,240 read calls consume 40.246768 seconds, or 99.8797% of the measured elapsed time.
+Queue waits total only 2.883 milliseconds, or 0.00715%. All windows report unpaused playback, available AVIO, zero read errors and zero counter resets.
+AVIO reads total 146,410,897 payload bytes, averaging 29.068 Mbit/s. Individual windows range from 27.453 to 29.874 Mbit/s.
+These are libavformat payload counters, not Wi-Fi or socket-throughput measurements. The largest individual read takes 326.106 milliseconds.
+The reader returns 605 video packets across these windows. Packet counts do not independently establish decoded frame counts.
+Three captured rebuffers refill to 96 packets in 5.852, 6.218 and 5.761 seconds. Initial prebuffering takes 2.977 seconds.
+
+[NARROWED, NOT FIXED] This run reproduces queue starvation and places nearly all measured demux-loop time inside `av_read_frame`, not queue backpressure.
+The timing includes network waits, demux/parser work and thread scheduling. It cannot isolate Wi-Fi, source delivery or console-side processing.
+Zero FFmpeg read errors do not exclude slow delivery or transport retransmissions. Increasing buffer limits does not resolve a sustained below-consumption feed.
+The next practical control is the same selected source over Ethernet, if available, without another code or buffering-policy change.
+Build 1102-1441 remains installed. No new runtime change, installation, Git commit or push accompanies this capture and analysis.
+
+### Owner-supplied TorBox link, bounded Mac comparison, 2026-11-02
+
+[OWNER-REPORTED] Ethernet is unavailable. The owner supplied a complete resolver link for the same selected file and reports successful phone playback.
+The phone's network and its equivalence to the PS5 or Mac network remain unverified. The private link is not recorded here.
+
+[BOUNDED MAC TEST] One test ran from 16:30:00.517155 to 16:30:01.980777 UTC, 17:30 Europe/Budapest.
+Three GETs followed two HTTPS redirects, returning HTTP 302, 307 and 206. There were no retries, fallbacks or errors.
+The requested range was bytes 0 through 16,777,215. The final response matched that range and its 16,777,216-byte content length.
+The total reported media size was 7,421,453,081 bytes. An EBML signature established Matroska media, rather than an HTML or JSON resolver error.
+Exactly 16 MiB of media was accepted and discarded in memory. No media file or private URL was saved.
+The test stopped at the byte cap, before its 20-second total deadline. Reads used chunks no larger than 64 KiB.
+Normal TLS verification remained enabled. Proxies were bypassed, and no cookies or authorization headers were forwarded.
+No console requests, playback controls, lifecycle actions or owner-account API requests occurred.
+
+[MEASURED] The full test took 1.463491 seconds, including resolver redirects, averaging 91.711 Mbit/s.
+The reported body phase took 0.519684 seconds, averaging 258.268 Mbit/s. Final response headers arrived after 0.943806 seconds.
+The evidence's first-media timestamp equals the header timestamp. It is not an independently recorded first-body-byte time.
+Sanitized evidence is 2,828 bytes, SHA-256 `dc305490bcc1ff528784133bc077f3bddf9ebfbea980fbd20b95b3452a31b7d8`.
+The source orb independently verified its transferred size and hash, then enforced mode 0600 under the existing private directory.
+Only sanitized evidence remains in the fresh private Mac directory. No disposable script, URL-input file or media file was created.
+
+[NARROWED, NOT FIXED] The owner-supplied link delivers a valid initial media range quickly to the Mac in this short test.
+This contradicts a universal low-speed delivery limit for that link. It does not establish sustained throughput or the PS5 buffering cause.
+The Mac read starts at byte zero. The console capture reflects resumed playback, not a byte-matched or simultaneous controlled transfer.
+Differences in network path, server routing, timing, caching and native read/demux processing remain possible.
+Build 1102-1441 remains installed. No runtime code, playback policy, installation, Git commit or push changed during this comparison.
+
+[OWNER CLARIFICATION] The successful phone playback used the same Wi-Fi as the PS5. Further general connection tests are not the next investigation step.
+[SOURCE LEAD] EVO passes `buffer_size=8388608` to `avformat_open_input`, but this does not set the HTTPS connection's TCP receive buffer.
+Pinned FFmpeg 7.1.1 forwards HTTPS options through TLS to TCP. TCP uses `recv_buffer_size` for `SO_RCVBUF`, defaulting to the operating system value.
+Its AVIO allocation independently uses the internal default buffer size, not that dictionary entry. EVO frees unconsumed options after opening.
+The selected Matroska, HTTP, TLS, TCP and generic URL option tables do not define a matching `buffer_size` option.
+This identifies an ineffective buffer request in this path, not the cause of the measured slowdown.
+The actual console receive-buffer size and time spent waiting versus processing inside the read call remain unmeasured.
+No speculative socket tuning, parallel readers, new media requests, console actions or runtime changes accompany this source inspection.
+
+## Native TorBox download test, 2026-11-02
+
+[SOURCE-VERIFIED] TorBox documents a public, key-free speedtest API for third-party applications.
+The [official SDK documentation](https://github.com/TorBox-App/torbox-sdk-js/blob/main/documentation/services/GeneralService.md#getspeedtestfiles) describes short test files and the requesting IP's closest region.
+A public metadata GET returned the CDN inventory. A HEAD request confirmed the short file's 104,857,600-byte content length.
+Neither request used an owner account, media URL or console endpoint.
+
+Settings > Playback > Speed test now controls one native FFmpeg AVIO download connection, rather than measuring browser fetch speed.
+The worker selects the API's `closest` CDN and limits payload reads to 100 MiB.
+It uses a 15-second download deadline, 25-second overall deadline and five-second network timeouts, without reconnects.
+Synchronous DNS resolution can exceed those deadlines or delay cancellation.
+The reported average includes download connection setup and excludes discovery. It does not represent upload speed, ping or a specific media file.
+No account headers, socket tuning, stored results or automatic test downloads enter this path.
+Playback handoff cancels the test and waits for worker exit without blocking a main-thread frame.
+
+[LOCALLY BUILT] Deterministic native endpoint tests cover successful throughput, partial timed samples, early EOF, network failures, cancellation and duplicate-start rejection.
+They also check playback exclusion, nearest-region selection and refusal of a lookalike non-TorBox hostname.
+The transport fixture checks that HTTP options contain no playback headers or cookies.
+UI tests cover explicit start, result/retry, prior-worker cancellation, nonoverlapping polls and lost or rejected start responses.
+They also cover Close during a pending start, finite request timeouts and focus restoration.
+
+[LOCALLY BUILT] Chromium rendered the actual dialog and pinned styles at 1280x720 with device pixel ratio 2, using synthetic responses.
+Inspected captures cover idle, running, completed and failed states after enter animations finish.
+An inspected pointer recording covers neighboring controls, opening, explicit start, changing progress, cancellation and Close. Focus returned to the opener.
+The fixture blocked external traffic and used no owner data. These checks do not establish PS5 browser behavior or network performance.
+
+[LOCALLY BUILT] A separate host run used the actual worker with real HTTP/TLS requests to TorBox, without a transport mock.
+It selected `wnam`, consumed 104,857,600 bytes and reported 1,375 milliseconds and 610.162 Mbit/s.
+This is an orb result, not the PS5's connection speed or evidence that buffering has improved.
+The host probe used GCC 12.2.0, libavformat 59.27.100 and libavutil 57.28.100.
+The PS5 build uses SDK v0.43, Clang/LLD 19.1.7 and FFmpeg 7.1.1, with Python 3.13.7 and Node 22.23.2.
+
+[LOCALLY BUILT] After sourcing `.cache/orb-tools/env`, `make check` passed all 112 tests. `make build` completed with signed-container integrity valid.
+An earlier default-PATH check selected GCC and failed the existing compatibility test at `scripts/promote.c:85`, with `-Werror=misleading-indentation`.
+The configured Clang environment passes that test. The speedtest change leaves this separate compiler-portability issue unchanged and offers a follow-up.
+Candidate `9ee9a542-nuvio_1102-1704` retains `PPSA99996`. Independent rereading matched all 240 receipt hashes.
+The bundled dialog source matches the current adapter byte for byte.
+
+| Candidate file | Bytes | SHA-256 |
+|---|---:|---|
+| `eboot.bin` | 36,048,388 | `78c63dee988c724f281705ef4657e6912fa7d076f122460e3df7c7236ef15c0c` |
+| `webui/app.bundle.js` | 3,200,674 | `8590bb5b6bdaf9e974fdfef724aed3a296cba75ac5acaab067557833829accce` |
+
+[UNKNOWN] PS5 speedtest execution, controller behavior, cancellation latency and TorBox results remain untested.
+This local candidate also includes the previously uninstalled numeric socket-buffer instrumentation. Its compilation does not establish console socket measurements.
+At the local-build checkpoint, no installation or console request had occurred. The subsequent installation result follows below.
+
+### Wired observation and 1704 installation handoff
+
+[OWNER-REPORTED] Ethernet still exhibits the reported lag. The PlayStation network-settings speed test reports 844 Mbit/s.
+This comparison does not support Wi-Fi alone as a sufficient explanation. It does not measure EVO's reader or the selected TorBox media connection.
+The owner supplied a new explicit console address, confirmed Nuvio closed and authorized installation. The address remains private.
+
+[HOST-VERIFIED] Frozen 1704 ZIP: 54,784,180 bytes, SHA-256 `72aa47ee75facdebc9ca112f579bedd47df2e7e0514ec26402bbd803cda3f0c1`.
+Receipt: 26,974 bytes, SHA-256 `00220781c2811f679e86cddfcec5e6341415ca9e989d5735878728ecd1e44b27`.
+Source rereading verified all 240 archive entries against the receipt and the saved 1441 installation evidence's exact hash.
+The Mac installer independently verified the private downloads, safe regular-file inventory, CRCs, sizes and hashes, then fsynced and reread the staged artifacts.
+Only `eboot.bin` and `webui/app.bundle.js` differ from 1441. The other 238 files and title metadata remain unchanged.
+
+[TESTED-ON-CONSOLE] Installation completed at 2026-11-02 17:15:41 UTC /18:15:41 Budapest, using only the new explicit host.
+Fresh full 240-file baseline reads matched 1441, including fingerprints. All 23 parent identity/mode checks matched.
+Both originals were private backups, fsynced and fully reread for exact bytes/hashes before the first upload.
+Only the two approved files changed. The installer persisted each new fingerprint immediately and used it for final readback.
+All 240 installed files matched candidate bytes, sizes and SHA-256 values, using stable-stat reads of at most 1 MiB.
+The 238 untouched fingerprints, all original 0777 modes, 23 parent kind/device/inode/mode identities and title metadata stayed unchanged.
+The installer reported zero failures or retries. It retained both originals and removed disposable installer code.
+
+Final evidence: 97,516 bytes, SHA-256 `bb74ee1c23bf6eb2d360c48cce74c154226a6b0af0cd91110850f94e78c03dc9`.
+The source orb verified the transferred evidence's size/hash and enforced mode 0600.
+It independently matched all 240 returned sizes/hashes to the frozen archive, plus unchanged fingerprints, parent identities and original modes to 1441 evidence.
+Backups remain under the private Mac staging directory's `originals/` folder.
+Closure is owner-confirmed, not an independent unmount or running-state check. Nuvio was not launched or runtime-tested during installation.
+No extra network diagnostics, lifecycle actions, settings/account/storage/media/log reads, Git commit or push accompanied installation.
+Build 1102-1704 is now the latest verified installation. TorBox speedtest behavior, console rates and buffering improvements remain unverified.
+This installation finished under the existing full-verification workflow. The owner requests copy-only future installations unless they explicitly ask for verification.
+
+### Owner-reported wired TorBox results on 1704
+
+[OWNER-REPORTED] Two consecutive native speed tests used region `weur` over Ethernet.
+The first displayed 54 Mbit/s average, 96.5 MiB and 15.0 seconds.
+The second displayed 56.8 Mbit/s average, the full 100 MiB payload and 14.8 seconds. The owner described the size as 100 MB.
+The displayed rates agree with payload and time after rounding. These are owner-reported UI values, not independently captured native measurements.
+Both tests cluster around 54-57 Mbit/s to this CDN. They do not establish a universal ceiling, a TCP-buffer limit or an EVO defect.
+Friends' best-effort source estimate is 43.5 Mbit/s. The other stream's owner-reported estimate is 84 Mbit/s.
+Test-file and media delivery paths may differ. Actual playback socket-buffer measurements and the buffering cause remain pending.
+
+### Friends socket-buffer capture on 1704
+
+[TESTED-ON-CONSOLE] One owner-authorized read-only capture ran at 2026-11-02 17:26:26.155241-17:26:26.543796 UTC, during owner-started Friends playback.
+The fixed initial tail range [4808469,9002773) contains 4,194,304 bytes, read in four chunks of at most 1 MiB.
+Before/after identity, mode, size and modification time matched, with zero growth or short reads. This does not establish snapshot atomicity.
+Log SHA-256: `1823aab7b9939ae44ce80bde89264f15f1565bcf3a826bc15dcf827800dea0ed`.
+Capture metadata: 1,626 bytes, SHA-256 `fc983656c377daa46ad0a6dce57739c38d04847aa531485521c9aabf00efb989`.
+The source orb independently matched both transferred sizes/hashes and enforced mode 0600. No private request context is reproduced here.
+
+After the latest exact 1704 build marker, all 12 read-path windows report successful socket queries.
+Every sample reports `SO_RCVBUF=131072` bytes (128 KiB), `sock_rc=0`, `sock_errno=0` and `sock_len=4`.
+The separate AVIO userspace buffer is 32,768 bytes (32 KiB). No socket tuning was applied.
+These windows total 60.608388 seconds, 4,746 read calls and 212,164,086 AVIO payload bytes, averaging 28.0046 Mbit/s.
+Individual windows range from 26.719 to 29.081 Mbit/s. Read/demux calls consume 60.537009 seconds, or 99.8822% of measured loop time.
+Queue-space waits total only 4.374 milliseconds. All windows report zero read errors, zero counter resets and unpaused playback.
+Four samples report an active prebuffer hold. The largest individual read lasts 294.143 milliseconds.
+
+[NARROWED, NOT FIXED] The wired read-path rate remains below Friends' best-effort 43.5 Mbit/s source estimate and resembles the earlier 29.068 Mbit/s capture.
+The 128 KiB receive-buffer measurement confirms the actual socket capacity, not the wire-advertised TCP window or a causal throughput ceiling.
+Read-call wall time includes network waits, parsing and scheduling. RTT, buffer occupancy and the effect of a larger receive buffer remain unmeasured.
+No runtime code, console files, playback controls, media requests, Git commit or push changed during this capture and analysis.
+
+### Receive-buffer-only experiment, 1733
+
+[LOCALLY BUILT] Candidate `9ee9a542-nuvio_1102-1733` requests a 1 MiB TCP receive buffer through FFmpeg's `recv_buffer_size` network option.
+Pinned FFmpeg 7.1.1 forwards that option through HTTP/TLS to TCP, which requests `SO_RCVBUF` before connection.
+The operating system can cap or reject the request. Existing numeric diagnostics measure the accepted size during playback.
+AVIO buffering, decoder policy, queues, reconnects and the separate speedtest worker remain unchanged.
+Configured `make check` passed all 112 tests. `make build` completed with signed-container integrity valid.
+The environment remains SDK v0.43, Clang/LLD 19.1.7, FFmpeg 7.1.1, Python 3.13.7 and Node 22.23.2.
+Independent rereading matched all 240 receipt hashes. Only `eboot.bin` differs from installed 1704, with no inventory changes.
+Native file: 36,048,388 bytes, SHA-256 `ac2b22fd0a87d750d65e87706389de71bce5077397e03cfe0ead428e5f08af5a`.
+[UNKNOWN] Accepted console buffer size and playback improvement require the same Friends comparison after installation.
+The owner deferred testing until their return. This candidate remains uninstalled, with no console requests, Git commit or push.
+
+### 1733 copy and playback capture, 2026-11-09
+
+[TESTED-ON-CONSOLE] The owner returned, supplied the explicit address and confirmed closure. The Mac installer copied only the 36,048,388-byte `eboot.bin` from frozen 1733.
+Required upload calls returned HTTP 200 at 14:57:33-14:57:34 UTC, with zero errors, retries or ambiguous writes.
+Per owner instruction, no extra baseline checks, backups or installed-byte readback occurred. This is transport acknowledgment, not a new verified inventory baseline.
+Nuvio remained unlaunched after copying. The owner subsequently started playback and authorized a bounded log capture.
+
+One read-only capture ran at 15:05:13.849126-15:05:14.247639 UTC, with four reads of at most 1 MiB.
+The fixed initial tail range [3458279,7652583) contains 4,194,304 bytes. Before/after stats matched, with zero growth, short reads or retries.
+This does not establish snapshot atomicity. The source orb independently matched both transferred sizes/hashes and enforced mode 0600.
+Log SHA-256: `07d9eb17757c0e078813ca25200fee862f705dee819de28c2e888693a559a2d4`.
+Metadata: 5,963 bytes, SHA-256 `87cb5376ce2f2113871094b209770ff0a6c6a28d4351ee44f191dc7457b0f4d2`.
+
+The latest exact 1733 marker precedes one source-open group and six read-path windows.
+All six successful socket queries report `SO_RCVBUF=525600` bytes (513.28125 KiB), versus the requested 1,048,576 bytes.
+The result establishes the reported capacity, not why it differs from the request. AVIO remains 32,768 bytes.
+The windows total 30.088717 seconds, 63,188 read calls and 399,994,354 AVIO payload bytes, averaging 106.3507 Mbit/s.
+Individual windows range from 100.312 to 112.835 Mbit/s. Read/demux calls occupy 98.9240% of measured loop time.
+Queue waits total 58.260 milliseconds. The longest read lasts 291.379 milliseconds.
+All samples report unpaused playback, zero prebuffer hold, zero read errors and zero byte-counter resets.
+Video queue samples rise from 109 to 502 packets. Audio queue samples rise from 5,428 to 25,074 packets.
+
+[NARROWED] This capture exceeds the previous 27-29 Mbit/s range, with no sampled prebuffer hold and growing read-ahead queues.
+The owner identifies this source as Comet/ElfHosted, not the earlier TorBox path, and plans a separate AIOStreams comparison.
+The result does not isolate the receive-buffer change from source differences or establish sustained smooth playback.
+The current title, byte range and network conditions are not established as identical to the earlier Friends capture.
+The owner now reports buffering across videos above roughly 26 Mbit/s, rather than Friends alone.
+No further console writes, playback inputs, media requests, runtime changes, Git commit or push accompanied this capture and analysis.
+
+### Separate AIOStreams session on 1733
+
+[TESTED-ON-CONSOLE] A separate authorized capture ran at 2026-11-09 15:07:25.696483-15:07:26.000713 UTC.
+The fixed initial tail [3524906,7719210) contains 4,194,304 bytes, with four reads of at most 1 MiB.
+Before/after stats matched, without growth, short reads, retries or fallback. This does not establish snapshot atomicity.
+Log SHA-256: `9e22a6fe672bdb920f059f5c8555d2b5445eb0605a94abb45bac59b9a428da97`.
+Metadata: 6,005 bytes, SHA-256 `b7a7a1814f5a6097150e08a7f2a6d8165d4a7dc09b3dce0f34d8bbd096c8f751`.
+The source orb matched both transferred sizes/hashes and enforced mode 0600.
+Analysis selects only the latest of three source-open groups after the exact 1733 marker, excluding both earlier sessions.
+Six windows total 30.136789 seconds, 104,976 read calls and 358,766,375 AVIO payload bytes, averaging 95.2368 Mbit/s.
+Individual windows range from 86.118 to 99.248 Mbit/s. All successful socket queries report 525,600 receive-buffer bytes and 32,768 AVIO bytes.
+All samples report zero errors, counter resets, pauses and prebuffer holds. Video queues grow from 66 to 316 packets.
+Audio queues grow from 3,000 to 15,637 packets. Read/demux time totals 29.757548 seconds, with 48.254 milliseconds waiting for queue space.
+[OWNER-REPORTED] The addon is AIOStreams. The owner subsequently reports that F1 plays fine, without an independently established title-to-capture mapping.
+Underlying delivery provider and equivalence to earlier failing sources remain unverified. The capture demonstrates reading above the reported 26 Mbit/s threshold.
+It does not establish a universal buffering fix or isolate the buffer change from source and network differences.
+No console writes, playback inputs, media requests, runtime changes or Git actions accompanied this capture and analysis.
+
+### Separate Spider-Man session on 1733
+
+[TESTED-ON-CONSOLE] One authorized capture ran at 2026-11-09 15:09:24.718581-15:09:25.034840 UTC.
+The fixed initial tail [3590814,7785118) contains 4,194,304 bytes, read in four chunks of at most 1 MiB.
+Before/after stats matched, with zero growth, short reads, retries or fallback. This does not establish snapshot atomicity.
+Log SHA-256: `843658aad3caab2052ccc4d1a8c4db7af2c2abc5b9bf1b1f61ea6de335b83683`.
+Metadata: 4,611 bytes, SHA-256 `191bbad1fce029ac27fd123caf7bed4b66b6a489987a266ad629ed2638a0ceb6`.
+The source orb matched both transferred sizes/hashes and enforced mode 0600.
+Analysis selects only the latest of four source-open groups after the exact 1733 marker, excluding three earlier sessions.
+Four windows total 20.016840 seconds, 2,593 read calls and 237,137,920 AVIO payload bytes, averaging 94.7754 Mbit/s.
+Individual windows range from 92.849 to 97.754 Mbit/s. All successful socket queries report 525,600 receive-buffer bytes and 32,768 AVIO bytes.
+All samples report zero errors, resets, pauses and prebuffer holds. Video queues grow from 66 to 274 packets, audio from 90 to 360.
+Read/demux time totals 19.966715 seconds. Queue waits total 1.691 milliseconds.
+The Spider-Man label is owner-reported. Provider, exact source bitrate and equivalence to earlier failing sources remain unverified.
+This demonstrates reading above the earlier 27-29 Mbit/s range, not sustained smooth playback or a controlled causal comparison.
+[OWNER-REPORTED] The owner subsequently confirms Spider-Man is smooth. This agrees with the sampled growing queues and absent prebuffer holds.
+No console writes, playback inputs, media requests, runtime changes or Git actions accompanied this capture and analysis.
+
+### Higher-bitrate comparison on 1733
+
+[TESTED-ON-CONSOLE] One authorized capture ran at 2026-11-09 15:12:21.224240-15:12:21.616922 UTC.
+The fixed initial tail [3672398,7866702) contains 4,194,304 bytes, with four reads of at most 1 MiB.
+Before/after stats matched, without growth, short reads, retries or fallback. This is not an atomic snapshot claim.
+Log SHA-256: `694c8b6597eae9dedab2e549868b0f2e434b6194f1aefd36d61fcda5643f988b`.
+Metadata: 8,547 bytes, SHA-256 `b5dfcbb39b801f190c350eb41d68104fd13bd84f39c610e21e76c6611bc0d63b`.
+The source orb independently matched both transferred sizes/hashes and enforced mode 0600.
+Only the latest of six source-open groups after the exact 1733 marker enters this analysis.
+Ten windows total 50.196551 seconds, 17,668 read calls and 597,515,762 AVIO payload bytes, averaging 95.2282 Mbit/s.
+Individual windows range from 90.026 to 99.734 Mbit/s. All successful socket queries report 525,600 receive-buffer bytes and 32,768 AVIO bytes.
+Every sample reports zero errors, resets, pauses and prebuffer holds. Video queue samples grow monotonically from 50 to 170 packets.
+Audio queues grow monotonically from 74 to 227 packets. Read/demux time totals 50.043041 seconds, with 3.256 milliseconds waiting for queue space.
+The owner describes this as a higher-bitrate test. Exact bitrate, title, provider and sustained playback quality remain unverified.
+The sampled queues build a reserve rather than deplete. This does not establish a maximum supported bitrate or universal buffering fix.
+No console writes, playback inputs, media requests, runtime changes or Git actions accompanied capture and analysis.
+
+## EVO v0.13.5 migration candidate, 2026-11-09
+
+[LOCALLY BUILT] The source now pins published EVO v0.13.5 at `f6e43e6561796630673f1e20eb1eb67d6428514c`.
+Its archive SHA-256 is `58f69d36708fa1ee4312e816c66bfdba9bbf81e61e1b4fc17ea206c9ffd9c966`.
+The matching UI-kit pin is `47f4b9868c33264716b2e92922b0d2c9d0f2ab0f`.
+Its archive SHA-256 is `5fc0499c2542f945f18be5c3ee81b9a62f7f8c4581981f30774c068d07f730af`.
+The Nuvio frontend, SDK v0.43 and target FFmpeg 7.1.1 pins remain unchanged.
+
+The migration preserves `PPSA99996`, console-hosted browsing, browser storage origin and persistent `/data/nuvio` paths.
+It retains single-connection HTTP, bounded retries and the 1,048,576-byte receive-buffer request.
+New SMB/NTFS custom-reader branches survive the narrower HTTP adaptation.
+The adapter disables stock EVO update entry points, the extra LAN phone/log server and the embedded NTFS-helper launch.
+The native Search keyboard remains independent of phone pairing.
+
+### Build and host environment
+
+| Item | Result |
+|---|---|
+| Host | Linux x86_64 orb |
+| Python / Node | 3.13.7 / 22.23.2 |
+| Target compiler | Debian Clang 19.1.7, `x86_64-sie-ps5`, through SDK v0.43 |
+| Host probe compiler | GCC/G++ 12.2.0 with AddressSanitizer and UndefinedBehaviorSanitizer |
+| Host renderer | Mesa 22.3.6 surfaceless EGL/OpenGL, actual upgraded kit screen sources |
+| `make check` | 124 tests passed, documentation hard findings 0, source/private-artifact checks passed |
+| `make build` | Completed, signed container integrity valid, receipt retains firmware validation `[UNKNOWN]` |
+| Build ID | `f6e43e65-nuvio_1109-1545` |
+| Signed `eboot.bin` | 48,629,684 bytes, SHA-256 `471ba5a30af694aa5fa89060c5384e23ead4a5b3102bd179b9a000fbf21ca6b5` |
+| Clean-room `libc.prx` | SHA-256 `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+Initial migration attempts failed an updater transform and an obsolete HUD fixture.
+The corrected transform preserves function signatures. The revised fixture models upstream's new skip-label ownership.
+A later check found a stale test call to a removed no-op frontend hook. Removing that call restored the passing suite.
+The first sanitized audio-harness link omitted the real resampler source. Linking that source completed the probe without sanitizer findings.
+Host FFmpeg 5.1 headers produce a const-pointer warning at an unchanged `swr_convert` call. The target uses pinned FFmpeg 7.1.1.
+
+### Playback fixes and controlled results
+
+[SOURCE-VERIFIED] The upstream upgrade leaves the seek reset algorithm essentially unchanged.
+The Nuvio adapter now holds complete audio decode/output iterations away from seek-owned resets.
+Queue waits observe a seek-owned hold, so full queues cannot prevent worker quiescence.
+A two-second acquisition timeout cancels the seek instead of resetting live audio state.
+Video park timeout also cancels before flushing a live decoder.
+Audio preroll filtering now applies at zero and distinguishes valid negative PTS from missing PTS.
+
+[LOCALLY BUILT] A temporary harness compiled the actual adapted audio worker and resampler sources against host FFmpeg.
+It used deterministic decoder/output barriers and synthetic packets, not console media or requests.
+All five scenarios passed with AddressSanitizer and UndefinedBehaviorSanitizer:
+
+- Blocked audio output cancels seek after the bounded timeout, without resetting live queues or clocks.
+- An old output completion cannot decrement the reset queue or advance the reset clock.
+- A converted PCM frame waiting for queue space cannot deadlock the seek or enter the reset state.
+- A passthrough packet held before seek cannot enter the new playback state.
+- Valid negative preroll does not clear the seek-to-zero discard gate.
+
+The retained startup regression forces failure at each worker-creation boundary.
+Every failure returns false, releases created resources and permits a subsequent start.
+The retained subtitle tests execute the real external loader and controller setup under sanitizers.
+Short WebVTT changes from zero cues to one cue with independently checked timestamps and text.
+SRT and hour-qualified WebVTT controls remain correct. Hour-crossing cues and malformed timing inputs also have coverage.
+Successful remote loads now select external mode under the existing automatic-subtitle policy.
+Subtitle-off and explicit embedded selections remain controls. Complete file write and close are prerequisites.
+
+These scenarios establish host behavior, not the cause or resolution of the owner's console symptoms.
+The original rewind desync and intermittent audio-switch preparation stall still require hardware reproduction and comparison.
+
+### Native HUD and TV remote
+
+[LOCALLY BUILT] EVO's actual upgraded HUD renderer completed with GL error `0x0` and an empty overflow report.
+Inspected 1920x1080 captures cover default captions, intro skip, concurrent credits/next prompts and next-only hidden controls.
+Intro skip shows one R1 action. Concurrent prompts reserve R1 for credits and retain L1/Circle next-episode actions.
+Next-only restores R1 Play now without a stale skip card. No clipping or overlap appeared in these captures.
+These synthetic fixtures do not establish console rendering, video decoding or controller execution.
+
+The separate remote agent verified browser arrows, Enter activation, Escape dismissal and preserved text-field Backspace in Chromium.
+Seven retained tests cover its bounded, trusted-event, numeric-only observer.
+The integrated observer stays disabled unless `__NUVIO_PS5_TV_REMOTE_DIAGNOSTICS__` is explicitly true.
+No inspected SDK or EVO declaration establishes native HDMI-CEC input delivery.
+Actual TV-remote Up, Right, Down, Left, OK and Back, plus native-player control, remain unverified.
+
+### Remaining gates
+
+[UNKNOWN] This migration candidate has no console installation or execution result.
+The earlier 1733 candidate remains the last installed build in the recorded evidence.
+No firmware, console state, settings, accounts or media changed during this migration work. No commit, push or release occurred.
+
+The initial migration candidate lacked a browser addon/sidecar subtitle handoff contract.
+The follow-up below implements candidate transfer separately from PGS/MOV_TEXT and external parsing.
+External ASS/SSA, DVD/VobSub, DVB and secondary bitmap subtitles remain unsupported in the inspected paths.
+Signed negative initial video anchors remain a separate source-derived limitation, not an established property of the failing media.
+
+Before release, test original rewind/forward sequences with PCM and passthrough, including seek-to-zero and paused seeks.
+Test audio switching while playing and paused, embedded text/PGS/non-Latin subtitles, subtitle-off and external selection.
+Also test profile/settings continuity, IME, playback return, recovery, skip/next/end cards and retail-console memory pressure.
+The newer engine permits larger read-ahead rings. A successful host build does not establish safe memory usage on retail hardware.
+
+## Embedded subtitle switching and addon handoff, 2026-11-09
+
+[SOURCE-VERIFIED] The demuxer decodes selected subtitle streams while reading ahead of presentation.
+Opening another embedded decoder alone does not recover its earlier cues.
+The adapter now requests an in-place seek at presentation after opening a changed primary track.
+The same reader refills cues and restores pause state. Unchanged and external selections do not request a seek.
+Replacement decoder preparation precedes closing existing slots. A decoder-open failure retains the prior primary and secondary tracks.
+
+[LOCALLY BUILT] A retained host regression compiles the actual subtitle source, language selector and demux seek-request function.
+It creates temporary Matroska media containing video, SubRip and ASS tracks.
+Presentation stays at 5.5 seconds while the reader advances to 45 seconds.
+Before adaptation, switching to ASS leaves the current cue empty, and reopening returns to SubRip.
+After adaptation, the current cue reads `Second current`, and reopening retains ASS.
+Playing and paused cases pass. Controls cover unchanged/external selections, decoder-open failure and successful secondary takeover.
+The host services the queued seek with the same FFmpeg reader. It does not exercise PS5 output or worker parking.
+
+The browser handoff now offers up to 32 deduplicated addon/sidecar candidates through EVO's existing online-subtitle picker.
+A session-matched POST transfers only bounded candidate fields. URLs never enter return storage or diagnostics.
+Discovery waits at most four seconds. A timeout retains candidates already available, but later arrivals need another playback handoff.
+The handoff excludes candidates requiring custom request headers and URLs with embedded credentials.
+Candidates remain manual choices. Browser automatic selection and embedded indices do not become native choices.
+New titles and explicit off/embedded/external selections invalidate stale download completions.
+Remembered online restoration cannot override an explicit embedded choice.
+
+Eight targeted tests passed with GCC/G++ 12.2.0, ASan/UBSan, host FFmpeg 5.1.9 and Node 22.23.2.
+They execute real external loaders, the online cache, cJSON decoding and restoration gates, plus browser discovery guards.
+Controls include delayed discovery, profile/route/source changes, request limits and old downloads completing after a new title.
+The first combined check passed 128 tests but rejected two new documentation semicolons. Both sentences now use periods.
+Earlier probe-development failures included missing harness linkage and a decoder-rejection fixture that did not reject.
+The final embedded fixture uses negative subtitle dimensions to exercise a real decoder-open failure.
+
+[LOCALLY BUILT] The actual upgraded kit subtitle picker rendered at 1920x1080 with Mesa EGL, GL error `0x0`.
+An inspected temporary fixture shows English embedded primary, French ASS and a focused Spanish addon row.
+Labels, primary marker, focus, preview and off/auto-sync/load-file controls have no visible clipping or overlap.
+The temporary preview source changes were restored. This capture does not establish console input or subtitle output.
+
+Final combined `make check` passed 128 tests, documentation hard findings 0 and source/private-artifact checks.
+`make build` completed with signed-container integrity valid. SDK v0.43 and target FFmpeg 7.1.1 remain unchanged.
+Build ID: `f6e43e65-nuvio_1109-1614`.
+Signed `eboot.bin`: 48,629,684 bytes, SHA-256 `1b7d71d7c951e295fd9018097d72e16672256fe93c83b1af851c7d6036138c36`.
+Clean-room `libc.prx` retains SHA-256 `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+This supersedes the initial migration build above. A new browser playback clears the prior title's embedded-track request.
+Audio reopen retains its existing selection-preservation path. `git diff --check` passed.
+
+[UNKNOWN] The owner's exact failing embedded tracks and addon services have not run with this candidate.
+No console installation, playback input, settings change, commit, push or release occurred.
+External ASS/SSA, archives, DVD/VobSub, DVB and secondary bitmap rendering remain outside the supported paths.
+
+### Interrupted console copy, 2026-11-09
+
+[PARTIAL INSTALLATION] The owner authorized testing, confirmed Nuvio closed and confirmed the previous explicit console address.
+The Mac installer locally validated the frozen 268-file candidate package and receipt before console contact.
+ZIP SHA-256: `22d14e81852f4d249246daeeb96f3dffdff6c5b6e48b8ae1b671768a7c00e141`, 63,830,955 bytes.
+Receipt SHA-256: `d305f3b7d76a12e263a93613b8d620ae6f4ff81f03c2b86413787b827db60267`, 30,010 bytes.
+
+Copy ran from 16:22:07.704085 to 16:22:14.661750 UTC.
+The service acknowledged 126 of 268 receipt files, totaling 52,669,676 payload bytes.
+File 127, `assets/certs/cacert.pem`, failed at upload setup with HTTP 404.
+The installer stopped without retries. The failed setup's side effects remain unknown.
+At this stop, the remaining 142 files lacked copy acknowledgments, including the new `eboot.bin`, scheduled last and never attempted.
+The title was partially updated and had to remain closed until the continuation below.
+
+The owner requested copy-only installation. No console baseline, hash/readback verification, backups or extra diagnostics accompanied copying.
+No deletion, lifecycle action, firmware change or `/data/nuvio` access occurred.
+Private Mac evidence retains the ordered acknowledged paths, sizes and times.
+A missing parent directory is a hypothesis, not an established cause.
+The follow-up investigation is limited to the failed path, its parents and the source-backed upload/directory API contract.
+
+### Scoped continuation completed, 2026-11-09
+
+[TRANSPORT-ACKNOWLEDGED] A bounded metadata check found the failed file and `assets/certs` absent, while `assets` existed as a directory.
+This supports the missing-parent explanation, without proving the earlier handler's cause.
+The source-backed directory contract comes from [PS5Upload's pinned web API](https://github.com/phantomptr/ps5upload/blob/e08da801d098cc60c8ca32c89694fa3a7b00fa06/payload/src/webui_api.c).
+`POST /api/fs/mkdir` accepts `path` and requests parent creation. The filesystem handler leaves existing directory modes unchanged.
+The installed API version was not independently established. All eight requested directory calls returned HTTP 200 with `{}`.
+These ensured the receipt-required parents `assets/certs`, `assets/fonts`, `assets/hui/fonts`, `assets/hui/sfx`,
+`assets/icons`, `assets/rml`, `assets/wallpaper` and `assets/web`. This does not establish that all eight were newly created.
+
+Continuation ran from 16:26:58.345112 to 16:27:05.722814 UTC.
+The installer copied only the remaining 142 receipt files, totaling 61,175,143 payload bytes.
+It did not recopy the first 126 acknowledged files. All 268 files now have upload setup and data acknowledgments.
+The 48,629,684-byte `eboot.bin` copied last, with final acknowledgment at 16:27:05.720208 UTC.
+No continuation errors, ambiguous writes or retries occurred. Original partial-copy evidence remains intact.
+Private continuation evidence has SHA-256 `355e64dc888643bf4fee4e9af2977ed9a229d6c90ac51116519de846af38edba`, 25,718 bytes.
+
+The copy phase completed. The owner may launch Nuvio manually for runtime testing.
+No console readback/hash verification, backups, lifecycle actions, deletions or `/data/nuvio` access accompanied the continuation.
+Transport acknowledgments do not establish installed-byte integrity, startup, playback or resolution of the reported bugs.
+The frozen candidate remains `f6e43e65-nuvio_1109-1614`, with the eboot hash recorded above.
+
+## Owner-reported player regressions, 2026-11-09
+
+[OWNER-REPORTED] After testing the 1614 candidate, the owner reported no TV-remote control in native playback.
+Changing an embedded subtitle moved playback from approximately 18 minutes to eight seconds and left the seeking indicator visible.
+The owner also reported duplicate end-time labels and no addon subtitle rows.
+These observations supersede the earlier pending hardware tests for those specific cases. They do not establish unrelated playback results.
+
+[SOURCE-VERIFIED] The subtitle adapter incorrectly passed `evo_pb_position_s()` directly to the absolute seek request.
+That facade returns elapsed time relative to the last seek or resume, excluding `resume_base_offset_seconds`.
+The correction includes the base offset, matching the native controller's position contract.
+The strengthened regression compiles the actual clock and facade instead of assuming an absolute clock in a stub.
+It fails against the earlier adapter and passes with the correction.
+Controls cover audio-master and video-only clocks, playing and paused, including a 1,072-second base plus eight elapsed seconds.
+Both now queue 1,080 seconds, not eight seconds. Hardware seek completion still needs retesting.
+
+Nuvio presentation now suppresses the lower end-time label while retaining remaining duration below the timeline.
+Its existing clock policy controls the upper-right clock. Stock EVO presentation keeps its existing lower label.
+A host probe executes the actual presentation method with clock enabled and disabled, and Nuvio policy active and inactive.
+Seven targeted native-subtitle and presentation tests passed with host GCC/G++ 12.2.0 and ASan/UBSan.
+
+The actual homebrew-ui HUD rendered both clock states at 1920x1080 through Mesa EGL, with GL error `0x0`.
+Inspected captures show one upper-right end time with clock enabled and no end time with clock disabled.
+Both retain remaining duration below the progress bar, without visible clipping or overlap.
+The temporary renderer fixtures use the corrected presentation values. Their source changes were restored after capture.
+They establish layout, not PS5 input or playback. The actual presentation-method probe separately checks those values.
+The intermediate combined `make check` passed 130 tests, zero documentation hard findings and source/private-artifact checks.
+
+The owner confirmed Nuvio closed and authorized the next corrected candidate transfer to the same previously supplied console address.
+This approval does not authorize automatic launch, media playback, console readback, backups or unrelated diagnostics.
+The 1614 package must not be reused for that transfer. Corrected build and copy results follow when available.
+
+### Addon discovery and native remote corrections
+
+[HOST-REPRODUCED] Initial player mount can start playback before its subtitle lookup.
+The native handoff starts lookup A. Mount starts B, invalidating A's token while the handoff still awaits A.
+A can return subtitles successfully, yet the handoff sends an empty list before B finishes.
+The corrected loader shares matching in-flight discovery across callers. Different sources or mounts retain independent requests.
+Monotonic PS5 request tokens prevent an older mount's completion from overwriting a newer mount's list.
+Handoff validity also checks the mount token.
+
+The regression executes the actual pinned initial-mount startup region and subtitle loader with controlled repository completions.
+Before correction, it makes two requests and sends zero candidates. After correction, it shares one request and sends one candidate.
+Refresh, source-change and remount controls pass.
+A sanitizer probe executes native import, online cache, actual subtitle clear and picker identity gates.
+The tested clear sequence retains matching candidates. No native-cache reset defect was established, so no speculative restoration was added.
+The owner's actual addon response remains unobserved. Four-second timeout, custom-header exclusion and supported-format limits still apply.
+
+[SOURCE-VERIFIED] The PS5 SDL remote implementation opens a separate system-user remote handle that EVO did not poll.
+The corrected adapter uses that pinned contract and typed pad layout, with attribution and zlib notice preserved.
+Remote polling no longer depends on a successful DualSense read.
+Buttons enter the existing edge/repeat calculation once, preserving overlap until both devices release.
+Browser ownership suspends native remote polling. Failure recovery waits for neutral input, and cleanup closes only owned handles.
+Dedicated Play and Pause remain unbound rather than incorrectly toggling playback.
+
+Eleven remote tests passed, including 12 executable ASan/UBSan scenarios with host GCC 12.2.0 and Python 3.13.7.
+The harness executes actual upstream input dispatch, repeat handling and `PlayerScreen::handleInput`, with Sce I/O and service effects mocked.
+Before correction, remote-only presses cause no remote reads or player actions.
+After correction, remote OK toggles pause, Right reaches the existing ten-second scrub action, and Back reaches native exit handling.
+Held Right repeats at the existing 220-millisecond boundary.
+Controls cover controller-only behavior, overlapping buttons, partial read failures, acquisition retry, disconnect, borrowed handles, browser ownership and keyboard routing.
+These probes do not establish TV-remote delivery or playback behavior on firmware 12.70.
+
+### Corrected candidate build
+
+[LOCALLY BUILT] Combined `make check` passed 141 tests, zero documentation hard findings and source/private-artifact checks.
+`make build` completed with signed-container integrity valid, using SDK v0.43, target Clang 19.1.7 and FFmpeg 7.1.1.
+Build ID: `f6e43e65-nuvio_1109-1646`.
+Signed `eboot.bin`: 48,629,860 bytes, SHA-256 `fbd9580e44612c7165546b40acac79fc43688a2f0fe51b7aed74bc7b9ac256d0`.
+Clean-room `libc.prx`: 1,284,674 bytes, SHA-256 `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+Frozen title ZIP: 63,833,293 bytes, SHA-256 `184b9892ef781e25863437a6a98161fb1a219fc1f4e3682ddc52aee446010466`.
+Matching 268-file receipt: 30,010 bytes, SHA-256 `a343a6b3514a8bde8f42e3dcb67de56d87293964889bfbfaaf4489704d5a8712`.
+Packaging verified each local title file against the receipt. `git diff --check` passed.
+
+This supersedes candidate 1614 for the next console test. Hardware runtime results remain pending.
+The Mac installer received the frozen source-orb paths and scoped authorization for a full title copy, with eboot last.
+No source commit, GitHub push or release publication occurred.
+
+### Corrected candidate console copy
+
+[TRANSPORT-ACKNOWLEDGED] The Mac installer locally validated the exact frozen ZIP, receipt and all 268 regular title entries before copying.
+It used the carried-forward owner approval for closure and the same explicit console address.
+All 20 receipt-required parent-directory requests returned HTTP 200 with `{}`.
+All 268 upload setup and data requests returned HTTP 200, acknowledging 113,845,791 payload bytes.
+No errors, ambiguous writes or retries occurred.
+
+Copy ran from 16:49:26.205850 to 16:49:41.996330 UTC, or 17:49:26 to 17:49:42 Budapest time.
+The elapsed time was 15.790358 seconds. The 48,629,860-byte `eboot.bin` copied last, acknowledged at 16:49:41.993008 UTC.
+Private durable copy evidence is 48,540 bytes, SHA-256 `4a9bee11d3ef55878a32fc59c9bc416466c9f398bb9aa6946c7e88a248a5ddc4`.
+
+Nuvio remains unlaunched. The owner can launch manually for runtime testing.
+No console baseline, stat, readback, hash verification, backups, diagnostics, lifecycle actions, deletions or `/data/nuvio` access accompanied copying.
+Transport completion does not establish installed-byte integrity or resolution of the reported playback, subtitle and remote-control bugs.
+
+## Profile audio and subtitle preferences, 2026-11-09
+
+[SOURCE-VERIFIED] EVO ranks languages using its separate native settings, but candidate 1646 does not transfer Nuvio's profile preferences.
+The new adapter extends the existing session-bound subtitle handoff with resolved startup targets, not browser track indices.
+It uses the real frontend helpers for primary/secondary, system/original language, subtitle-off and forced policy.
+Resolution follows bounded subtitle discovery, allowing content-language metadata to arrive during that wait.
+Profile, route, source, mount and resolved-policy checks guard preparation and sending.
+
+Native startup considers decoder availability and program pairing. Explicit audio requests retain priority over automatic selection.
+For each subtitle language, it tries supported embedded decoders and then parseable addon candidates before the secondary language.
+Forced selection uses the actual native audio language. Missing matches leave subtitles off without inventing an English preference.
+An exact provider/session/URL reopen captures current manual audio, subtitle source and enabled state before teardown.
+It restores those choices without reapplying startup policy or the old remembered-online restoration path.
+The existing online cache supplies its stable remembered copy when later failed downloads overwrite the scratch file.
+New sessions clear old secondary indices. Native-library playback and persistent native settings remain unchanged.
+
+[LOCALLY BUILT] Three preference regressions passed within the agent's 144-test combined host check.
+They execute actual frontend startup helpers, cJSON transport decoding, session promotion/import/clear, native selectors and subtitle decoder/parser code.
+Native probes use ASan/UBSan, host GCC/G++ 12.2.0, Python 3.13.7, Node 22.23.2 and host FFmpeg 5.1.9 libraries.
+Controls cover primary/fallback languages, decoder failure, program grouping, commentary/defaults, forced/off, regions, manual reopens and session/native-source isolation.
+The main agent's integrated `make check` also passed all 144 tests, zero documentation hard findings and source/private-artifact checks.
+`make build` completed with signed-container integrity valid, using SDK v0.43, target Clang 19.1.7 and FFmpeg 7.1.1.
+Build ID: `f6e43e65-nuvio_1109-1722`.
+Signed `eboot.bin`: 48,629,860 bytes, SHA-256 `fe88081450d2635c4f57a589bd39b1085c09e2a8558f51221dca2faf0648afae`.
+The 268-file receipt matches the local eboot. The clean-room runtime retains the previously recorded hash.
+A brief executor connection failure interrupted status retrieval. The original build continued and completed without restarting it.
+`git diff --check` passed. No commit, GitHub push, release publication or console action occurred.
+
+Language matching reuses EVO's alias table. Unknown codes match literally, without guessing unsupported aliases or label-only metadata.
+Native forced recognition retains its existing flag/title limits. Addon fallback still excludes custom headers and unsupported external formats.
+Owner-service responses, console language selection and playback remain unverified.
+The implementation initially left candidate 1646 installed for the owner's pending test.
+
+### Preferred-language transfer authorization
+
+The owner then explicitly requested transferring the integrated preferred-language build to PS5.
+The installer received the new frozen source-orb artifacts, with the prior closure/address and no-repeat-confirmation instruction carried forward.
+The copy scope remains all 268 receipt files under `PPSA99996`, with eboot last and no automatic launch.
+Frozen ZIP: 63,836,135 bytes, SHA-256 `32e3e4cc66a030a7185c557bc0ffa0cfb6cabc6e3d9835afd6a74f886660e354`.
+Matching receipt: 30,010 bytes, SHA-256 `4920540a2f9761deaae39c1b9ad5e7cf8fd867f50c2d129ce602dd517e94d9b5`.
+Packaging verified each local title file against the receipt, including the 1722 eboot hash above.
+No console readback, baseline, backups, unrelated diagnostics, lifecycle actions or `/data/nuvio` access are part of this copy.
+
+[TRANSPORT-ACKNOWLEDGED] The installer validated the exact frozen artifacts and all 268 entries locally, then completed the authorized copy.
+All 20 receipt-required parent requests returned HTTP 200 with `{}`.
+All 268 upload setup and data requests returned HTTP 200, acknowledging 113,846,845 payload bytes.
+Copy ran from 17:53:23.712175 to 17:53:39.958182 UTC, or 18:53:23 to 18:53:40 Budapest time.
+Elapsed time: 16.245913 seconds. The 48,629,860-byte eboot copied last, acknowledged at 17:53:39.955488 UTC.
+No failures, ambiguous writes or retries occurred.
+Private durable copy evidence is 48,540 bytes, SHA-256 `33683445be876160b7cdf9c392b82fc00e647b01ff8d5f1fb628be235354d5ba`.
+Nuvio remains unlaunched, ready for manual testing. The preferred-language candidate 1722 supersedes the installed 1646 candidate.
+No console stat, readback/hash verification, backups, diagnostics, lifecycle actions, deletion or `/data/nuvio` access accompanied copying.
+Transport completion does not establish installed-byte integrity, preferred-language behavior or resolution of earlier playback bugs.
+
+## Mixed Home hero fields, 2026-11-09
+
+[TESTED-ON-CONSOLE] The owner's photograph shows Squid Game text beside Spider-Man artwork, description and progress.
+The hero concatenates title names, retains the previous episode and shows two remaining-time values.
+This observation does not establish corrupted saved progress.
+
+[SOURCE-VERIFIED] Focus updates and measured truncation replace hero text nodes outside Home's incremental renderer.
+The renderer treats unregistered children as runtime-owned media and retains them while adding the new fields.
+The adapter now registers current hero text containers before reconciliation, including their current truncation state.
+Logos, transition ghosts, trailer layers and focused cards retain their existing ownership.
+
+[LOCALLY BUILT] The real-DOM regression reproduces the concatenated title and remaining-time values before the fix.
+Afterward, it verifies clean title, episode, progress, synopsis and indicator replacement across repeated refreshes.
+It also checks empty episode metadata, stale truncation removal, retained focus and unchanged runtime-owned media nodes.
+The probe uses the actual pinned DOM reconciler with controlled markup and focus-update operations, not complete Home startup.
+`make check` passed 145 tests with zero documentation hard findings and passing source/private-artifact checks.
+`make ui` completed. Python 3.13.7, Node 22.23.2 and Chrome for Testing 156.0.8078.73 supplied the host environment.
+The browser fixtures use bundled product CSS with fixture-only sizing. Inspected before/after captures show the corrected fields without clipping.
+Browser DOM checks confirm one title, one remaining-time value and no retained Squid Game metadata after the Spider-Man refresh.
+UI bundle SHA-256: `545d5f6d235f6b300d57ab4508732b8d436132bf4c39db1423560870dd77e312`.
+
+No native code changed. No native rebuild, console transfer or new console test accompanied this fix.
+The installed candidate remains 1722. Changes remain local, uncommitted and unpushed.
+
+### Home fix candidate 1841
+
+The owner then requested building and sending the Home fix to PS5.
+[LOCALLY BUILT] `make build` completed with SDK v0.43, target Clang 19.1.7 and FFmpeg 7.1.1.
+The signed-container inspection reports valid integrity for build `f6e43e65-nuvio_1109-1841`.
+Title identity remains `PPSA99996`. The native behavior retains candidate 1722's integration.
+The UI bundle matches the tested hash above.
+
+Signed eboot: 48,629,860 bytes, SHA-256 `d2a4cba1962a5abd9ee5ccf488039d11fd6564c2eac9850f61c0e7d89e031505`.
+Frozen title ZIP: 63,836,182 bytes, SHA-256 `d4c9fba5255b4c43eb67a836895365bea047ca0f95065c69be8670b35b1ef8f9`.
+Matching receipt: 30,010 bytes, SHA-256 `f01b62a1ee390f9e84968d76c49c4b44686579e4fbd379d1d369981024ec015e`.
+Local archive validation checked all 268 unique entries against receipt SHA-256 values and ZIP CRCs.
+The payload totals 113,846,960 bytes. `git diff --check` passed.
+
+The Mac installer received these frozen artifacts for private staging and independent validation.
+Console copying still requires current closure confirmation because the owner ran Nuvio after the previous copy.
+The planned scope remains receipt files only, eboot last, at the existing explicit address, without automatic lifecycle actions.
+No console copy or runtime test has occurred for candidate 1841 at this checkpoint.
+
+### Home fix console copy
+
+The owner then confirmed Nuvio closed and requested sending the build immediately.
+[TRANSPORT-ACKNOWLEDGED] The Mac installer completed all 268 receipt files, totaling 113,846,960 payload bytes.
+All 20 required-parent requests returned HTTP 200 with `{}`. All upload setup and data requests returned HTTP 200.
+Copy ran from 18:46:12.811459 to 18:46:27.254295 UTC, or 19:46:12 to 19:46:27 Budapest time.
+The elapsed time was 14.442629 seconds. The 48,629,860-byte eboot copied last, acknowledged at 18:46:27.251356 UTC.
+No errors, partial state, ambiguous writes or retries occurred.
+Private durable copy evidence is 48,590 bytes, SHA-256 `e6d3f500466d847ceb74945c933b407938fe3aefee97118475f3cb52d56414ee`.
+
+Nuvio remains unlaunched, ready for manual testing. Candidate 1841 supersedes candidate 1722's copied files.
+No console baseline, stat, readback/hash verification, backups, diagnostics, settings/media/account access, deletions or lifecycle actions accompanied copying.
+Transport acknowledgments do not establish installed-byte integrity or resolution of the Home bug on PS5.
+The post-build host check passed 145 tests with zero documentation hard findings and passing source/private-artifact checks.
+No Git commit, push or release publication occurred.
+
+## Playback integration review, 2026-11-10
+
+[SOURCE-VERIFIED] The review used the original implementation thread's recovered 53-file Changes snapshot.
+The checkout's committed baseline alone did not contain that work.
+The source pins remain EVO `f6e43e6561796630673f1e20eb1eb67d6428514c` and Nuvio `25b984f778e4083dc6c2e768fdb5fcf46012e8b7`.
+
+The review corrected these defects:
+
+- Rejected seeks and worker timeouts changed the reported position without moving the reader.
+  The demuxer now publishes the new position base only after a successful seek.
+- Next-episode policy survived session teardown and affected later native-library playback.
+  Teardown resets policy and timers. The player wrapper excludes native-library sources.
+- Local subtitle selection retained online ownership and pending downloads.
+  Successful file selection now cancels pending online work and clears online ownership.
+- Rejected next-session fallback used an unbound `Router`.
+  The module now binds the existing router before returning to manual stream selection.
+- The native speed-test probe depended on the obsolete source directory and skipped after the source upgrade.
+  It now reads the checksum-verified pinned archive.
+
+[LOCALLY BUILT] Native regressions reproduced the seek, next-policy and local-subtitle failures before their fixes.
+The corrected probes passed with address and undefined-behavior sanitizers.
+The real generated mount fallback executed and returned to the stream route with `manualSelection: true`.
+
+End suggestions now follow controls visibility and expire after ten seconds of display.
+The timer starts when a suggestion appears, not at the last button press.
+Hiding and reopening controls permits another display. This does not disable autoplay or the separate Still Watching confirmation.
+The native parameter probe checks all three suggestion kinds, timeout boundaries, late appearance, hidden controls and unchanged native-library prompts.
+
+[SOURCE-VERIFIED] Movie-credit skipping reaches the native R1 prompt through the Nuvio metadata handoff.
+Enabled settings and valid timestamps remain prerequisites. The pinned movie mapper does not produce intro intervals.
+No dedicated Change stream menu or shortcut exists. Circle stops playback and returns to browsing.
+Down opens the subtitle picker. Up toggles subtitles. R2 opens the audio-track picker.
+
+The subtitle investigation found two discovery defects beyond the corrected local-file ownership bug.
+Repository aggregation can hold fast results behind slow addon or candidate-ID requests beyond the handoff deadline.
+Resource-prefix filtering can reject a valid canonical IMDb lookup after ID resolution.
+The PS5 adapter now publishes successful request chunks through the original language filter and deduplicating merger.
+Resource eligibility checks actual lookup candidates while retaining type and prefix restrictions.
+Both real repository-to-handoff regressions failed before correction with zero candidates instead of two.
+They now pass for fast-addon and fast-first-ID scenarios, including preferred-language and stale-context controls.
+Canonical eligibility changed from zero requests to one valid initial request. Incompatible resources remain excluded.
+Non-PS5 collection retains its original behavior.
+
+The intermediate build `f6e43e65-nuvio_1110-1022` completed with valid signed-container integrity.
+An earlier attempt failed because the new teardown reset made a General adapter anchor ambiguous.
+The corrected adapter matches the unique handoff context. This intermediate build predates the final suggestion timer and discovery corrections.
+
+Host environment: Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
+The target build uses SDK v0.43 and FFmpeg 7.1.1. Host native probes use FFmpeg 5.1 development libraries.
+
+[LOCALLY BUILT] Final integrated build `f6e43e65-nuvio_1110-1030` completed with valid signed-container integrity and title identity `PPSA99996`.
+The generated patches include the review corrections, subtitle discovery changes and final suggestion timer.
+Local SHA-256 checks match the build receipt:
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,860 | `aa4ac9e768c9a6c234195b235f6ab42d319a7edc0dcbda4d4c3e2648a60ae046` |
+| Browser app bundle | 3,207,616 | `cc04118994f04f233ab86fa420cb9b3a805ab761ac39ba8e3514c290a7af1230` |
+
+The full host check passed 149 tests, with zero documentation hard findings and passing source/private-artifact checks.
+`git diff --check` passed. Final post-build verification follows the same commands.
+
+[PENDING] No console connection, transfer, installation, native HUD capture or firmware 12.70 execution accompanied this review.
+Host checks and compilation do not establish console behavior or the cause of the owner's missing addon subtitles.
+The passthrough end-of-playback drain condition also needs runtime validation. Source inspection alone did not establish its timing or severity.
+Changes remain local, uncommitted and unpushed.
+
+### Reviewed candidate 1030 console copy
+
+The owner confirmed Nuvio closed and authorized copying the reviewed build to the usual explicit console address.
+The existing Mac installer independently validated the frozen ZIP, receipt and all 268 title entries before copying.
+ZIP CRCs, uncompressed lengths and receipt SHA-256 values matched. The installer rejected unsafe paths and nonregular entries.
+
+| Frozen artifact | Bytes | SHA-256 |
+|---|---|---|
+| Title ZIP | 63,836,605 | `07b6a0e87176d14a054d1679057672bb78daf6321654c5a1ae3c0d8f9203c646` |
+| Build receipt | 30,010 | `93365cc046c551d548237cbb4528c53d13cc6625245c090337bcb0cec7440313` |
+
+[TRANSPORT-ACKNOWLEDGED] The installer copied all 268 files, totaling 113,848,286 payload bytes, beneath `/data/homebrew/PPSA99996`.
+All 20 required-parent ensures, 268 upload-begin requests and 268 upload-data requests returned HTTP 200.
+The directory responses contained exact empty objects. These responses do not establish that all directories were newly created.
+Copy ran on November 10 from 10:53:38.462828 to 10:53:54.164332 UTC, or 11:53:38 to 11:53:54 Budapest CET.
+Elapsed time: 15.701421 seconds. The 48,629,860-byte eboot copied last, acknowledged at 10:53:54.162652 UTC.
+No failed or ambiguous mutations, retries or partial state occurred.
+
+The source orb downloaded the durable transfer evidence and verified its SHA-256.
+It checked every acknowledged receipt-relative path and byte count against the frozen receipt and ZIP.
+All 268 paths matched, with eboot last and no recorded console stat/read calls or lifecycle actions.
+Private durable evidence: 48,651 bytes, SHA-256 `dda7612697c9fbd0f3508a87ee374992ada4c535d0b18854f456dff31b5e4814`.
+
+The installer left Nuvio unlaunched for owner testing. Candidate 1030 supersedes candidate 1841's copied files.
+No baseline, readback/hash verification, backups, diagnostics, deletion, launch, remount, firmware change or `/data/nuvio` access accompanied copying.
+Transport acknowledgments do not establish installed-byte integrity, native HUD appearance or successful firmware 12.70 execution.
+Git changes remain local, uncommitted and unpushed. No release publication occurred.
+
+## Audio-switch browser-session lifetime, 2026-11-10
+
+[OWNER-REPORTED] Candidate `f6e43e65-nuvio_1110-1030` crashed after an audio-track change on firmware 12.70.
+The authorized read-only capture retrieved the final 4 MiB of `/data/nuvio/evo.log`. Raw logs remain private.
+Capture ran from 11:26:06.992 to 11:26:07.393 UTC with unchanged pre/post file identity, size and modification time.
+Tail SHA-256: `75759c4dffb8a80b18e3bd866368ad747b6681f0f1f66af683087bb306895890`. The capture is not an atomic snapshot.
+
+The browser bridge reports playback ended during the audio reopen, before the input open returns successfully.
+Another teardown and open follow before logging stops. No crash stack establishes the faulting instruction.
+
+[SOURCE-VERIFIED] The adapter now suspends session-end detection and progress sampling until the audio/quality picker joins its reopen worker.
+Successful switches retain the browser session. Failed switches and ordinary stops retain existing cleanup.
+
+[LOCALLY BUILT] The regression failed before correction and passes with address and undefined-behavior sanitizers.
+Removing the guard or releasing it before joining reproduces failure.
+Controls cover successful/failed switches, active/inactive stages, prolonged reopening, completed-but-unjoined workers and ordinary stop, including an idle picker.
+`make check` passes 150 tests without skips, with zero documentation hard findings and passing source/private-artifact checks.
+`make build` completes as `f6e43e65-nuvio_1110-1132`, title `PPSA99996`, with valid signed-container integrity.
+Signed eboot: 48,629,860 bytes, SHA-256 `e604be30b27655cecae046c43241302d167366191ac10e7faa67064eb105b776`.
+
+Host environment remains Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
+The target build uses SDK v0.43 and FFmpeg 7.1.1.
+The corrected build remains local. Crash resolution and the separate movie-ending report remain hardware checks.

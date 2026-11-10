@@ -30,7 +30,12 @@ def apply(evo,nuvio):
     replace(web,'font:24px sans-serif;', 'font-size:24px;font-family:inherit;')
     web.write_text(fix_playback_handoff(web.read_text()))
     patch_playback_start(app)
+    patch_playback_restart_diagnostics(app)
+    patch_playback_read_diagnostics(app)
     patch_playback_progress(app)
+    patch_playback_skip(app)
+    patch_next_episode(app)
+    patch_playback_hui(app)
     web.write_text(patch_controller_hook(web.read_text()))
     web.write_text(patch_storage_hook(web.read_text()))
     patch_search_keyboard(app)
@@ -59,6 +64,7 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     replace(h,'void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);','void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);\nvoid evo_rmlui_render_nuvio(uint32_t* framebuffer, int width, int height, const char* message);')
     player=app/'core/src/screens/PlayerScreen.cpp'
     player.write_text(fix_player_back(player.read_text()))
+    patch_playback_end(app)
     application=app/'core/src/Application.cpp'
     replace(application, '''            if (evo_webui_active()) {
                 /* #101: the system browser is up and owns the controller. */''', '''            if (evo_webui_active()) {
@@ -107,6 +113,37 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     shutil.copyfile(asset/'icon.png',app/'sce_sys/icon0.png')
     for name in ('pic0.png','pic1.png'):
         shutil.copyfile(asset/'launch.png',app/'sce_sys'/name)
+    import native_general
+    native_general.patch_native(app)
+    patch_speedtest(app)
+    import native_playback
+    import native_subtitles
+    native_playback.patch_native(app)
+    native_subtitles.patch_native(app)
+    import subtitle_handoff
+    subtitle_handoff.patch_native(app)
+    import native_preferences
+    native_preferences.patch_native(app)
+
+
+def patch_speedtest(app):
+    web = app/'src/evo_webui.c'
+    replace(web, 'static void serve_evo(int fd, const char *path)',
+        (Path(__file__).parent/'ps5-speedtest.c').read_text() +
+        '\nstatic void serve_evo(int fd, const char *path)')
+    replace(web, '        if (!strcmp(path, "/evo/presentation"))',
+        '''        if (!strncmp(path, "/evo/speedtest/", 15))
+            serve_speedtest(fd, method, path);
+        else if (!strcmp(path, "/evo/presentation"))''')
+    replace(web, '    s_srv_stop = 1;', '    speedtest_suspend();\n    s_srv_stop = 1;')
+    replace(web, '    s_state = P_RUN;\n    s_frames = 0;',
+        '    speedtest_resume();\n    s_state = P_RUN;\n    s_frames = 0;')
+    replace(web, '        tlog("close requested by the page");',
+        '        speedtest_suspend();\n        tlog("close requested by the page");')
+    replace(web, '        s_handoff_ready = url[0] != 0;',
+        '        if (url[0]) speedtest_suspend();\n        s_handoff_ready = url[0] != 0;')
+    replace(web, '    if (!s_play_pending) return 0;',
+        '    if (!s_play_pending || !speedtest_quiet()) return 0;')
 
 
 def patch_storage_hook(source):
@@ -187,6 +224,22 @@ def patch_collection_filters(text):
     return text
 
 
+def patch_home_dom(text):
+    old='''  if (canUpdate) {
+    updateChildren(container, source, focusedNode);'''
+    if text.count(old) != 1:
+        raise RuntimeError('Pinned Home DOM update anchor changed')
+    return text.replace(old, '''  if (canUpdate) {
+    // Focus changes and measured truncation replace these children outside
+    // the renderer. Adopt them before diffing, rather than preserving them
+    // as runtime-owned media and appending a second title/metadata block.
+    // Leave logos, transition ghosts and trailer layers with their owners.
+    registerHomeDomNodes(container.querySelectorAll(
+      ".home-hero-title-text, .home-hero-copy > :not(.home-hero-brand), .home-hero-indicators"
+    ));
+    updateChildren(container, source, focusedNode);''')
+
+
 def patch_detail_back(text):
     old='if (this.params?.returnHomeOnBack) {'
     search='if (this.params?.returnToSearchOnBack) {'
@@ -215,6 +268,9 @@ def patch_search_back(text):
 
 
 def patch_nuvio(nuvio):
+    patch_stream_selection(nuvio)
+    home_dom = nuvio/'js/ui/screens/home/homeDomUpdate.js'
+    home_dom.write_text(patch_home_dom(home_dom.read_text()))
     replace(nuvio/'js/platform/adapters/browserAdapter.js',
         '    return "Web Browser";',
         '    return globalThis.__NUVIO_PS5__ ? "PS5" : "Web Browser";')
@@ -251,6 +307,7 @@ def patch_nuvio(nuvio):
     navigation=nuvio/'js/ui/navigation'
     shutil.copyfile(Path(__file__).parent/'ps5-navigation.js', navigation/'ps5-navigation.js')
     shutil.copyfile(Path(__file__).parent/'ps5-text-input.js', navigation/'ps5-text-input.js')
+    shutil.copyfile(Path(__file__).parent/'ps5-tv-remote.js', navigation/'ps5-tv-remote.js')
     search_actions=nuvio/'js/ui/screens/search/searchScreenMethods-06-activate-action-node.js'
     search_actions.write_text(patch_search_back(search_actions.read_text()))
     replace(navigation/'focusEngine.js',
@@ -400,21 +457,89 @@ def patch_nuvio(nuvio):
         '''      registerPlaybackActionsPart02.call(this, model);
       if (globalThis.__NUVIO_PS5__) {
         this.actionMap.set("playback:ps5-native", () => document.getElementById("__evoClose")?.click());
+        this.actionMap.set("playback:ps5-speedtest", () => showPs5Speedtest());
       }''')
+    settings_playback = nuvio/'js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js'
+    settings_playback.write_text('import { showPs5Speedtest } from "../../navigation/ps5-speedtest.js";\n' + settings_playback.read_text())
+    shutil.copyfile(Path(__file__).parent/'ps5-speedtest.js', navigation/'ps5-speedtest.js')
     replace(nuvio/'js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js',
         '          ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}',
         '''          ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
-          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-native", title: "Player settings", subtitle: "Open the native PS5 player settings" }) : ""}''')
+          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-native", title: "Player settings", subtitle: "Open the native PS5 player settings" }) : ""}
+          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-speedtest", title: "Speed test", subtitle: "Test native download speed to TorBox" }) : ""}''')
     router=nuvio/'js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js'
     router.write_text(patch_resume_router(router.read_text()))
+    replace(nuvio/'js/data/repository/skipIntroRepository.js',
+        '    const response = await fetch(url, {',
+        '''    // IntroDB does not allow the console's loopback browser origin.
+    // Keep its existing mapping/cache and fetch only this service natively.
+    const endpoint = new URL(url);
+    const target = globalThis.__NUVIO_PS5__ && endpoint.origin === "https://api.introdb.app" && endpoint.pathname === "/segments"
+      ? "/evo/skip-metadata" + endpoint.search : url;
+    const response = await fetch(target, {''')
     app=nuvio/'js/app.js'
     replace(app, 'let hasSelectedProfileThisSession = false;',
         'let hasSelectedProfileThisSession = false;\n' +
         (Path(__file__).parent/'ps5-resume.js').read_text() + '\n' +
-        (Path(__file__).parent/'ps5-playback-progress.js').read_text())
+        (Path(__file__).parent/'ps5-playback-progress.js').read_text() + '\n' +
+        (Path(__file__).parent/'ps5-skip.js').read_text() + '\n' +
+        (Path(__file__).parent/'ps5-next.js').read_text())
+    replace(app, 'import { PlayerController } from "./core/player/playerController.js";',
+        '''import { PlayerController } from "./core/player/playerController.js";
+import { PlayerSettingsStore } from "./data/local/playerSettingsStore.js";
+import { skipIntroRepository } from "./data/repository/skipIntroRepository.js";
+import { getSkipIntervalTargetSeconds } from "./core/player/skipIntervalRules.js";
+import { normalizeNextEpisodeThresholdMode, normalizeThresholdMinutesBeforeEnd,
+  normalizeThresholdPercent, shouldEnterStillWatchingPrompt } from "./ui/screens/player/playerNextEpisodeRules.js";''')
     replace(app, 'async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {',
         '''async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
   await restorePs5PlaybackProgress();''')
+    replace(app, '  const resumeRoute =\n    restoreWebOsRoute',
+        '''  const recommendation = experienceRoute === "home" && globalThis.__nuvioTakePresentationRoute?.();
+  if (recommendation) {
+    await Router.navigate("detail", recommendation, { replaceHistory: true, skipStackPush: true });
+    return;
+  }
+  const nativeDetail = experienceRoute === "home" && globalThis.__nuvioTakePlaybackDetailRoute?.();
+  if (nativeDetail) {
+    await Router.navigate("detail", nativeDetail, { replaceHistory: true, skipStackPush: true });
+    return;
+  }
+  const nativeNext = experienceRoute === "home" && globalThis.__nuvioTakeNextEpisodeRoute?.();
+  if (nativeNext) {
+    await Router.navigate("player", nativeNext, { replaceHistory: true, skipStackPush: true });
+    return;
+  }
+  const resumeRoute =
+    restoreWebOsRoute''')
+    replace(detail/'metaDetailsScreenMethods-03-load-detail.js', '      this.render(meta);',
+        '''      this.render(meta, globalThis.__NUVIO_PS5__ && this.params?.ps5ReturnEpisodeVideoId
+        ? this.getEpisodeFocusDescriptor(this.params.ps5ReturnEpisodeVideoId) : undefined);''')
+    mount = nuvio/'js/ui/screens/player/playerScreenMethods-01-mount.js'
+    replace(mount, '    PlayerController,', '    PlayerController,\n    Router,')
+    replace(mount, '      this.params = params;',
+        '      this.ps5NativeNextEpisode = false;\n      this.params = params;')
+    replace(mount, '      this.bindPlayerExitCleanup();', '''      this.bindPlayerExitCleanup();
+      if (globalThis.__NUVIO_PS5__ && params.ps5NextEpisodeSession) {
+        if (!globalThis.__nuvioConsumeNextEpisode?.(params)) {
+          await Router.navigate("stream", { ...this.buildStreamRouteParamsFromPlayer(), manualSelection: true });
+          return;
+        }
+        this.ps5NativeNextEpisode = true;
+        await this.playNextEpisode({ userInitiated: Boolean(params.ps5NextEpisodeUserInitiated) });
+        return;
+      }''')
+    replace(nuvio/'js/ui/screens/player/playerScreenMethods-22-should-show-next-episode-card.js',
+        '    async runNextEpisodeCountdown(token, selectedStream) {',
+        '''    async runNextEpisodeCountdown(token, selectedStream) {
+      if (this.ps5NativeNextEpisode) return this.isNextEpisodeLaunchActive(token);''')
+    replace(nuvio/'js/ui/screens/player/playerScreenMethods-23-maybe-autoplay-next-episode.js',
+        '    getCurrentStreamBingeGroup() {', '''    getCurrentStreamBingeGroup() {
+      if (this.ps5NativeNextEpisode) return String(this.params?.ps5NativeBingeGroup || "");''')
+    replace(nuvio/'js/core/profile/profileSelectionScreenMethods-07-activate-focused-node.js',
+        '        await ProfileManager.setActiveProfile(profileId);',
+        '''        await ProfileManager.setActiveProfile(profileId);
+        await globalThis.__nuvioRestorePlaybackProgress?.();''')
     replace(app, '  if (hasSelectedProfileThisSession) {',
         '  if (hasSelectedProfileThisSession || canResumePs5Playback()) {')
     replace(app, 'async function shouldShowProfileSelection() {',
@@ -442,6 +567,12 @@ export async function resolveExperienceRoute(profileId) {
       !LayoutPreferences.getForProfile(profileId).hasChosenLayout) {
     await ProfileSettingsSyncService.pull(profileId);
   }''')
+    import playback_general
+    playback_general.patch_frontend(nuvio)
+    import subtitle_handoff
+    subtitle_handoff.patch_frontend(nuvio)
+    import native_preferences
+    native_preferences.patch_frontend(nuvio)
 
 
 def patch_search_keyboard(app):
@@ -451,12 +582,19 @@ def patch_search_keyboard(app):
     if source.count(signature)!=2:
         raise RuntimeError('Pinned keyboard signatures changed')
     source=source.replace(signature, signature[:-1]+', int native_only)')
+    # Standard and numeric upstream entry points both use the same opener.
+    if source.count('on_submit, userdata, 0);') != 2:
+        raise RuntimeError('Pinned keyboard entry points changed')
+    source=source.replace('on_submit, userdata, 0);', 'on_submit, userdata, 0, 0);')
     keyboard.write_text(source)
-    replace(keyboard, 'on_submit, userdata, 0);', 'on_submit, userdata, 0, 0);')
     replace(keyboard, 'on_submit, userdata, 1);', 'on_submit, userdata, 1, 0);')
+    replace(keyboard, '    if (!g_kb.number) kb_setup_phone();',
+        '    if (!native_only && !g_kb.number) kb_setup_phone();')
     replace(keyboard,
-        'if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !phone) {',
-        'if ((native_only || g_kb_type == EVO_KEYBOARD_TYPE_NATIVE) && !g_native_ime_broken && !phone) {')
+        '''if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !g_kb.phone &&
+        !g_kb.number && !g_kb.noport) {''',
+        '''if (!g_native_ime_broken && (native_only ||
+        (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_kb.phone && !g_kb.number && !g_kb.noport))) {''')
     replace(keyboard, '        if (cd_rc != 0) {',
         '        if (cd_rc != 0) {\n            if (native_only) { g_kb.is_open = 0; return; }')
     replace(keyboard,
@@ -619,12 +757,16 @@ def fix_playback_handoff(source):
     end = "encodeURIComponent(good));}"
     if source.count(old) != 1 or source.count(end) != 1:
         raise RuntimeError('Pinned playback handoff anchors changed')
-    new = ('" function go(t){if(done)return;done=1;var back=good,start=0,session=\'\';"\n'
+    new = ('" function go(t){if(done)return;done=1;function play(skip){if(skip===null)return;var back=good,start=0,session=\'\',next=\'\';"\n'
            '" if(NUVIO){if(window.__nuvioSavePlaybackReturn)session=window.__nuvioSavePlaybackReturn()||\'\';"\n'
+           '" if(window.__nuvioPlaybackNextPolicy)next=window.__nuvioPlaybackNextPolicy(session);"\n'
            '" if(window.__nuvioPlaybackStartSeconds)start=window.__nuvioPlaybackStartSeconds();"\n'
-           '" var ret=new URL(good,location.href);ret.searchParams.set(\\"nuvioPlaybackReturn\\",\\"1\\");back=ret.href;}saveNow(1);"')
+           '" var ret=new URL(good,location.href);ret.searchParams.set(\\"nuvioPlaybackReturn\\",\\"1\\");back=ret.href;}saveNow(1);function launch(){"')
     return source.replace(old, new).replace(end,
-        "encodeURIComponent(back)+'&start='+encodeURIComponent(start)+'&session='+encodeURIComponent(session));}")
+        "encodeURIComponent(back)+'&start='+encodeURIComponent(start)+'&session='+encodeURIComponent(session)+'&skip='+encodeURIComponent(skip||'')+'&next='+encodeURIComponent(next));}"
+        "if(NUVIO&&window.__nuvioSendPresentation){window.__nuvioSendPresentation(session).then(function(ok){if(ok)launch();else done=0;},function(){done=0;});}else launch();}"
+        "if(NUVIO){Promise.all([window.__nuvioPlaybackSkipSegments?window.__nuvioPlaybackSkipSegments():Promise.resolve(''),"
+        "window.__nuvioPreparePresentation?window.__nuvioPreparePresentation():Promise.resolve(true)]).then(function(v){if(v[1]!==null)play(v[0]);},function(){done=0;});}else play('');}")
 
 
 def patch_playback_start(app):
@@ -666,6 +808,167 @@ def patch_playback_start(app):
         'evo_webui_take_play(url, sizeof url, title, sizeof title, &g_web_start)')
 
 
+def patch_stream_selection(nuvio):
+    """Keep the selected stream across incremental source ordering and completion."""
+    stream = nuvio/'js/ui/screens/stream'
+    render = stream/'streamScreenMethods-09-render.js'
+    replace(render, '''      const previousFocusedIndex = Number(this.focusState?.row);
+      const previousFocusedKey =
+        previousVirtualModel &&''', '''      const previousFocusedIndex = Number(this.focusState?.row);
+      const previousStreams = this.renderedStreamListStreams || [];
+      const previousKeys = previousVirtualModel?.keys || this.getStreamVirtualKeys(
+        this.addonFilter === "all" ? previousStreams : previousStreams.filter((s) => s.addonName === this.addonFilter)
+      );
+      const previousFocusedKey =
+        this.focusState?.zone === "card" &&''')
+    replace(render, '''        previousFocusedIndex < previousVirtualModel.keys.length
+          ? previousVirtualModel.keys[previousFocusedIndex]''', '''        previousFocusedIndex < previousKeys.length
+          ? previousKeys[previousFocusedIndex]''')
+    replace(render, '      if (virtualizedStreamList && previousFocusedKey && !this.streamVirtualFocusReset) {',
+        '      if (previousFocusedKey && !this.streamVirtualFocusReset) {')
+    load = stream/'streamScreenMethods-04-load-streams.js'
+    replace(load, '          let initialIndex = clamp(Number(this.focusState?.index || 0), 0, maxCardIndex);',
+        '          let initialIndex = clamp(Number(this.focusState?.row ?? this.focusState?.index ?? 0), 0, maxCardIndex);')
+    replace(load, '          if (preferred) {',
+        '          if (preferred && this.focusState?.zone !== "card") {')
+
+
+def patch_playback_restart_diagnostics(app):
+    """Record numeric restart state without changing pause or retry policy."""
+    controller = app/'core/src/services/PlaybackController.cpp'
+    replace(controller, '''    double resumeAt = getPositionSeconds();
+    bool wasPaused = isPaused();''', '''    double resumeAt = getPositionSeconds();
+    bool wasPaused = isPaused();
+    evo_boot_log("audio switch begin: from=%d to=%d position=%.3f paused=%d engine_paused=%d",
+                 audio_stream_index, streamIndex, resumeAt, wasPaused, evo_pb_is_paused());''')
+    replace(controller, '    if (!startPlaybackSource(savedSource, resumeAt)) {',
+        '''    if (!startPlaybackSource(savedSource, resumeAt)) {
+        evo_boot_log("audio switch end: requested=%d opened=0", streamIndex);''')
+    replace(controller, '''    if (wasPaused) setPaused(true);
+    return true;
+}
+
+std::vector<PlaybackController::VideoVariantInfo>''',
+        '''    if (wasPaused) setPaused(true);
+    evo_boot_log("audio switch end: requested=%d selected=%d opened=1 paused=%d engine_paused=%d",
+                 streamIndex, audio_stream_index, isPaused(), evo_pb_is_paused());
+    return true;
+}
+
+std::vector<PlaybackController::VideoVariantInfo>''')
+    replace(controller, '    evo_thread_create(&demux_thread, demux_thread_func, nullptr);',
+        '''    const int demux_rc = evo_thread_create(&demux_thread, demux_thread_func, nullptr);
+    evo_boot_log("playback worker start: kind=demux rc=%d", demux_rc);''')
+    for thread, function in (('video', 'video_decode_thread_func'),
+                             ('audio_decode', 'audio_decode_thread_func'), ('audio', 'audio_output_thread')):
+        replace(controller, f'        evo_thread_create(&{thread}_thread, {function}, nullptr);',
+            f'''        const int thread_rc = evo_thread_create(&{thread}_thread, {function}, nullptr);
+        evo_boot_log("playback worker start: kind={thread} rc=%d", thread_rc);''')
+
+
+def patch_playback_read_diagnostics(app):
+    """Bound numeric network demux timing without exporting request context."""
+    stream_io = app/'media/src/evo_stream_io.c'
+    replace(stream_io, '    av_dict_set(opts, "reconnect", "1", 0);', '''    /* Controlled receive-buffer experiment: FFmpeg forwards this option
+     * through HTTP/TLS to TCP before connect. Read-path diagnostics report
+     * the actual accepted SO_RCVBUF, which the OS may cap or reject. */
+    av_dict_set(opts, "recv_buffer_size", "1048576", 0);
+    av_dict_set(opts, "reconnect", "1", 0);''')
+    demux = app/'media/src/evo_demux.c'
+    replace(demux, '#include <unistd.h>', '''#include <unistd.h>
+#include <errno.h>
+#include <sys/socket.h>
+#include <libavformat/avio.h>
+
+/* Exact declarations from pinned FFmpeg 7.1.1 avio_internal.h and url.h.
+ * Use its URL/HTTP/TLS dispatch, never cast private protocol layouts. */
+struct URLContext;
+struct URLContext *ffio_geturlcontext(AVIOContext *s);
+int ffurl_get_file_handle(struct URLContext *h);''')
+    replace(demux, '''    while (demux_thread_running) {
+        /*
+         * Process seek requests before checking the paused state.''', '''    /* At most 24 five-second windows per network playback. AVIO bytes are
+     * payload read by libavformat, not socket bytes or a CDN speed test. */
+    int rd_reports = 0, rd_calls = 0, rd_video = 0, rd_audio = 0, rd_errors = 0;
+    int rd_counter_resets = 0, rd_last_rc = 0;
+    long long rd_since = av_gettime_relative();
+    long long rd_read_us = 0, rd_wait_us = 0, rd_max_us = 0, rd_bytes = 0;
+    while (demux_thread_running) {
+        if (pb_rebuffer_enabled && rd_reports < 24) {
+            const long long rd_now = av_gettime_relative();
+            if (rd_now - rd_since >= 5000000) {
+                struct URLContext *rd_url = ffio_geturlcontext(play_fmt->pb);
+                const int rd_fd = rd_url ? ffurl_get_file_handle(rd_url) : -1;
+                int rd_recvbuf = -1, rd_sock_rc = -1, rd_sock_error = 0;
+                socklen_t rd_sock_len = sizeof(rd_recvbuf);
+                if (rd_fd >= 0) {
+                    rd_sock_rc = getsockopt(rd_fd, SOL_SOCKET, SO_RCVBUF,
+                                           &rd_recvbuf, &rd_sock_len);
+                    if (rd_sock_rc < 0) rd_sock_error = errno;
+                }
+                if (rd_sock_rc != 0 || rd_sock_len != sizeof(rd_recvbuf)) rd_recvbuf = -1;
+                evo_boot_log("read path: window=%d elapsed_us=%lld calls=%d read_us=%lld "
+                    "max_read_us=%lld queue_wait_us=%lld avio_bytes=%lld io=%d resets=%d "
+                    "video=%d audio=%d errors=%d last_rc=%d vq=%d aq=%d paused=%d prebuffer=%d "
+                    "socket=%d recvbuf_bytes=%d sock_rc=%d sock_errno=%d sock_len=%u avio_buf=%d",
+                    ++rd_reports, rd_now - rd_since, rd_calls, rd_read_us, rd_max_us,
+                    rd_wait_us, rd_bytes, play_fmt->pb != NULL, rd_counter_resets,
+                    rd_video, rd_audio, rd_errors, rd_last_rc,
+                    packet_queue_count(&video_packet_queue), packet_queue_count(&audio_packet_queue),
+                    player_paused, (int)pb_prebuffer_hold,
+                    rd_fd >= 0, rd_recvbuf, rd_sock_rc, rd_sock_error, (unsigned)rd_sock_len,
+                    play_fmt->pb ? play_fmt->pb->buffer_size : 0);
+                rd_since = rd_now;
+                rd_calls = rd_video = rd_audio = rd_errors = rd_counter_resets = 0;
+                rd_read_us = rd_wait_us = rd_max_us = rd_bytes = 0;
+            }
+        }
+        const int rd_enabled = pb_rebuffer_enabled && rd_reports < 24;
+        /*
+         * Process seek requests before checking the paused state.''')
+    replace(demux, '''        int read_result =
+            av_read_frame(
+                play_fmt,
+                pkt
+            );
+
+        if (read_result < 0) {''', '''        const long long rd_begin = rd_enabled ? av_gettime_relative() : 0;
+        const int64_t rd_before = rd_enabled && play_fmt->pb ? play_fmt->pb->bytes_read : -1;
+        int read_result =
+            av_read_frame(
+                play_fmt,
+                pkt
+            );
+        if (rd_enabled) {
+            const long long rd_elapsed = av_gettime_relative() - rd_begin;
+            rd_read_us += rd_elapsed;
+            if (rd_elapsed > rd_max_us) rd_max_us = rd_elapsed;
+            ++rd_calls;
+            rd_last_rc = read_result;
+            if (read_result < 0) ++rd_errors;
+            else if (pkt->stream_index == video_stream_index) ++rd_video;
+            else if (pkt->stream_index == audio_stream_index) ++rd_audio;
+            if (rd_before >= 0 && play_fmt->pb) {
+                const int64_t rd_after = play_fmt->pb->bytes_read;
+                if (rd_after >= rd_before) rd_bytes += rd_after - rd_before;
+                else ++rd_counter_resets;
+            }
+        }
+
+        if (read_result < 0) {''')
+    for queue, deadline in (
+            ('video', 'prebuffer_deadline_ms,\n                                playback_profile >= 3 ? 300 : 500'),
+            ('audio', 'prebuffer_deadline_ms, 1000')):
+        other = 'audio' if queue == 'video' else 'video'
+        call = f'''            demux_wait_for_room(&{queue}_packet_queue, {queue}_packet_cap,
+                                {queue}_queue_byte_cap,
+                                &{other}_packet_queue, {other}_packet_cap,
+                                {deadline});'''
+        replace(demux, call, '''            const long long rd_wait_begin = rd_enabled ? av_gettime_relative() : 0;
+''' + call + '''
+            if (rd_enabled) rd_wait_us += av_gettime_relative() - rd_wait_begin;''')
+
+
 def patch_playback_progress(app):
     web = app/'src/evo_webui.c'
     replace(web, 'static void serve_evo(int fd, const char *path)',
@@ -689,12 +992,23 @@ def patch_playback_progress(app):
     snprintf(s_progress_session, sizeof s_progress_session, "%s", s_play_progress_session);
     s_progress_position = s_progress_duration = 0.0;
     s_progress_finished = 0;
+    ++s_progress_revision;
     pthread_mutex_unlock(&s_mx);''')
     replace(web, '    if (s_state != P_PLAYING) return;',
         '''    if (s_state != P_PLAYING) return;
     pthread_mutex_lock(&s_mx);
     s_progress_finished = 1;
+    ++s_progress_revision;
     pthread_mutex_unlock(&s_mx);''')
+    replace(web, '''    while (!s_srv_stop) {
+        int c = accept(s_listen_fd, NULL, NULL);''',
+        '''    while (!s_srv_stop) {
+        playback_progress_checkpoint();
+        struct pollfd listener = {s_listen_fd, POLLIN, 0};
+        int ready = poll(&listener, 1, 1000);
+        if (ready == 0 || (ready < 0 && errno == EINTR)) continue;
+        if (ready < 0 || !(listener.revents & POLLIN)) break;
+        int c = accept(s_listen_fd, NULL, NULL);''')
     header = app/'include/evo_webui.h'
     replace(header, 'void evo_webui_playback_ended(int played);',
         'void evo_webui_progress_sample(double position, double duration);\nvoid evo_webui_playback_ended(int played);')
@@ -715,3 +1029,460 @@ static inline void evo_webui_playback_ended(int played) { (void)played; }''')
         if (!isScrubbing())
             evo_webui_progress_sample(getPositionSeconds(), getDurationSeconds());
         saveResumePosition();''')
+
+
+def patch_playback_hui(app):
+    """The AGC renderer prefers homebrew-ui over playback.rml on the console."""
+    header = app/'ui_kit/include/evo_hui_osd.hpp'
+    replace(header, '    void draw_top(hui::gfx::DrawList &list, const Context &ctx) const;',
+        '    void draw_nuvio_prompts(hui::gfx::DrawList &list, const Context &ctx) const;\n    void draw_top(hui::gfx::DrawList &list, const Context &ctx) const;')
+    source = app/'ui_kit/src/evo_hui_osd.cpp'
+    # Upstream now owns the copied skip label. Only native-library playback
+    # uses its Triangle prompt; browser handoffs retain Nuvio's R1 policies.
+    replace(source, '    if (skip_.value <= 0.01f || skip_label_.empty())',
+        '    if (raw_.nuvio_active || skip_.value <= 0.01f || skip_label_.empty())')
+    replace(source, 'void OsdScreen::draw_top(DrawList &list, const Context &ctx) const', r'''void OsdScreen::draw_nuvio_prompts(DrawList &list, const Context &ctx) const
+{
+    if (!raw_.nuvio_active) return;
+    const ui::Fonts &fonts = ctx.fonts;
+    const Palette &p = ctx.palette;
+    if (skip_on_)
+    {
+        const Rect card{1920 - kMargin - 500, 740, 500, 76};
+        list.push_opacity(raw_.skip_countdown > 0 ? 1.0f : 0.5f);
+        list.bordered_rect(card, 12, kInk.with_alpha(0.95f), 2, p.accent);
+        ui::Hint hint{ui::Button::r1, skip_label_.c_str()};
+        ui::HintLayout layout;
+        layout.size = 32;
+        layout.text_size = 24;
+        layout.cy = card.cy();
+        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), &hint, 1, card.x + 24, false, layout);
+        if (raw_.skip_countdown > 0)
+        {
+            const std::string countdown = "Dims in " + std::to_string(raw_.skip_countdown) + "s";
+            ui::text(list, fonts.regular, countdown, card.x + card.w - 24, card.y + 46,
+                18, kWhite.with_alpha(0.8f), Align::right);
+        }
+        list.pop_opacity();
+    }
+    if (raw_.next_episode || raw_.playback_ended)
+    {
+        const Rect card{1920 - kMargin - 620, !skip_on_ ? 740.0f : 600.0f, 620, 124};
+        list.bordered_rect(card, 12, kInk.with_alpha(0.95f), 2, p.accent);
+        const std::string label = raw_.next_episode > 0
+            ? "Next episode in " + std::to_string(raw_.next_episode) + "s"
+            : raw_.next_episode ? "Next episode" : "Playback ended";
+        ui::text(list, fonts.semibold, label, card.x + 24, card.y + 38, 24, kWhite);
+        ui::Hint hints[3];
+        int n = 0;
+        if (raw_.next_episode && !skip_on_)
+            hints[n++] = {ui::Button::r1, "Play now"};
+        if (raw_.next_episode)
+            hints[n++] = {ui::Button::l1, "Keep watching"};
+        hints[n++] = {ui::Button::circle, "Back to Nuvio"};
+        ui::HintLayout layout;
+        layout.size = 28;
+        layout.text_size = 18;
+        layout.item_gap = 20;
+        layout.cy = card.y + 88;
+        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, card.x + 24, false, layout);
+    }
+}
+
+void OsdScreen::draw_top(DrawList &list, const Context &ctx) const''')
+    replace(source, '        draw_captions(list, ctx, chrome);',
+        '        draw_captions(list, ctx, chrome);\n        draw_nuvio_prompts(list, ctx);')
+    replace(source, '    return chrome_.value > 0.01f || raw_.scrub_active || raw_.paused;',
+        '    return chrome_.value > 0.01f || raw_.scrub_active || raw_.paused ||\n        skip_on_ || raw_.next_episode || raw_.playback_ended;')
+
+
+def patch_skip_metadata_proxy(source):
+    """Fetch only validated IntroDB metadata, never an arbitrary client URL."""
+    anchor = 'static void serve_evo(int fd, const char *path)'
+    if source.count(anchor) != 1 or source.count('#include "evo_webui.h"') != 1:
+        raise RuntimeError('Pinned skip metadata anchors changed')
+    source = source.replace('#include "evo_webui.h"', '#include "evo_webui.h"\n#include "evo_net.h"')
+    source = source.replace(anchor, r'''static void serve_skip_metadata(int fd, const char *path)
+{
+    char imdb[32], season[16], episode[16], movie[16], url[256];
+    query_param(path, "imdb_id", imdb, sizeof imdb);
+    query_param(path, "season", season, sizeof season);
+    query_param(path, "episode", episode, sizeof episode);
+    query_param(path, "is_movie", movie, sizeof movie);
+    int valid_id = !strncmp(imdb, "tt", 2) && imdb[2] &&
+        strspn(imdb + 2, "0123456789") == strlen(imdb + 2);
+    int series = season[0] && episode[0] &&
+        strspn(season, "0123456789") == strlen(season) &&
+        strspn(episode, "0123456789") == strlen(episode);
+    if (!valid_id || (strcmp(movie, "true") && (movie[0] || !series))) {
+        respond(fd, "400 Bad Request", "application/json", "{}", 2);
+        return;
+    }
+    if (!strcmp(movie, "true"))
+        snprintf(url, sizeof url, "https://api.introdb.app/segments?imdb_id=%s&is_movie=true", imdb);
+    else
+        snprintf(url, sizeof url, "https://api.introdb.app/segments?imdb_id=%s&season=%s&episode=%s", imdb, season, episode);
+    char *body = NULL;
+    size_t length = 0;
+    int status = 0;
+    int rc = evo_net_http_get_sync(url, NULL, 0, &body, &length, &status);
+    tlog("skip metadata: rc=%d status=%d bytes=%zu", rc, status, length);
+    if (!rc && status == 200 && body && length <= 32768)
+        respond(fd, "200 OK", "application/json", body, length);
+    else
+        respond(fd, "502 Bad Gateway", "application/json", "{}", 2);
+    free(body);
+}
+
+''' + anchor)
+    source = source.replace(anchor + '\n{', anchor + '''
+{
+    if (!strncmp(path, "/evo/skip-metadata?", 19)) {
+        serve_skip_metadata(fd, path);
+        return;
+    }''')
+    return source
+
+
+def patch_playback_skip(app):
+    """Carry skip intervals and per-segment policy through the browser handoff."""
+    web = app/'src/evo_webui.c'
+    web.write_text(patch_skip_metadata_proxy(web.read_text()))
+    replace(web, 'static void serve_evo(int fd, const char *path)',
+        (Path(__file__).parent/'ps5-skip.c').read_text() +
+        '\nstatic void serve_evo(int fd, const char *path)')
+    replace(web, '        s_h_start = seconds;',
+        '        s_h_start = seconds;\n        playback_skip_parse(path);')
+    replace(web, '            s_play_start = s_h_start;',
+        '            s_play_start = s_h_start;\n            memcpy(s_play_skip, s_h_skip, sizeof s_play_skip);')
+    replace(web, '    *start = s_play_start;', '''    *start = s_play_start;
+    memcpy(s_skip, s_play_skip, sizeof s_skip);
+    int skipRecords = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (!s_skip[i].type) continue;
+        ++skipRecords;
+        LOG("skip session: type=%d auto=%d start=%.3f end=%.3f",
+            s_skip[i].type, s_skip[i].automatic, s_skip[i].start, s_skip[i].end);
+    }
+    LOG("skip session: records=%d", skipRecords);
+    s_skip_suppressed = -1;
+    s_skip_retry_after = 0;
+    evo_webui_skip_countdown(0.0, 0, 0);''')
+    replace(web, '    if (s_state != P_PLAYING) return;',
+        '    memset(s_skip, 0, sizeof s_skip);\n    if (s_state != P_PLAYING) return;')
+    header = app/'include/evo_webui.h'
+    replace(header, '#include <stddef.h>', '#include <stddef.h>\n#include <stdint.h>')
+    replace(header, 'void evo_webui_progress_sample(double position, double duration);',
+        '''int evo_webui_skip_interval(double position, double duration, uint64_t now,
+                            int consume, double *target);
+int evo_webui_skip_countdown(double target, uint64_t now, int running);
+void evo_webui_progress_sample(double position, double duration);''')
+    replace(header, 'static inline void evo_webui_progress_sample(double p, double d) { (void)p; (void)d; }',
+        '''static inline int evo_webui_skip_interval(double p, double d, uint64_t n, int c, double *t)
+{ (void)p; (void)d; (void)n; (void)c; (void)t; return 0; }
+static inline int evo_webui_skip_countdown(double t, uint64_t n, int r)
+{ (void)t; (void)n; (void)r; return 0; }
+static inline void evo_webui_progress_sample(double p, double d) { (void)p; (void)d; }''')
+    # Keep the prompt eligible in exactly the same states for rendering/input.
+    player = app/'core/src/screens/PlayerScreen.cpp'
+    replace(player, 'bool PlayerScreen::hasActiveOverlay() const {', '''int PlayerScreen::skipInterval(double* target, int consume) const {
+    auto playback = Application::getInstance().getPlaybackController();
+    if (!playback || !playback->isActive() || playback->isMusicMode() ||
+        playback->isLiveSource() || playback->isScrubbing() || !video_frame_loaded ||
+        g_pp_pb.seek_discarding || pb_prebuffer_hold || readerStalled() || m_showStatsForNerds ||
+        (consume == 2 && (playback->isPaused() || evo_pb_is_paused())))
+        return 0;
+    return evo_webui_skip_interval(playback->getPositionSeconds(),
+        playback->getDurationSeconds(), NowMs(), consume, target);
+}
+
+bool PlayerScreen::hasActiveOverlay() const {
+    double target;
+    if (skipInterval(&target)) return true;''')
+    replace(player, '    if (pressed & PadButtons::R1) {\n        playback->jumpChapter(1);',
+        '''    if (pressed & PadButtons::R1) {
+        double target;
+        if (skipInterval(&target, true)) {
+            evo_boot_log("skip R1: action=segment position=%.3f target=%.3f",
+                playback->getPositionSeconds(), target);
+            playback->seekTo(target);
+            return true;
+        }
+        playback->jumpChapter(1);''')
+    replace(player, '    const bool ended = (evo_pb_is_eof() != 0);',
+        '''    double autoSkipTarget;
+    if (skipInterval(&autoSkipTarget, 2)) {
+        playback->seekTo(autoSkipTarget);
+        return;
+    }
+    const bool ended = (evo_pb_is_eof() != 0);''')
+    replace(player, '    if (m_osdVisibilityAlpha > 0 && evo_rmlui_is_initialized()) {',
+        '''    double skipTarget;
+    const int skipType = skipInterval(&skipTarget);
+    const char* skipLabel = skipType == 1 ? "Skip intro" : skipType == 2 ? "Skip credits" : skipType == 3 ? "Skip recap" : "";
+    const int skipCountdown = evo_webui_skip_countdown(skipType ? skipTarget : 0.0,
+        NowMs(), !playback->isPaused() && !evo_pb_is_paused());
+    if (m_osdVisibilityAlpha > 0 && evo_rmlui_is_initialized()) {''')
+    replace(player, '        p.chrome_hidden = 0;',
+        '        p.chrome_hidden = 0;\n        p.skip_label = skipLabel;\n        p.skip_countdown = skipCountdown;')
+    replace(player, '    } else if ((activeSubText[0] || secondarySubText[0]',
+        '    } else if ((skipType || activeSubText[0] || secondarySubText[0]')
+    replace(player, '        p.chrome_hidden = 1;',
+        '        p.chrome_hidden = 1;\n        p.skip_label = skipLabel;\n        p.skip_countdown = skipCountdown;')
+    replace(app/'core/include/evo/screens/PlayerScreen.hpp',
+        '    void initPlayerStateMachine();',
+        '    int skipInterval(double* target, int consume = 0) const;\n    void initPlayerStateMachine();')
+    replace(app/'ui_rml/include/evo_rmlui_bridge.h', '    int chrome_hidden;',
+        '    int chrome_hidden;\n    int skip_countdown; /* Seconds at full opacity, then dim at zero. */')
+    text = player.read_text()
+    anchor = '        p.skip_label = g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr;'
+    if text.count(anchor) != 2: raise RuntimeError('Pinned upstream skip OSD branches changed')
+    player.write_text(text.replace(anchor,
+        '        p.skip_label = evo_webui_native_requested() ?\n            (g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr) : skipLabel;'))
+    replace(player, '    skip_tick(playback, playback->getSource(), now);',
+        '    if (evo_webui_native_requested()) skip_tick(playback, playback->getSource(), now);')
+    state = app/'ui_rml/include/evo_rmlui_app.h'
+    replace(state, 'struct EvoPlaybackState {', 'struct EvoPlaybackState {\n    std::string skip_label;\n    int skip_countdown = 0;')
+    replace(state, '        return title == o.title && meta == o.meta && res_badge == o.res_badge &&',
+        '        return skip_countdown == o.skip_countdown && skip_label == o.skip_label &&\n               title == o.title && meta == o.meta && res_badge == o.res_badge &&')
+    replace(app/'ui_rml/src/evo_rmlui_bridge.cpp', '    state.chrome_hidden = (p->chrome_hidden != 0);',
+        '    state.chrome_hidden = (p->chrome_hidden != 0);\n    state.skip_label = p->skip_label ? p->skip_label : "";\n    state.skip_countdown = p->skip_countdown;')
+    replace(app/'ui_rml/src/evo_rmlui_app.cpp', '    m_last_state = state;', r'''    if (state.skip_label != m_last_state.skip_label) {
+        if (auto* prompt = m_playback_doc->GetElementById("nuvio-skip")) {
+            prompt->SetProperty("display", state.skip_label.empty() ? "none" : "flex");
+            if (auto* label = m_playback_doc->GetElementById("nuvio-skip-label"))
+                label->SetInnerRML(state.skip_label);
+        }
+        if (auto* chapter = m_playback_doc->GetElementById("item-chapter"))
+            chapter->SetInnerRML(state.skip_label.empty()
+                ? "<span class=\"btn-tag\">L1 / R1</span><span class=\"control-label\">CHAPTER</span>"
+                : "<span class=\"btn-tag\">L1</span><span class=\"control-label\">CHAPTER</span>");
+    }
+    if (state.skip_countdown != m_last_state.skip_countdown || state.skip_label != m_last_state.skip_label) {
+        if (auto* prompt = m_playback_doc->GetElementById("nuvio-skip"))
+            prompt->SetProperty("opacity", state.skip_countdown > 0 ? "1" : "0.5");
+        if (auto* countdown = m_playback_doc->GetElementById("nuvio-skip-countdown")) {
+            countdown->SetProperty("display", state.skip_countdown > 0 ? "block" : "none");
+            countdown->SetInnerRML("Dims in " + std::to_string(state.skip_countdown) + "s");
+        }
+    }
+    m_last_state = state;''')
+    replace(app/'assets/rml/playback.rml', '    <!-- Bottom Netflix Controller Bar -->',
+        '''    <div id="nuvio-skip"><span class="btn-tag">R1</span><span id="nuvio-skip-label"></span><span id="nuvio-skip-countdown"></span></div>
+
+    <!-- Bottom Netflix Controller Bar -->''')
+    css = app/'assets/rml/playback.rcss'
+    css.write_text(css.read_text() + '''
+/* Independent of the fading controls and clear of the subtitle centre. */
+#nuvio-skip {
+    display: none;
+    position: absolute;
+    right: 60dp;
+    bottom: 260dp;
+    height: 64dp;
+    padding: 0 24dp;
+    align-items: center;
+    gap: 16dp;
+    background-color: #101827f2;
+    border: 2dp #8bb9ff;
+    border-radius: 12dp;
+    font-size: 24dp;
+    font-weight: bold;
+}
+#nuvio-skip-countdown {
+    font-size: 18dp;
+    font-weight: normal;
+    color: #c5d3e5;
+}
+''')
+
+
+def patch_next_episode(app):
+    web = app/'src/evo_webui.c'
+    replace(web, 'static void serve_evo(int fd, const char *path)',
+        (Path(__file__).parent/'ps5-next.c').read_text() +
+        '\nstatic void serve_evo(int fd, const char *path)')
+    replace(web, '        playback_skip_parse(path);',
+        '        playback_skip_parse(path);\n        playback_next_parse(path);')
+    replace(web, '            memcpy(s_play_skip, s_h_skip, sizeof s_play_skip);',
+        '            memcpy(s_play_skip, s_h_skip, sizeof s_play_skip);\n            s_play_next = s_h_next;')
+    replace(web, '    evo_webui_skip_countdown(0.0, 0, 0);',
+        '    evo_webui_skip_countdown(0.0, 0, 0);\n    playback_next_begin();')
+    replace(web, '    s_progress_finished = 0;',
+        '    s_progress_finished = 0;\n    s_progress_next_episode = 0;\n    s_progress_return_detail = 0;')
+    replace(web, '    memset(s_skip, 0, sizeof s_skip);',
+        '''    memset(s_skip, 0, sizeof s_skip);
+    /* A later native-library source has no browser handoff to replace this. */
+    memset(&s_play_next, 0, sizeof s_play_next);
+    playback_next_begin();''')
+    header = app/'include/evo_webui.h'
+    replace(header, 'int evo_webui_skip_countdown(double target, uint64_t now, int running);',
+        '''int evo_webui_skip_countdown(double target, uint64_t now, int running);
+int evo_webui_next_episode(double position, double duration, uint64_t now, int running, int visible, int action);''')
+    replace(header, 'static inline int evo_webui_skip_countdown(double t, uint64_t n, int r)',
+        '''static inline int evo_webui_next_episode(double p, double d, uint64_t n, int r, int v, int a)
+{ (void)p; (void)d; (void)n; (void)r; (void)v; (void)a; return 0; }
+static inline int evo_webui_skip_countdown(double t, uint64_t n, int r)''')
+    player = app/'core/src/screens/PlayerScreen.cpp'
+    replace(player, 'bool PlayerScreen::hasActiveOverlay() const {', '''int PlayerScreen::nextEpisode(int action) const {
+    auto playback = Application::getInstance().getPlaybackController();
+    const bool ended = evo_pb_is_eof() != 0;
+    const bool visible = !evo_webui_native_requested() && playback && playback->isActive() && !playback->isMusicMode() &&
+        !playback->isLiveSource() && !playback->isScrubbing() && video_frame_loaded &&
+        !g_pp_pb.seek_discarding && !m_showStatsForNerds && !evo_pb_decode_fatal() &&
+        (ended || (!pb_prebuffer_hold && !readerStalled()));
+    double position = playback ? playback->getPositionSeconds() : 0.0;
+    const double duration = playback ? playback->getDurationSeconds() : 0.0;
+    if (ended && position >= duration - 2.0) position = duration;
+    return evo_webui_next_episode(position, duration, NowMs(),
+        playback && !playback->isPaused() && !evo_pb_is_paused(), visible, action);
+}
+
+bool PlayerScreen::hasActiveOverlay() const {
+    if (m_nextEpisodeState || m_playbackEnded) return true;''')
+    replace(player, '''void PlayerScreen::onExit() {
+    StatefulScreen::onExit();''', '''void PlayerScreen::onExit() {
+    evo_webui_next_episode(0.0, 0.0, NowMs(), 0, 0, 0);
+    m_nextEpisodeState = 0;
+    m_playbackEnded = false;
+    StatefulScreen::onExit();''')
+    replace(player, '    if (pressed & PadButtons::L1) {\n        playback->jumpChapter(-1);',
+        '''    if (pressed & PadButtons::L1) {
+        if (m_nextEpisodeState) { nextEpisode(2); m_nextEpisodeState = 0; return true; }
+        playback->jumpChapter(-1);''')
+    replace(player, '        playback->jumpChapter(1);', '''        if (m_nextEpisodeState && nextEpisode(1) == -2) {
+            playback->stopPlayback();
+            if (screenMgr) screenMgr->returnFromPlayback();
+            return true;
+        }
+        evo_boot_log("skip R1: action=chapter position=%.3f", playback->getPositionSeconds());
+        playback->jumpChapter(1);''')
+    replace(player, '    const bool ended = (evo_pb_is_eof() != 0);',
+        '''    const bool ended = (evo_pb_is_eof() != 0);
+    m_playbackEnded = !evo_webui_native_requested() && evo_pb_is_finished() &&
+        !playback->isMusicMode() && !playback->isLiveSource() && !playback->isScrubbing() &&
+        video_frame_loaded && !g_pp_pb.seek_discarding && !m_showStatsForNerds;
+    m_nextEpisodeState = nextEpisode();
+    if (m_nextEpisodeState == -2) {
+        playback->stopPlayback();
+        if (auto sm = Application::getInstance().getScreenManager()) sm->returnFromPlayback();
+        m_nextEpisodeState = 0;
+        return;
+    }''')
+    replace(player, '    } else if ((skipType || activeSubText[0] || secondarySubText[0]',
+        '    } else if ((m_nextEpisodeState || m_playbackEnded || skipType || activeSubText[0] || secondarySubText[0]')
+    source = player.read_text()
+    if source.count('        p.skip_countdown = skipCountdown;') != 2:
+        raise RuntimeError('Pinned next-episode OSD branches changed')
+    player.write_text(source.replace('        p.skip_countdown = skipCountdown;',
+        '        p.skip_countdown = skipCountdown;\n        p.next_episode = m_nextEpisodeState;\n        p.playback_ended = m_playbackEnded;'))
+    replace(app/'core/include/evo/screens/PlayerScreen.hpp', '    void initPlayerStateMachine();',
+        '    int nextEpisode(int action = 0) const;\n    int m_nextEpisodeState = 0;\n    bool m_playbackEnded = false;\n    void initPlayerStateMachine();')
+    replace(app/'ui_rml/include/evo_rmlui_bridge.h', '    int skip_countdown;',
+        '    int playback_ended;\n    int next_episode; /* 0 hidden, -1 manual, positive countdown. */\n    int skip_countdown;')
+    state = app/'ui_rml/include/evo_rmlui_app.h'
+    replace(state, '    int skip_countdown = 0;', '    int playback_ended = 0;\n    int next_episode = 0;\n    int skip_countdown = 0;')
+    replace(state, '        return skip_countdown == o.skip_countdown',
+        '        return playback_ended == o.playback_ended && next_episode == o.next_episode && skip_countdown == o.skip_countdown')
+    replace(app/'ui_rml/src/evo_rmlui_bridge.cpp', '    state.skip_countdown = p->skip_countdown;',
+        '    state.skip_countdown = p->skip_countdown;\n    state.next_episode = p->next_episode;\n    state.playback_ended = p->playback_ended;')
+    replace(app/'ui_rml/src/evo_rmlui_app.cpp', '    m_last_state = state;', r'''    if (state.next_episode != m_last_state.next_episode || state.playback_ended != m_last_state.playback_ended || state.skip_label != m_last_state.skip_label) {
+        if (auto* prompt = m_playback_doc->GetElementById("nuvio-next"))
+            prompt->SetProperty("display", state.next_episode || state.playback_ended ? "flex" : "none");
+        if (auto* label = m_playback_doc->GetElementById("nuvio-next-label"))
+            label->SetInnerRML(state.next_episode > 0
+                ? "Next episode in " + std::to_string(state.next_episode) + "s"
+                : state.next_episode ? "Next episode" : "Playback ended");
+        if (auto* play = m_playback_doc->GetElementById("nuvio-next-play"))
+            play->SetProperty("display", state.next_episode && state.skip_label.empty() ? "flex" : "none");
+        if (auto* keep = m_playback_doc->GetElementById("nuvio-next-keep"))
+            keep->SetProperty("display", state.next_episode ? "flex" : "none");
+    }
+    m_last_state = state;''')
+    replace(app/'ui_rml/src/evo_rmlui_app.cpp',
+        '                e->SetProperty("display", live_off);',
+        '''                e->SetProperty("display", state.next_episode && std::strcmp(id, "item-chapter") == 0
+                    ? "none" : live_off);''')
+    replace(app/'assets/rml/playback.rml', '    <!-- Bottom Netflix Controller Bar -->',
+        '''    <div id="nuvio-next"><span id="nuvio-next-label"></span><span id="nuvio-next-play"><span class="btn-tag">R1</span><span>Play now</span></span><span id="nuvio-next-keep"><span class="btn-tag">L1</span><span>Keep watching</span></span><span class="btn-tag">O</span><span>Back to Nuvio</span></div>
+
+    <!-- Bottom Netflix Controller Bar -->''')
+    css = app/'assets/rml/playback.rcss'
+    css.write_text(css.read_text() + '''
+#nuvio-next {
+    display: none;
+    position: absolute;
+    right: 60dp;
+    bottom: 340dp;
+    height: 64dp;
+    padding: 0 24dp;
+    align-items: center;
+    gap: 16dp;
+    background-color: #101827f2;
+    border: 2dp #8bb9ff;
+    border-radius: 12dp;
+    font-size: 24dp;
+}
+#nuvio-next-label { font-weight: bold; }
+#nuvio-next-play, #nuvio-next-keep { display: flex; align-items: center; gap: 12dp; }
+''')
+
+
+def patch_playback_end(app):
+    # Demux EOF can precede the last decoded frame by an entire read-ahead
+    # buffer. Publish completion only once video and queued audio have drained.
+    media = app/'media/src/evo_playback.c'
+    replace(media, 'static int s_vdec_fatal_streak = 0;',
+        'static int s_vdec_fatal_streak = 0;\nstatic volatile int s_video_drained;')
+    replace(media, '    s_vdec_fatal_streak = 0;\n}',
+        '    s_vdec_fatal_streak = 0;\n    s_video_drained = 0;\n}')
+    replace(media, '    if (!video_decode_ready || player_paused) return 0;',
+        '    if (!video_decode_done) s_video_drained = 0;\n    if (!video_decode_ready || player_paused) return 0;')
+    replace(media, '        if (recv_ret >= 1) {',
+        '        if (recv_ret >= 1) {\n            s_video_drained = 0;')
+    replace(media, '''            return 0;
+        }
+
+        int64_t send_pts_us''', '''            s_video_drained = 1;
+            return 0;
+        }
+
+        int64_t send_pts_us''')
+    replace(media, 'int evo_pb_is_eof(void)            { return video_decode_done; }',
+        '''int evo_pb_is_eof(void)            { return video_decode_done; }
+int evo_pb_is_finished(void) {
+    return video_decode_done && s_video_drained && !video_video_pending_pkt &&
+        packet_queue_count(&video_packet_queue) == 0 &&
+        packet_queue_count(&audio_packet_queue) == 0 && audio_queue_count == 0;
+}''')
+    replace(app/'media/include/evo_playback.h', 'int    evo_pb_is_eof(void);',
+        'int    evo_pb_is_finished(void); /* demux EOF and drained playback */\nint    evo_pb_is_eof(void);')
+    header = app/'include/evo_webui.h'
+    replace(header, 'int evo_webui_next_episode(double position,',
+        'void evo_webui_return_to_nuvio(void);\nint evo_webui_next_episode(double position,')
+    replace(header, 'static inline int evo_webui_next_episode(double p,',
+        'static inline void evo_webui_return_to_nuvio(void) {}\nstatic inline int evo_webui_next_episode(double p,')
+    player = app/'core/src/screens/PlayerScreen.cpp'
+    replace(player, '''        if (!evo_webui_native_requested()) {
+            playback->stopPlayback();''', '''        if (!evo_webui_native_requested()) {
+            if (m_nextEpisodeState || m_playbackEnded) evo_webui_return_to_nuvio();
+            playback->stopPlayback();''')
+    replace(player, '    const bool stalled = readerStalled();',
+        '    const bool stalled = !evo_pb_is_finished() && readerStalled();')
+    replace(player, '    const bool isBuffering = !playback->isMusicMode() &&',
+        '    const bool isBuffering = !evo_pb_is_finished() && !playback->isMusicMode() &&')
+    replace(player, '        if (readerStalled())\n            metaStr =',
+        '        if (m_playbackEnded)\n            metaStr = "PLAYBACK ENDED";\n        else if (readerStalled())\n            metaStr =')
+    # Keep recovery, buffering UI and private logs. Only connection toasts are
+    # hidden for Nuvio sessions; native-library playback retains upstream UX.
+    demux = app/'media/src/evo_demux.c'
+    replace(demux, '#include "evo_parallel_io.h"', '#include "evo_parallel_io.h"\n#include "evo_webui.h"')
+    for path, messages in ((player, (
+        'toast("CONNECTION LOST", "Can\'t get data from the server - retrying...");',
+        'toast("CONNECTION", "Reconnected - the stream is back");')),
+        (demux, (
+        'toast("CONNECTION LOST", "The stream dropped - reconnecting...");',
+        'toast("CONNECTION", "Reconnected - the stream is back");',
+        'toast("PLAYBACK ERROR", "The connection did not come back - stream stopped");'))):
+        for message in messages:
+            replace(path, message, 'if (evo_webui_native_requested()) ' + message)

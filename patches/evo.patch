@@ -1,3 +1,13 @@
+--- a/projects/evoplayer/addons/include/evo_online_subs.h
++++ b/projects/evoplayer/addons/include/evo_online_subs.h
+@@ -73,6 +73,7 @@
+ int  evo_osubs_fetch_async(int i);
+ const char *evo_osubs_take_ready(int *index_out, int *failed_out);
+ int  evo_osubs_fetching(void);
++void evo_osubs_cancel_fetch(void);
+ 
+ /* Fetch entry `i` now (blocking - playback worker only) into the data dir.
+  * Returns the file path, or NULL. */
 --- a/projects/evoplayer/addons/include/evo_provider.h
 +++ b/projects/evoplayer/addons/include/evo_provider.h
 @@ -15,7 +15,7 @@
@@ -38,6 +48,73 @@
   * The buffer is per-thread static - use it immediately.
   */
  const char *evo_bundle_dir(const char *provider_id);
+--- a/projects/evoplayer/addons/src/evo_online_subs.c
++++ b/projects/evoplayer/addons/src/evo_online_subs.c
+@@ -24,6 +24,7 @@
+ static char       g_kept_label[96];
+ 
+ /* picker download state */
++static unsigned g_generation, g_fetch_generation;
+ static int  g_fetch_busy;
+ static int  g_fetch_index = -1;
+ static int  g_fetch_done;          /* 1 ok, -1 failed, 0 nothing to take */
+@@ -39,6 +40,8 @@
+ {
+     pthread_mutex_lock(&g_mu);
+     snprintf(g_key, sizeof g_key, "%s", item_key ? item_key : "");
++    ++g_generation;
++    g_fetch_done = 0;
+     g_count = 0;
+     g_pending = 0;
+     g_active = -1;
+@@ -228,7 +231,7 @@
+         FILE *f = fopen(path, "wb");
+         if (f) {
+             ok = fwrite(body, 1, len, f) == len;
+-            fclose(f);
++            if (fclose(f) != 0) ok = 0;
+         } else {
+             ok = 0;
+         }
+@@ -251,14 +254,16 @@
+ {
+     (void)arg;
+     char url[EVO_OSUB_URL], path[512];
+-    pthread_mutex_lock(&g_mu);
++    unsigned generation;
++    pthread_mutex_lock(&g_mu);
++    generation = g_fetch_generation;
+     snprintf(url, sizeof url, "%s", g_fetch_url);
+     pthread_mutex_unlock(&g_mu);
+     snprintf(path, sizeof path, "%s", evo_data_path("online_sub_pick.srt"));
+     const int rc = fetch_to(url, path);
+     pthread_mutex_lock(&g_mu);
+     snprintf(g_fetch_path, sizeof g_fetch_path, "%s", path);
+-    g_fetch_done = rc == 0 ? 1 : -1;
++    g_fetch_done = generation == g_generation ? (rc == 0 ? 1 : -1) : 0;
+     g_fetch_busy = 0;
+     pthread_mutex_unlock(&g_mu);
+     return NULL;
+@@ -276,6 +281,7 @@
+     }
+     g_fetch_busy = 1;
+     g_fetch_done = 0;
++    g_fetch_generation = g_generation;
+     g_fetch_index = i;
+     snprintf(g_fetch_url, sizeof g_fetch_url, "%s", s.url);
+     pthread_mutex_unlock(&g_mu);
+@@ -325,3 +331,11 @@
+     pthread_mutex_unlock(&g_mu);
+     return ret;
+ }
++
++void evo_osubs_cancel_fetch(void)
++{
++    pthread_mutex_lock(&g_mu);
++    ++g_generation;
++    g_fetch_done = 0;
++    pthread_mutex_unlock(&g_mu);
++}
 --- a/projects/evoplayer/addons/src/evo_provider_bundle.c
 +++ b/projects/evoplayer/addons/src/evo_provider_bundle.c
 @@ -9,7 +9,7 @@
@@ -49,9 +126,94 @@
   *      emby.conf" would have this code write a downloaded file over stored
   *      credentials. evo_bundle_path() is the only way to turn a bundle-relative
   *      name into a real path and it refuses anything that could leave the
+--- a/projects/evoplayer/addons/src/evo_updater.c
++++ b/projects/evoplayer/addons/src/evo_updater.c
+@@ -197,22 +197,8 @@
+ 
+ void evo_updater_check(int prefer_pro)
+ {
+-    pthread_mutex_lock(&s_mx);
+-    const int ok = !s_busy && s_st.state != EVO_UPD_DOWNLOADING && s_st.state != EVO_UPD_READY
+-                   && s_st.state != EVO_UPD_APPLIED;
+-    if (ok) {
+-        s_busy = 1;
+-        g_prefer_pro = prefer_pro;
+-        s_st.state = EVO_UPD_CHECKING;
+-        s_st.error[0] = '\0';
+-    }
+-    pthread_mutex_unlock(&s_mx);
+-    if (ok && !spawn(check_thread)) {
+-        pthread_mutex_lock(&s_mx);
+-        s_busy = 0;
+-        pthread_mutex_unlock(&s_mx);
+-        set_state(EVO_UPD_FAILED, "Could not start the check");
+-    }
++    (void)prefer_pro;
++    set_state(EVO_UPD_FAILED, "Install updates from Nuvio Pro releases");
+ }
+ 
+ typedef struct {
+@@ -296,54 +282,17 @@
+ 
+ int evo_updater_download(void)
+ {
+-    pthread_mutex_lock(&s_mx);
+-    int ok = !s_busy && s_st.state == EVO_UPD_AVAILABLE;
+-    pthread_mutex_unlock(&s_mx);
+-    if (!ok) return 0;
+-    if (!find_installed_image()) {
+-        set_state(EVO_UPD_FAILED, "EVO's image was not found in a homebrew folder");
+-        return 0;
+-    }
+-    pthread_mutex_lock(&s_mx);
+-    s_busy = 1;
+-    s_cancel = 0;
+-    s_st.state = EVO_UPD_DOWNLOADING;
+-    s_st.done = 0;
+-    pthread_mutex_unlock(&s_mx);
+-    if (!spawn(download_thread)) {
+-        pthread_mutex_lock(&s_mx);
+-        s_busy = 0;
+-        pthread_mutex_unlock(&s_mx);
+-        set_state(EVO_UPD_FAILED, "Could not start the download");
+-        return 0;
+-    }
+-    return 1;
++    return 0;
+ }
+ 
+ void evo_updater_cancel(void)
+ {
+-    s_cancel = 1;
++    
+ }
+ 
+ int evo_updater_apply(void)
+ {
+-    pthread_mutex_lock(&s_mx);
+-    const int ok = s_st.state == EVO_UPD_READY;
+-    pthread_mutex_unlock(&s_mx);
+-    if (!ok) return 0;
+-
+-    /* One rename is the whole swap. No backup: link() is missing from the app
+-     * module's libc (null import, SIGSEGV at 0 on hardware), and the previous
+-     * release is still on GitHub. */
+-    if (rename(s_stage, s_image) != 0) {
+-        evo_boot_log("updater: rename failed");
+-        remove(s_stage);
+-        set_state(EVO_UPD_FAILED, "Could not replace the installed image");
+-        return 0;
+-    }
+-    evo_boot_log("updater: %s installed over %s", s_st.latest, s_image);
+-    set_state(EVO_UPD_APPLIED, NULL);
+-    return 1;
++    return 0;
+ }
+ 
+ void evo_updater_get(evo_updater_status_t *out)
 --- a/projects/evoplayer/addons/src/provider_nuvio.c
 +++ b/projects/evoplayer/addons/src/provider_nuvio.c
-@@ -29,8 +29,8 @@
+@@ -36,8 +36,8 @@
  
  static int nv_init(void)
  {
@@ -73,9 +235,216 @@
   * Only streams with a direct http(s) `url` are offered; torrent-only streams
   * (infoHash) need a debrid resolver and are skipped.
   *
+--- a/projects/evoplayer/core/include/evo/screens/AudioTrackPickerScreen.hpp
++++ b/projects/evoplayer/core/include/evo/screens/AudioTrackPickerScreen.hpp
+@@ -31,6 +31,8 @@
+     ScreenId getScreenId() const override { return ScreenId::AudioTrackPicker; }
+     void onEnter() override;
+     void onExit() override;
++    // Main-thread ownership lasts until update/onExit joins the reopen worker.
++    bool isSwitchingTracks() const { return m_threadLive; }
+     bool handleInput(uint32_t pressed, uint32_t held, uint32_t released) override;
+     void update(double deltaMs) override;
+     void render(uint32_t* framebuffer, int width, int height) override;
+--- a/projects/evoplayer/core/include/evo/screens/PlayerScreen.hpp
++++ b/projects/evoplayer/core/include/evo/screens/PlayerScreen.hpp
+@@ -2,6 +2,8 @@
+ #define EVO_PLAYER_SCREEN_HPP
+ 
+ #include "evo/screens/StatefulScreen.hpp"
++#include "evo_rmlui_bridge.h"
++#include "nuvio_presentation.h"
+ #include "evo/fsm/StateMachine.hpp"
+ 
+ namespace evo {
+@@ -53,6 +55,18 @@
+     double subtitleClockSeconds() const;
+ 
+ private:
++    int skipInterval(double* target, int consume = 0) const;
++    int nextEpisode(int action = 0) const;
++    int m_nextEpisodeState = 0;
++    bool m_playbackEnded = false;
++    void updateNuvioPresentation(uint64_t now);
++    void fillNuvioPresentation(evo_playback_osd_params_t &p);
++    nuvio_presentation_view_t m_nuvioView{};
++    char m_nuvioClock[64]{};
++    std::string m_nuvioRecommendation;
++    uint64_t m_nuvioEndSuggestionSince = 0;
++    uint64_t m_nuvioWaitSince = 0;
++    int m_nuvioWaitReports = 0;
+     void initPlayerStateMachine();
+     void feedPerformanceHud();
+ 
+--- a/projects/evoplayer/core/include/evo/screens/SubtitlePickerScreen.hpp
++++ b/projects/evoplayer/core/include/evo/screens/SubtitlePickerScreen.hpp
+@@ -35,7 +35,7 @@
+     static constexpr int kLoadFileTrack = -4;   /* opens SubtitleFileScreen */
+     /* Online subtitle i (not loaded yet) is trackId kOnlineBase - i. */
+     static constexpr int kOnlineBase = -100;
+-    static constexpr int kMaxOnlineRows = 24;
++    static constexpr int kMaxOnlineRows = 32;
+ 
+     void refreshTracks();
+     void navigate(int delta);
 --- a/projects/evoplayer/core/src/Application.cpp
 +++ b/projects/evoplayer/core/src/Application.cpp
-@@ -593,15 +593,17 @@
+@@ -66,6 +66,7 @@
+ #include "evo_subtitle.h"
+ #include "evo_usb_remote.h"
+ #include "evo_webui.h"
++#include "nuvio_presentation.h"
+ /* #90: providers are reached through the vtable registry, never by name.
+  * addon_emby.h is gone from here - provider_emby.c is the only thing that
+  * includes it now. */
+@@ -119,7 +120,11 @@
+     float acceleration[3];
+     float angularVelocity[3];
+     PS5_PadTouchData touchData;
+-    uint8_t rest[72];
++    uint8_t connected;
++    uint64_t timestamp;
++    uint8_t ext[16];
++    uint8_t count;
++    uint8_t unknown[15];
+ } PS5_PadData;
+ 
+ static_assert(offsetof(PS5_PadData, touchData) == 52, "touchData offset mismatch");
+@@ -134,6 +139,125 @@
+ extern int screen;
+ long long now_ms(void);
+ }
++
++
++/* Native TV remote contract adapted from ps5-payload-dev/SDL, revision
++ * ee4c47dc0d617b3bc8f35108f9956baf228a1322:
++ * src/joystick/ps5/SDL_ps5joystick.h and src/video/ps5/SDL_ps5remote.c.
++ * This is NOT Remote Play. No browser event is synthesized here.
++ *
++ * Simple DirectMedia Layer
++ * Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
++ *
++ * This software is provided 'as-is', without any express or implied
++ * warranty. In no event will the authors be held liable for any damages
++ * arising from the use of this software.
++ *
++ * Permission is granted to anyone to use this software for any purpose,
++ * including commercial applications, and to alter it and redistribute it
++ * freely, subject to the following restrictions:
++ * 1. The origin of this software must not be misrepresented; you must not
++ *    claim that you wrote the original software. If you use this software
++ *    in a product, an acknowledgment in the product documentation would be
++ *    appreciated but is not required.
++ * 2. Altered source versions must be plainly marked as such, and must not be
++ *    misrepresented as being the original software.
++ * 3. This notice may not be removed or altered from any source distribution.
++ *
++ * Altered for Nuvio: independent polling, owned/borrowed handle tracking,
++ * browser suspension, failure backoff and native action translation only.
++ */
++extern "C" int scePadGetHandle(int user_id, int type, int index);
++extern "C" int scePadClose(int handle);
++
++class NuvioTvRemote {
++    static constexpr int SystemUser = 0xff;
++    static constexpr int RemotePort = 16;
++    static constexpr unsigned AlreadyOpened = 0x80920004u;
++    int handle = -1;
++    bool owned = false;
++    bool waitNeutral = false;
++    uint64_t retryAt = 0;
++    uint32_t previous = 0;
++
++    void detach() {
++        // GetHandle borrows an existing handle. Never close another owner's.
++        if (owned && handle > 0) scePadClose(handle);
++        handle = -1;
++        owned = false;
++    }
++
++public:
++    uint32_t buttons() const { return previous; }
++
++    void shutdown() {
++        detach();
++        previous = 0;
++        retryAt = 0;
++        waitNeutral = true;
++    }
++
++    uint32_t poll(bool browserOwnsInput, bool player, uint64_t now) {
++        if (browserOwnsInput) {
++            // Do not retain our port, poll or replay input across the browser.
++            shutdown();
++            return 0;
++        }
++        if (handle <= 0) {
++            if (now < retryAt) return previous = 0;
++            int next = scePadOpen(SystemUser, RemotePort, 0, nullptr);
++            const bool borrowed = static_cast<unsigned>(next) == AlreadyOpened;
++            if (borrowed) next = scePadGetHandle(SystemUser, RemotePort, 0);
++            if (next <= 0) {
++                retryAt = now + 1000;
++                waitNeutral = true;
++                return previous = 0;
++            }
++            handle = next;
++            owned = !borrowed;
++        }
++
++        PS5_PadData state{};
++        if (scePadReadState(handle, &state) != 0) {
++            detach();
++            retryAt = now + 1000;
++            waitNeutral = true;
++            return previous = 0;
++        }
++        if (!state.connected) {
++            waitNeutral = true;
++            return previous = 0;
++        }
++        // Only the seven basic button meanings explicitly mapped by SDL.
++        using namespace evo::PadButtons;
++        uint32_t buttons = state.buttons & (Up | Down | Left | Right | Cross | Circle | Options);
++        // SDL names this member index PS5_REMOTE_KEY_OFFSET. These are PS5
++        // remote codes, NOT DOM keycodes or guessed HDMI wire opcodes.
++        const uint8_t code = state.unknown[3];
++        if (waitNeutral) {
++            if (!buttons && !code) waitNeutral = false;
++            return previous = 0;
++        }
++        switch (code) {
++            case 13: buttons |= Cross; break;              // Enter / OK
++            case 15: case 43: buttons |= Circle; break;    // Back / previous
++            case 18: case 27: buttons |= Options; break;   // Menu / context menu
++            // Reuse the player's own action priorities, including skip/next
++            // prompts. Transport keys do not navigate unrelated menus/IME.
++            case 20: if (player) buttons |= L1; break;     // Previous track
++            case 21: if (player) buttons |= R1; break;     // Next track
++            case 23: if (player) buttons |= Left; break;   // Rewind
++            case 24: if (player) buttons |= Right; break;  // Fast forward
++            case 25: if (player) buttons |= Circle; break; // Stop via native Back
++            case 45: if (player) buttons |= Cross; break;  // Play/pause
++            // Dedicated Play/Pause are not toggles. Leave them unbound rather
++            // than reverse their intent by fabricating a Cross press.
++            default: break;
++        }
++        return previous = buttons;
++    }
++};
++static NuvioTvRemote s_nuvioRemote;
+ 
+ #ifndef EVO_PLAYER_VERSION
+ #define EVO_PLAYER_VERSION "v0.13.5"
+@@ -545,6 +669,7 @@
+     if (m_shutdownDone)
+         return;
+     m_shutdownDone = true;
++    s_nuvioRemote.shutdown();
+ 
+     m_running = false;
+ 
+@@ -616,15 +741,17 @@
   * the page.
   */
  PlaybackSource g_web_src;
@@ -94,7 +463,7 @@
      g_web_done = true;
      return nullptr;
  }
-@@ -702,8 +704,9 @@
+@@ -731,12 +858,17 @@
  
      if (phase == 0) {
          char url[2048], title[256];
@@ -105,15 +474,36 @@
          g_web_src = PlaybackSource();
          g_web_src.url = url;
          g_web_src.title = title[0] ? title : "Web";
-@@ -725,6 +728,7 @@
+         g_web_src.provider = "web";
++        char subtitleKey[80];
++        evo_webui_import_subtitles(subtitleKey, sizeof subtitleKey);
++        g_web_src.item_id = subtitleKey;
++        prospero_subtitle_requested_stream = -2; /* new browser playback, not an audio reopen */
+         g_web_done = false;
+         g_web_ok = false;
+         pthread_attr_t attr;
+@@ -754,6 +886,7 @@
          if (!g_web_done)
              return;
          pthread_join(g_web_thread, nullptr);
 +        g_nuvio_preparing = false;
-         evo_bt("web: startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
+         EVO_LOGI("web", "startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
          evo_boot_log_flush();
          if (!g_web_ok) {
-@@ -750,6 +754,8 @@
+@@ -773,12 +906,21 @@
+         web_report("", 0.0);
+     } else {
+         IPlaybackController* pb = app.getPlaybackController();
++        // An audio/quality reopen temporarily stops the decoder, not the session.
++        // Do not read its changing clocks or reopen the browser until joined.
++        if (auto* sm = app.getScreenManager()) {
++            if (sm->getCurrentScreenId() == ScreenId::AudioTrackPicker &&
++                static_cast<AudioTrackPickerScreen*>(sm->getCurrentScreen())->isSwitchingTracks())
++                return;
++        }
+         bool active = pb && pb->isActive();
+         if (active) {
+             seen_active = true;
              /* Kept while playing: the position is gone once playback stops,
               * and the Stopped report is what sets watched / resume. */
              double pos = pb->getPositionSeconds();
@@ -122,9 +512,26 @@
              if (pos > 0.0) g_web_rep.lastPos = pos;
              if (++g_web_rep.frames % 600 == 0)          /* ~10 s */
                  web_report("/Progress", g_web_rep.lastPos);
-@@ -1196,6 +1202,15 @@
-          * what turns that into a main-thread callback for the screen. */
-         evo_bundle_poll();
+@@ -1179,6 +1321,7 @@
+             }
+             if (++m_softCloseFrames > 150) {     /* ~2.5 s of presented frames */
+                 evo_agc_runtime_wait_idle(500);
++                s_nuvioRemote.shutdown();
+                 m_softClosed = true;
+                 evo_boot_log("soft close: parked - GPU idle, display latched, "
+                              "safe to close from the switcher");
+@@ -1250,7 +1393,7 @@
+                 if (s_upd_t0.tv_sec == 0) s_upd_t0 = t;
+                 if (t.tv_sec - s_upd_t0.tv_sec >= 8) {
+                     s_upd_checked = true;
+-                    evo_updater_check(evo_direct_mem_kernel_total_mb() > 12288);
++                    /* Nuvio releases are installed separately. */
+                 }
+             }
+             /* A small card at the side, not a screen: it stays until the user
+@@ -1291,6 +1434,15 @@
+             }
+         }
          evo_usb_remote_poll();
 +        /* Nuvio starts once its durable settings are reachable. Existing
 +         * EVO code owns browser, playback handoff and shutdown lifetimes. */
@@ -138,7 +545,33 @@
          evo_webui_pump();   /* #101: the system browser, when a web UI is open */
          webui_playback_pump();
  
-@@ -1421,7 +1436,29 @@
+@@ -1384,7 +1536,24 @@
+         uint32_t held = 0;
+         bool hasInput = false;
+ 
+-        if (m_padHandle >= 0 && scePadReadState(m_padHandle, &padData) == 0) {
++        // Read the remote independently, even without a DualSense handle.
++        const uint32_t previousRemote = s_nuvioRemote.buttons();
++        const uint32_t remoteButtons = s_nuvioRemote.poll(evo_webui_active(),
++            !evo_keyboard_is_open() && m_screenManager &&
++                m_screenManager->getCurrentScreenId() == ScreenId::Player,
++            static_cast<uint64_t>(now_ms()));
++        const bool controllerRead = m_padHandle >= 0 && scePadReadState(m_padHandle, &padData) == 0;
++        if (!controllerRead) {
++            // Failed reads may partially fill the struct. Neutralize every
++            // non-button input: zero sticks would synthesize Up/Left forever.
++            std::memset(&padData, 0, sizeof(padData));
++            padData.leftStick.x = padData.leftStick.y = 128;
++            padData.rightStick.x = padData.rightStick.y = 128;
++        }
++        // Merge before EVO computes edges/repeats, not by a second dispatch.
++        // Same-button overlap stays held until BOTH devices release it.
++        padData.buttons |= remoteButtons;
++        if (controllerRead || remoteButtons || previousRemote) {
+             /*
+              * Synthetic presses from the dev remote (`key <button>`), OR'd in
+              * before anything reads the mask so they are indistinguishable
+@@ -1576,7 +1745,29 @@
              }
  
              if (evo_webui_active()) {
@@ -169,7 +602,7 @@
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1467,6 +1504,9 @@
+@@ -1622,6 +1813,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -179,7 +612,7 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1579,7 +1619,7 @@
+@@ -1734,7 +1928,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -188,14 +621,17 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1803,7 +1843,11 @@
+@@ -1961,7 +2155,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
 -                m_screenManager->render(m_uiScratch, DisplayWidth, DisplayHeight);
 +                if (nuvioShell)
 +                    evo_rmlui_render_nuvio(m_uiScratch, DisplayWidth, DisplayHeight,
-+                        g_nuvio_preparing ? "Preparing playback" : "Opening Nuvio Pro");
++                        !g_nuvio_preparing ? "Opening Nuvio Pro" :
++                        evo_webui_presentation()->active && !evo_webui_presentation()->loading ? "" :
++                        evo_webui_presentation()->active && !evo_webui_presentation()->loading_detail ? " " :
++                        "Preparing playback");
 +                else
 +                    m_screenManager->render(m_uiScratch, DisplayWidth, DisplayHeight);
                  if (frame < 5) {
@@ -207,15 +643,94 @@
  #include "evo/screens/PlayerScreen.hpp"
 +#include "evo_webui.h"
  #include "evo/Application.hpp"
- #include "evo_rmlui_bridge.h"
- #include "evo_playback.h"
-@@ -169,6 +170,13 @@
+ #include "evo/services/NetworkStorageService.hpp"
+ #include "evo/screens/ProviderHostScreen.hpp"
+@@ -45,6 +46,9 @@
+ /* Bridge.cpp - raised at open and again whenever the demux queue runs dry on a
+  * network source. Both decode threads are parked for as long as it is set. */
+ extern volatile int pb_prebuffer_hold;
++extern volatile int pb_scrub_hold;
++extern volatile int video_decode_hold;
++extern int screen;
+ }
+ 
+ #include <cstdio>
+@@ -377,7 +381,36 @@
+ 
+ } // namespace
+ 
++int PlayerScreen::skipInterval(double* target, int consume) const {
++    auto playback = Application::getInstance().getPlaybackController();
++    if (!playback || !playback->isActive() || playback->isMusicMode() ||
++        playback->isLiveSource() || playback->isScrubbing() || !video_frame_loaded ||
++        g_pp_pb.seek_discarding || pb_prebuffer_hold || readerStalled() || m_showStatsForNerds ||
++        (consume == 2 && (playback->isPaused() || evo_pb_is_paused())))
++        return 0;
++    return evo_webui_skip_interval(playback->getPositionSeconds(),
++        playback->getDurationSeconds(), NowMs(), consume, target);
++}
++
++int PlayerScreen::nextEpisode(int action) const {
++    auto playback = Application::getInstance().getPlaybackController();
++    const bool ended = evo_pb_is_eof() != 0;
++    const bool visible = !evo_webui_native_requested() && playback && playback->isActive() && !playback->isMusicMode() &&
++        !playback->isLiveSource() && !playback->isScrubbing() && video_frame_loaded &&
++        !g_pp_pb.seek_discarding && !m_showStatsForNerds && !evo_pb_decode_fatal() &&
++        (ended || (!pb_prebuffer_hold && !readerStalled()));
++    double position = playback ? playback->getPositionSeconds() : 0.0;
++    const double duration = playback ? playback->getDurationSeconds() : 0.0;
++    if (ended && position >= duration - 2.0) position = duration;
++    return evo_webui_next_episode(position, duration, NowMs(),
++        playback && !playback->isPaused() && !evo_pb_is_paused(), visible, action);
++}
++
+ bool PlayerScreen::hasActiveOverlay() const {
++    if (m_nextEpisodeState || m_playbackEnded || m_nuvioView.pause ||
++        m_nuvioView.parental || m_nuvioView.recommendation) return true;
++    double target;
++    if (skipInterval(&target)) return true;
+     if (m_osdVisibilityAlpha > 0 || m_showStatsForNerds || g_skip.shown >= 0) {
+         return true;
+     }
+@@ -415,6 +448,15 @@
+ }
+ 
+ void PlayerScreen::onExit() {
++    evo_webui_next_episode(0.0, 0.0, NowMs(), 0, 0, 0);
++    m_nextEpisodeState = 0;
++    m_playbackEnded = false;
++    m_nuvioView = {};
++    m_nuvioClock[0] = 0;
++    m_nuvioRecommendation.clear();
++    m_nuvioEndSuggestionSince = 0;
++    m_nuvioWaitSince = 0;
++    m_nuvioWaitReports = 0;
+     StatefulScreen::onExit();
+ }
+ 
+@@ -431,6 +473,14 @@
+     // Scrub hold update
+     playback->updateScrubHold(held);
+ 
++    if (m_nextEpisodeState >= 1000) {
++        if (pressed & (PadButtons::Cross | PadButtons::R1 | PadButtons::Circle | PadButtons::L1)) {
++            nextEpisode((pressed & (PadButtons::Cross | PadButtons::R1)) ? 1 : 2);
++            playback->stopPlayback();
++            if (screenMgr) screenMgr->returnFromPlayback();
++        }
++        return true;
++    }
+     if (pressed & PadButtons::Cross) {
+         uint64_t now = NowMs();
+         if (now - m_lastPlayPauseToggleMs >= 150) {
+@@ -442,6 +492,14 @@
          return true;
      }
      if (pressed & PadButtons::Circle) {
 +        // Nuvio Back stops the native session; the existing bridge reopens it.
 +        // Native-only playback retains confirmation and the other overlays.
 +        if (!evo_webui_native_requested()) {
++            if (m_nextEpisodeState || m_playbackEnded || m_nuvioView.recommendation) evo_webui_return_to_nuvio();
 +            playback->stopPlayback();
 +            if (screenMgr) screenMgr->returnFromPlayback();
 +            return true;
@@ -223,15 +738,359 @@
          // Stop playback confirmation prompt
          if (screenMgr) {
              screenMgr->navigateTo(ScreenId::ExitConfirm);
+@@ -460,6 +518,11 @@
+         return true;
+     }
+     if (pressed & PadButtons::Triangle) {
++        if (m_nuvioView.recommendation) {
++            evo_webui_presentation_action(1);
++            updateNuvioPresentation(NowMs());
++            return true;
++        }
+         /* While the skip button is up (or just after an automatic skip), Triangle is that button. */
+         if (skip_press(playback, playback->getSource(), NowMs())) return true;
+         /* Aspect ratio, as it has always been on this screen. */
+@@ -474,10 +537,35 @@
+         (pressed & (PadButtons::L1 | PadButtons::R1 | PadButtons::Left | PadButtons::Right)))
+         return true;
+     if (pressed & PadButtons::L1) {
++        if (m_nextEpisodeState) { nextEpisode(2); m_nextEpisodeState = 0; return true; }
++        if (m_nuvioView.recommendation) {
++            evo_webui_presentation_action(2);
++            updateNuvioPresentation(NowMs());
++            return true;
++        }
+         playback->jumpChapter(-1);
+         return true;
+     }
+     if (pressed & PadButtons::R1) {
++        double target;
++        if (skipInterval(&target, true)) {
++            evo_boot_log("skip R1: action=segment position=%.3f target=%.3f",
++                playback->getPositionSeconds(), target);
++            playback->seekTo(target);
++            return true;
++        }
++        if (m_nextEpisodeState && nextEpisode(1) == -2) {
++            playback->stopPlayback();
++            if (screenMgr) screenMgr->returnFromPlayback();
++            return true;
++        }
++        if (m_nuvioView.recommendation) {
++            evo_webui_recommendation_selected(m_nuvioView.recommendation);
++            playback->stopPlayback();
++            if (screenMgr) screenMgr->returnFromPlayback();
++            return true;
++        }
++        evo_boot_log("skip R1: action=chapter position=%.3f", playback->getPositionSeconds());
+         playback->jumpChapter(1);
+         return true;
+     }
+@@ -576,8 +664,7 @@
+     }
+     std::snprintf(prospero_subtitle_external_label, sizeof prospero_subtitle_external_label,
+                   "%s", label.c_str());
+-    prospero_subtitle_use_external = 1;
+-    prospero_subtitle_enabled = 1;
++    prospero_subtitle_select_primary(-1);
+     evo_osubs_set_active(idx);
+     evo_osubs_remember(path, label.c_str());
+     char msg[96];
+@@ -612,7 +699,7 @@
+     uint64_t now = NowMs();
+ 
+     /* #219: the skip button, or the automatic skip, for any file with intro / credits marks. */
+-    skip_tick(playback, playback->getSource(), now);
++    if (evo_webui_native_requested()) skip_tick(playback, playback->getSource(), now);
+ 
+     /* "Up next": only for a media-server item with a timeline. */
+     {
+@@ -641,7 +728,24 @@
+      * stays set for as long as the finished file is open, so the OSD stays up
+      * until something actually changes (a seek back clears it).
+      */
++    double autoSkipTarget;
++    if (skipInterval(&autoSkipTarget, 2)) {
++        playback->seekTo(autoSkipTarget);
++        return;
++    }
+     const bool ended = (evo_pb_is_eof() != 0);
++    m_playbackEnded = !evo_webui_native_requested() && evo_pb_is_finished() &&
++        !playback->isMusicMode() && !playback->isLiveSource() && !playback->isScrubbing() &&
++        video_frame_loaded && !g_pp_pb.seek_discarding && !m_showStatsForNerds;
++    m_nextEpisodeState = nextEpisode();
++    if (m_nextEpisodeState >= 1000) playback->setPaused(true);
++    updateNuvioPresentation(now);
++    if (m_nextEpisodeState == -2 || m_nextEpisodeState == -3) {
++        playback->stopPlayback();
++        if (auto sm = Application::getInstance().getScreenManager()) sm->returnFromPlayback();
++        m_nextEpisodeState = 0;
++        return;
++    }
+ 
+     /*
+      * Ask the playback engine whether it is paused, not the state machine.
+@@ -664,16 +768,16 @@
+     /* Say so once when the server stops the picture, and once when it is back.
+      * Raised here rather than in the reader, which stalls long before anyone
+      * can see it: the read-ahead keeps playing for half a minute. */
+-    const bool stalled = readerStalled();
++    const bool stalled = !evo_pb_is_finished() && readerStalled();
+     if (stalled && !m_stallToastShown) {
+         m_stallToastShown = true;
+-        toast("CONNECTION LOST", "Can't get data from the server - retrying...");
++        if (evo_webui_native_requested()) toast("CONNECTION LOST", "Can't get data from the server - retrying...");
+     } else if (!stalled && m_stallToastShown && !pb_prebuffer_hold) {
+         m_stallToastShown = false;
+-        toast("CONNECTION", "Reconnected - the stream is back");
+-    }
+-
+-    const bool isBuffering = !playback->isMusicMode() &&
++        if (evo_webui_native_requested()) toast("CONNECTION", "Reconnected - the stream is back");
++    }
++
++    const bool isBuffering = !evo_pb_is_finished() && !playback->isMusicMode() &&
+                              (!video_frame_loaded || g_pp_pb.seek_discarding ||
+                               pb_prebuffer_hold || stalled);
+     if (isBuffering) {
+@@ -885,6 +989,11 @@
+                                             sizeof(secondarySubText));
+     }
+ 
++    double skipTarget;
++    const int skipType = skipInterval(&skipTarget);
++    const char* skipLabel = skipType == 1 ? "Skip intro" : skipType == 2 ? "Skip credits" : skipType == 3 ? "Skip recap" : "";
++    const int skipCountdown = evo_webui_skip_countdown(skipType ? skipTarget : 0.0,
++        NowMs(), !playback->isPaused() && !evo_pb_is_paused());
+     if (m_osdVisibilityAlpha > 0 && evo_rmlui_is_initialized()) {
+         std::string titleStr, metaStr;
+         /*
+@@ -908,7 +1017,9 @@
+          * This overrides whatever the branches above chose: while the hold is
+          * up, nothing else about the stream is the useful thing to show.
+          */
+-        if (readerStalled())
++        if (m_playbackEnded)
++            metaStr = "PLAYBACK ENDED";
++        else if (readerStalled())
+             metaStr = "WAITING FOR THE SERVER...";
+         else if (pb_prebuffer_hold)
+             metaStr = "BUFFERING...";
+@@ -1156,7 +1267,12 @@
+         p.subtitle2_color = prospero_secondary_color;
+         p.subtitle_style = prospero_subtitle_style;
+         p.chrome_hidden = 0;
+-        p.skip_label = g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr;   /* #219 */
++        p.skip_label = skipLabel;
++        p.skip_countdown = skipCountdown;
++        p.next_episode = m_nextEpisodeState;
++        p.playback_ended = m_playbackEnded;
++        p.skip_label = evo_webui_native_requested() ?
++            (g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr) : skipLabel;   /* #219 */
+         p.fps = perf_render_fps;
+         p.debug_overlay = evo_fps_counter_enabled();
+         p.music_mode = playback->isMusicMode() ? 1 : 0;
+@@ -1205,12 +1321,13 @@
+             p.ends_at = endsAtBuf;
+         }
+ 
++        fillNuvioPresentation(p);
+         evo_rmlui_update_playback_params(&p);
+         if (m_showStatsForNerds) {
+             feedPerformanceHud();
+         }
+         evo_rmlui_render_playback_osd(framebuffer, width, height);
+-    } else if ((activeSubText[0] || secondarySubText[0] || hasSubImage || g_skip.shown >= 0) && !playback->isMusicMode() &&
++    } else if ((m_nuvioView.pause || m_nuvioView.parental || m_nuvioView.recommendation || m_nextEpisodeState || m_playbackEnded || skipType || activeSubText[0] || secondarySubText[0] || hasSubImage || g_skip.shown >= 0) && !playback->isMusicMode() &&
+                evo_rmlui_is_initialized()) {
+         evo_playback_osd_params_t p;
+         std::memset(&p, 0, sizeof(p));
+@@ -1232,14 +1349,100 @@
+         p.subtitle2_color = prospero_secondary_color;
+         p.subtitle_style = prospero_subtitle_style;
+         p.chrome_hidden = 1;
+-        p.skip_label = g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr;   /* #219 */
++        p.skip_label = skipLabel;
++        p.skip_countdown = skipCountdown;
++        p.next_episode = m_nextEpisodeState;
++        p.playback_ended = m_playbackEnded;
++        p.skip_label = evo_webui_native_requested() ?
++            (g_skip.shown >= 0 ? g_skip.label.c_str() : nullptr) : skipLabel;   /* #219 */
+         p.alpha = 255;
+         p.fps = perf_render_fps;
+         p.debug_overlay = evo_fps_counter_enabled();
+ 
++        fillNuvioPresentation(p);
+         evo_rmlui_update_playback_params(&p);
+         evo_rmlui_render_playback_osd(framebuffer, width, height);
+     }
+ }
+ 
++void PlayerScreen::updateNuvioPresentation(uint64_t now)
++{
++    auto playback = Application::getInstance().getPlaybackController();
++    const auto *policy = evo_webui_presentation();
++    const bool ready = playback && playback->isActive() && !playback->isMusicMode() &&
++        !playback->isLiveSource() && video_frame_loaded && !g_pp_pb.seek_discarding &&
++        !pb_prebuffer_hold && !readerStalled() && !playback->isScrubbing();
++    const bool paused = playback && (playback->isPaused() || evo_pb_is_paused());
++    if (!playback) { m_nuvioView = {}; m_nuvioClock[0] = 0; m_nuvioRecommendation.clear(); return; }
++    // Numeric snapshots only, at 2/10/30 seconds without a first frame.
++    // Do not turn a long preparation or an intentional pause into a retry.
++    if (policy->active && playback->isActive() && !playback->isMusicMode() &&
++        !video_frame_loaded && !m_playbackEnded) {
++        if (!m_nuvioWaitSince) m_nuvioWaitSince = now;
++        static const uint64_t delays[] = {2000, 10000, 30000};
++        if (m_nuvioWaitReports < 3 && now - m_nuvioWaitSince >= delays[m_nuvioWaitReports]) {
++            ++m_nuvioWaitReports;
++            evo_boot_log("playback first-frame wait: ms=%llu screen=%d paused=%d engine_paused=%d "
++                "ready=%d hold=%d prebuffer=%d scrub=%d video_run=%d exited=%d parked=%d "
++                "demux_run=%d audio_run=%d vq=%d aq=%d fatal=%d",
++                static_cast<unsigned long long>(now - m_nuvioWaitSince), screen,
++                playback->isPaused(), evo_pb_is_paused(), video_decode_ready,
++                static_cast<int>(video_decode_hold), static_cast<int>(pb_prebuffer_hold),
++                static_cast<int>(pb_scrub_hold), static_cast<int>(video_thread_running),
++                static_cast<int>(video_thread_exited), static_cast<int>(video_decode_parked),
++                static_cast<int>(demux_thread_running), static_cast<int>(audio_decode_thread_running),
++                packet_queue_count(&video_packet_queue), packet_queue_count(&audio_packet_queue),
++                evo_pb_decode_fatal());
++        }
++    } else {
++        m_nuvioWaitSince = 0;
++        m_nuvioWaitReports = 0;
++    }
++    m_nuvioView = evo_webui_presentation_update(playback->getPositionSeconds(),
++        playback->getDurationSeconds(), now, ready || m_playbackEnded, paused,
++        m_showStatsForNerds || m_nextEpisodeState != 0, m_playbackEnded);
++    evo_webui_presentation_clock(playback->getPositionSeconds(), playback->getDurationSeconds(),
++        m_nuvioClock, sizeof m_nuvioClock);
++    m_nuvioRecommendation.clear();
++    if (m_nuvioView.recommendation) {
++        const auto &item = policy->recommendations[m_nuvioView.recommendation - 1];
++        m_nuvioRecommendation = std::string(item.title) + "\n" + item.description;
++    }
++    if (m_osdVisibilityAlpha <= 0 ||
++        (m_nuvioEndSuggestionSince && now - m_nuvioEndSuggestionSince >= 10000))
++        m_nuvioView.recommendation = 0;
++}
++
++void PlayerScreen::fillNuvioPresentation(evo_playback_osd_params_t &p)
++{
++    const auto *policy = evo_webui_presentation();
++    p.nuvio_active = policy->active;
++    p.nuvio_pause_text = m_nuvioView.pause ? (policy->description[0] ? policy->description : "Paused") : "";
++    p.nuvio_parental = m_nuvioView.parental ? policy->parental : "";
++    p.nuvio_recommendation = m_nuvioRecommendation.c_str();
++    // Start the cap when a suggestion becomes visible, not at the last input.
++    // Keep the raw recommendation above so expiry cannot restart this timer.
++    const uint64_t now = NowMs();
++    const bool suggestion = p.next_episode || p.playback_ended || m_nuvioRecommendation.size();
++    if (!policy->active || p.chrome_hidden || !suggestion) m_nuvioEndSuggestionSince = 0;
++    else if (!m_nuvioEndSuggestionSince) m_nuvioEndSuggestionSince = now;
++    if (policy->active && (p.chrome_hidden ||
++        (m_nuvioEndSuggestionSince && now - m_nuvioEndSuggestionSince >= 10000))) {
++        p.next_episode = 0;
++        p.playback_ended = 0;
++        p.nuvio_recommendation = "";
++    }
++    p.nuvio_clock = m_nuvioClock;
++    // Nuvio's clock policy owns the end time in the upper-right corner.
++    // Keep remaining duration below the timeline, without a second end time.
++    if (policy->active) p.ends_at = "";
++    p.nuvio_still_countdown = m_nextEpisodeState >= 1000 ? m_nextEpisodeState - 1000 : 0;
++    if (p.nuvio_still_countdown) { p.next_episode = 0; p.skip_label = ""; }
++    const bool loading = !evo_pb_is_finished() &&
++        (!video_frame_loaded || g_pp_pb.seek_discarding || pb_prebuffer_hold || readerStalled());
++    if (policy->active) p.loading = policy->loading && loading;
++    p.nuvio_loading_status = !policy->loading_detail ? "" : g_pp_pb.seek_discarding ? "Seeking" :
++        !video_frame_loaded ? "Preparing video" : "Buffering";
++}
++
+ } // namespace evo
+--- a/projects/evoplayer/core/src/screens/SettingsScreen.cpp
++++ b/projects/evoplayer/core/src/screens/SettingsScreen.cpp
+@@ -1470,7 +1470,7 @@
+         std::fputs(text, fp);
+         std::fputc('\n', fp);
+         std::fclose(fp);
+-    } else if (FILE* fp2 = std::fopen("/data/evoplayer/evo_set.txt", "w")) {
++    } else if (FILE* fp2 = std::fopen("/data/nuvio/evo_set.txt", "w")) {
+         std::fputs(text, fp2);
+         std::fputc('\n', fp2);
+         std::fclose(fp2);
+--- a/projects/evoplayer/core/src/screens/SubtitleFileScreen.cpp
++++ b/projects/evoplayer/core/src/screens/SubtitleFileScreen.cpp
+@@ -6,6 +6,7 @@
+ #include "evo_readdir.h"
+ #include "evo_ntfs.h"
+ #include "evo_subtitle.h"
++#include "evo_online_subs.h"
+ #include "evo_boot_log.h"
+ 
+ #include <algorithm>
+@@ -165,6 +166,10 @@
+         evo_feedback(EVO_FB_ERROR);
+         return;
+     }
++    /* A successful local choice supersedes online ownership and downloads.
++     * Failed file selections above leave that ownership unchanged. */
++    evo_osubs_cancel_fetch();
++    evo_osubs_set_active(-1);
+     EVO_LOGI("subtitles", "picked %s: %d cues", r.path.c_str(), cues);
+     evo_feedback(EVO_FB_CONFIRM);
+     if (auto sm = Application::getInstance().getScreenManager()) sm->navigateTo(ScreenId::Player);
+--- a/projects/evoplayer/core/src/screens/SubtitlePickerScreen.cpp
++++ b/projects/evoplayer/core/src/screens/SubtitlePickerScreen.cpp
+@@ -234,6 +234,7 @@
+         evo_subsync_cancel();
+     }
+ 
++    if (trackId > kOnlineBase) evo_osubs_cancel_fetch();
+     if (trackId <= kOnlineBase) {
+         // An online subtitle: fetched off the UI thread, loaded by the player
+         // when it lands (PlayerScreen::update -> pumpOnlineSubtitles).
+@@ -253,6 +254,7 @@
+     } else if (trackId == -1) {
+         toast("SUBTITLES", "EXTERNAL SRT");
+     }
++    if (trackId > kOnlineBase) evo_osubs_set_active(-1);
+     // An embedded track toasts its own language and codec as it opens.
+ 
+     if (auto sm = Application::getInstance().getScreenManager()) {
 --- a/projects/evoplayer/core/src/services/PlaybackController.cpp
 +++ b/projects/evoplayer/core/src/services/PlaybackController.cpp
 @@ -1,4 +1,5 @@
  #include "evo/services/PlaybackController.hpp"
 +#include "evo_webui.h"
  #include "evo/interfaces/IMediaMetadataService.hpp"
+ #include "evo/services/NetworkStorageService.hpp"
  #include "evo/Application.hpp"
+@@ -66,6 +67,7 @@
+ #include "evo_adec.h"
+ #include "evo_subtitle.h"
+ #include "evo_langpref.h"
++#include "ps5-preferences.h"
+ #include "evo_online_subs.h"
+ #include "evo_agc_runtime.h"
+ #include "evo_stream_io.h"
+@@ -151,6 +153,8 @@
+     if (m_source.item_id != key)
+         return;
  
-@@ -467,6 +468,8 @@
++    if (prospero_subtitle_requested_stream >= 0) return; /* explicit embedded choice */
++
+     /* The same title again (audio switch, reopen): restore what was loaded. */
+     {
+         char keptPath[512], keptLabel[96];
+@@ -162,6 +166,7 @@
+             return;
+         }
+     }
++    if (m_source.provider == "web") return; /* candidates are picker-owned */
+     if (prospero_subtitle_count > 0)
+         return;                       /* a sidecar is already loaded */
+     if (!prospero_subtitle_enabled)
+@@ -570,6 +575,8 @@
  
  void PlaybackController::stopPlayback() {
      if (isActive()) {
@@ -240,6 +1099,226 @@
          saveResumePosition();
      }
  
+@@ -773,6 +780,11 @@
+         return false;
+     }
+ 
++    const bool profilePolicy = nuvio_preferences_active(source.provider.c_str(), source.item_id.c_str());
++    nuvio_preferences_snapshot profileReopen{};
++    if (profilePolicy && !m_currentFilePath.empty() && m_source.provider == source.provider &&
++        m_source.item_id == source.item_id && m_source.url == rawUrl)
++        nuvio_preferences_capture(&profileReopen, audio_stream_index);
+     stopPlayback();
+ 
+     /* A poster decode in flight may hold the resident decoder slot. */
+@@ -1101,7 +1113,7 @@
+      * and a commentary track never does. Auto keeps the first decodable one.
+      * A program-grouped source (HLS) keeps its own pairing above.
+      */
+-    if (chosen_program < 0 && evo_langpref_audio()[0]) {
++    if (!profilePolicy && chosen_program < 0 && evo_langpref_audio()[0]) {
+         int best = -1, bestScore = 0;
+         for (unsigned int i = 0; i < play_fmt->nb_streams; ++i) {
+             AVStream* st = play_fmt->streams[i];
+@@ -1154,6 +1166,9 @@
+      * a decodable audio stream in this file, so a stale index from a previous
+      * file can never leave the session with no audio at all.
+      */
++    if (profilePolicy)
++        audio_stream_index = nuvio_preferences_audio(play_fmt, audio_stream_index,
++                                                       chosen_program, &profileReopen);
+     if (m_requestedAudioStream >= 0 &&
+         m_requestedAudioStream < static_cast<int>(play_fmt->nb_streams)) {
+         AVStream* want = play_fmt->streams[m_requestedAudioStream];
+@@ -1541,19 +1556,12 @@
+     }
+ 
+     // Subtitle setup
++    if (profilePolicy) {
++        nuvio_preferences_subtitles(play_fmt, audio_stream_index, &profileReopen);
++        prospero_secondary_subtitle_open(play_fmt);
++    } else {
+     prospero_subtitle_clear();
+     prospero_subtitle_load_for_media(filePath.c_str());
+-    /* A matching .srt next to the file is the track to show, when the user
+-     * asked for subtitles on their own (Settings > Auto Subtitles) and did not
+-     * just pick an embedded track. The setting was saved but never applied, so
+-     * a sidecar loaded and stayed off. */
+-    if (prospero_subtitle_count > 0 && prospero_subtitle_requested_stream < 0) {
+-        auto settings = Application::getInstance().getSettingsService();
+-        if (!settings || settings->isAutoSubtitlesEnabled()) {
+-            prospero_subtitle_select_primary(-1);
+-            EVO_LOGI("subtitles", "sidecar on: %d cues", prospero_subtitle_count);
+-        }
+-    }
+     if (!m_source.subtitleUrl.empty()) {
+         /* A media server's sidecar subtitle: fetch it, then it loads like a local .srt. */
+         char* body = nullptr;
+@@ -1563,14 +1571,26 @@
+             body && blen > 0 && st == 200) {
+             const char* tmp = evo_data_path("ext_sub.srt");
+             if (FILE* f = std::fopen(tmp, "wb")) {
+-                std::fwrite(body, 1, blen, f);
+-                std::fclose(f);
+-                prospero_subtitle_load_external(tmp);
++                const bool complete = std::fwrite(body, 1, blen, f) == blen;
++                const bool closed = std::fclose(f) == 0;
++                if (complete && closed)
++                    prospero_subtitle_load_external(tmp);
+             }
+         } else {
+             EVO_LOGE("playback", "sidecar subtitle fetch failed (http %d)", st);
+         }
+         std::free(body);
++    }
++    /* A successfully loaded local or remote sidecar is the track to show, when the user
++     * asked for subtitles on their own (Settings > Auto Subtitles) and did not
++     * just pick an embedded track. The setting was saved but never applied, so
++     * a sidecar loaded and stayed off. */
++    if (prospero_subtitle_count > 0 && prospero_subtitle_requested_stream < 0) {
++        auto settings = Application::getInstance().getSettingsService();
++        if (!settings || settings->isAutoSubtitlesEnabled()) {
++            prospero_subtitle_select_primary(-1);
++            EVO_LOGI("subtitles", "sidecar on: %d cues", prospero_subtitle_count);
++        }
+     }
+     /*
+      * AUTO SUBTITLES: a new file starts with subtitles on or off as the
+@@ -1585,6 +1605,7 @@
+     prospero_embedded_subtitle_open(play_fmt);
+     prospero_secondary_subtitle_open(play_fmt);   // #110: only if one was chosen for this file
+     applyOnlineSubtitles();
++    }
+ 
+     /*
+      * Apply the resume position. This has to be a real seek on play_fmt before
+@@ -1728,26 +1749,49 @@
+         }
+     }
+ 
+-    // Start background worker threads
+-    demux_thread_running = 1;
+-    video_thread_running = (video_stream_index >= 0) ? 1 : 0;
+-    audio_decode_thread_running = (audio_ctx != nullptr) ? 1 : 0;
+-    audio_thread_running = (audio_handle >= 1) ? 1 : 0;
+-
+-    evo_boot_log("  pb: threads demux=1 video=%d adec=%d aout=%d",
+-                 video_thread_running, audio_decode_thread_running,
+-                 audio_thread_running);
+-    evo_thread_create(&demux_thread, demux_thread_func, nullptr);
+-
+-    if (video_thread_running) {
++    // Running flags double as join ownership: never mark an uncreated worker.
++    demux_thread_running = video_thread_running = 0;
++    audio_decode_thread_running = audio_thread_running = 0;
++    if (true) {
++        demux_thread_running = 1;
++        const int rc = evo_thread_create(&demux_thread, demux_thread_func, nullptr);
++        evo_boot_log("playback worker start: kind=demux rc=%d", rc);
++        if (rc != 0) {
++            demux_thread_running = 0;
++            stopPlayback();
++            return false;
++        }
++    }
++    if (video_stream_index >= 0) {
++        video_thread_running = 1;
+         video_thread_exited = 0;
+-        evo_thread_create(&video_thread, video_decode_thread_func, nullptr);
+-    }
+-    if (audio_decode_thread_running) {
+-        evo_thread_create(&audio_decode_thread, audio_decode_thread_func, nullptr);
+-    }
+-    if (audio_thread_running) {
+-        evo_thread_create(&audio_thread, audio_output_thread, nullptr);
++        const int rc = evo_thread_create(&video_thread, video_decode_thread_func, nullptr);
++        evo_boot_log("playback worker start: kind=video rc=%d", rc);
++        if (rc != 0) {
++            video_thread_running = 0;
++            stopPlayback();
++            return false;
++        }
++    }
++    if (audio_ctx != nullptr) {
++        audio_decode_thread_running = 1;
++        const int rc = evo_thread_create(&audio_decode_thread, audio_decode_thread_func, nullptr);
++        evo_boot_log("playback worker start: kind=audio_decode rc=%d", rc);
++        if (rc != 0) {
++            audio_decode_thread_running = 0;
++            stopPlayback();
++            return false;
++        }
++    }
++    if (audio_handle >= 1) {
++        audio_thread_running = 1;
++        const int rc = evo_thread_create(&audio_thread, audio_output_thread, nullptr);
++        evo_boot_log("playback worker start: kind=audio rc=%d", rc);
++        if (rc != 0) {
++            audio_thread_running = 0;
++            stopPlayback();
++            return false;
++        }
+     }
+ 
+     m_playbackFsm.postEvent(PlaybackEvent::Play);
+@@ -1930,9 +1974,8 @@
+ void PlaybackController::seekTo(double targetSeconds) {
+     if (!isActive() || targetSeconds < 0.0) return;
+ 
+-    m_resumeBaseOffset = targetSeconds;
+-    resume_base_offset_seconds = targetSeconds;
+-
++    // The demuxer publishes the base only after a successful seek.
++    // A refused request or worker timeout must retain the measured position.
+     int64_t targetUs = static_cast<int64_t>(targetSeconds * 1000000.0);
+     if (!prospero_request_inplace_seek(targetSeconds, 0)) {
+         /* Refused: nothing will run the seek, so nothing would ever restart the
+@@ -2214,6 +2257,8 @@
+     std::string path = m_currentFilePath;
+     double resumeAt = getPositionSeconds();
+     bool wasPaused = isPaused();
++    evo_boot_log("audio switch begin: from=%d to=%d position=%.3f paused=%d engine_paused=%d",
++                 audio_stream_index, streamIndex, resumeAt, wasPaused, evo_pb_is_paused());
+ 
+     /* The whole source, not just its URL: reopening through startPlayback(path)
+      * builds a bare-URL source, so a provider stream lost its title, identity and
+@@ -2233,6 +2278,7 @@
+     }
+ 
+     if (!startPlaybackSource(savedSource, resumeAt)) {
++        evo_boot_log("audio switch end: requested=%d opened=0", streamIndex);
+         m_requestedAudioStream = -1;
+         prospero_subtitle_requested_stream = -2;
+         return false;
+@@ -2247,6 +2293,8 @@
+     prospero_subtitle_requested_stream = -2;
+ 
+     if (wasPaused) setPaused(true);
++    evo_boot_log("audio switch end: requested=%d selected=%d opened=1 paused=%d engine_paused=%d",
++                 streamIndex, audio_stream_index, isPaused(), evo_pb_is_paused());
+     return true;
+ }
+ 
+--- a/projects/evoplayer/include/evo_boot_log.h
++++ b/projects/evoplayer/include/evo_boot_log.h
+@@ -53,7 +53,7 @@
+ /* Crash-handler use only: write still-queued lines to `fd` (no locks). */
+ void evo_boot_log_crash_drain(int fd);
+ /* #229: the file the log is going to (/mnt/usb0/evo.log, or
+- * /data/evoplayer/evo.log with no USB stick). 0 = no file open yet. */
++ * /data/nuvio/evo.log with no USB stick). 0 = no file open yet. */
+ int evo_log_file_path(char *out, size_t cap);
+ 
+ /* Mask credentials in a line in place (api_key=, token=, password=, ...,
+@@ -79,7 +79,7 @@
+  *   evo_report_write: feeds the report to `sink` (0 = keep going) in pieces;
+  *     returns the bytes written, -1 if the sink stopped it.
+  *   evo_report_save:  writes /mnt/usb0/evo_report.txt, or
+- *     /data/evoplayer/evo_report.txt with no stick; the path goes to `out`.
++ *     /data/nuvio/evo_report.txt with no stick; the path goes to `out`.
+  *     1 = saved. */
+ typedef int (*evo_report_sink_fn)(void *ud, const char *data, size_t n);
+ long evo_report_write(evo_report_sink_fn sink, void *ud);
 --- a/projects/evoplayer/include/evo_data_path.h
 +++ b/projects/evoplayer/include/evo_data_path.h
 @@ -4,19 +4,19 @@
@@ -306,6 +1385,17 @@
   * Stores up to 100 entries with path, title and duration.
   *
   * Public surface:
+--- a/projects/evoplayer/include/evo_ntfs.h
++++ b/projects/evoplayer/include/evo_ntfs.h
+@@ -33,7 +33,7 @@
+ #define EVO_NTFS_SCHEME "ntfs://"
+ 
+ /* Looks for NTFS volumes on /dev/da0..da7 (and, in --usb-remote builds,
+- * /data/evoplayer/test/ntfs.img). Volumes on a disk that is gone are dropped;
++ * /data/nuvio/test/ntfs.img). Volumes on a disk that is gone are dropped;
+  * new disks are mounted. Cheap when nothing changed. Returns the count. */
+ int  evo_ntfs_refresh(void);
+ 
 --- a/projects/evoplayer/include/evo_recent.h
 +++ b/projects/evoplayer/include/evo_recent.h
 @@ -4,7 +4,7 @@
@@ -319,18 +1409,31 @@
   * Public surface:
 --- a/projects/evoplayer/include/evo_webui.h
 +++ b/projects/evoplayer/include/evo_webui.h
-@@ -63,7 +63,9 @@
+@@ -14,6 +14,7 @@
+ #define EVO_WEBUI_H
+ 
+ #include <stddef.h>
++#include <stdint.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -63,7 +64,14 @@
   * handoff with the URL to open and the title to show; the caller starts
   * playback and later reports back with evo_webui_playback_ended() (played = 0
   * when it never started), which reopens the page. */
 -int  evo_webui_take_play(char *url, size_t url_cap, char *title, size_t title_cap);
 +/* start receives the requested initial position in seconds. */
 +int  evo_webui_take_play(char *url, size_t url_cap, char *title, size_t title_cap, double *start);
++int evo_webui_skip_interval(double position, double duration, uint64_t now,
++                            int consume, double *target);
++int evo_webui_skip_countdown(double target, uint64_t now, int running);
++void evo_webui_return_to_nuvio(void);
++int evo_webui_next_episode(double position, double duration, uint64_t now, int running, int visible, int action);
 +void evo_webui_progress_sample(double position, double duration);
  void evo_webui_playback_ended(int played);
  
  #else
-@@ -77,8 +79,9 @@
+@@ -77,8 +85,16 @@
  static inline void evo_webui_shutdown(void) {}
  static inline int  evo_webui_session_active(void) { return 0; }
  static inline int  evo_webui_take_error(char *b, size_t c) { (void)b; (void)c; return 0; }
@@ -338,11 +1441,18 @@
 -{ (void)u; (void)uc; (void)t; (void)tc; return 0; }
 +static inline int  evo_webui_take_play(char *u, size_t uc, char *t, size_t tc, double *s)
 +{ (void)u; (void)uc; (void)t; (void)tc; (void)s; return 0; }
++static inline int evo_webui_skip_interval(double p, double d, uint64_t n, int c, double *t)
++{ (void)p; (void)d; (void)n; (void)c; (void)t; return 0; }
++static inline void evo_webui_return_to_nuvio(void) {}
++static inline int evo_webui_next_episode(double p, double d, uint64_t n, int r, int v, int a)
++{ (void)p; (void)d; (void)n; (void)r; (void)v; (void)a; return 0; }
++static inline int evo_webui_skip_countdown(double t, uint64_t n, int r)
++{ (void)t; (void)n; (void)r; return 0; }
 +static inline void evo_webui_progress_sample(double p, double d) { (void)p; (void)d; }
  static inline void evo_webui_playback_ended(int played) { (void)played; }
  
  #endif
-@@ -88,3 +91,13 @@
+@@ -88,3 +104,18 @@
  #endif
  
  #endif /* EVO_WEBUI_H */
@@ -356,9 +1466,574 @@
 +extern "C"
 +#endif
 +void evo_webui_controller(int options, int menu, int direction);
++
++#ifdef __cplusplus
++extern "C"
++#endif
++void evo_webui_import_subtitles(char *key, size_t cap);
+--- a/projects/evoplayer/media/include/evo_audio_out.h
++++ b/projects/evoplayer/media/include/evo_audio_out.h
+@@ -107,6 +107,9 @@
+ extern char prospero_audio_active_label[128];
+ 
+ /* Threads (spawned by main.c via pthread_create). */
++/* Successful begin holds both workers until end; failure changes no queues. */
++int evo_audio_seek_begin(void);
++void evo_audio_seek_end(void);
+ void *audio_output_thread(void *arg);
+ void *audio_decode_thread_func(void *arg);
+ 
+--- a/projects/evoplayer/media/include/evo_playback.h
++++ b/projects/evoplayer/media/include/evo_playback.h
+@@ -35,6 +35,7 @@
+ /* ---- §4 playback façade — the stable interface ---- */
+ int    evo_pb_is_active(void);        /* a video decode session is running   */
+ int    evo_pb_is_paused(void);        /* was: player_paused                  */
++int    evo_pb_is_finished(void); /* demux EOF and drained playback */
+ int    evo_pb_is_eof(void);           /* was: video_decode_done              */
+ int    evo_pb_decode_fatal(void);     /* sustained decoder failure — abort   */
+ void   evo_pb_reset_decode_fatal(void); /* clear fatal flag + streak (re-open) */
+--- a/projects/evoplayer/media/src/evo_audio_out.c
++++ b/projects/evoplayer/media/src/evo_audio_out.c
+@@ -75,6 +75,40 @@
+ /* ---------------------------------------------------------------------------
+  * Audio-out session state (exported via evo_audio_out.h).
+  * ------------------------------------------------------------------------ */
++/* Serialize seek resets against complete decode/output iterations. The two
++ * locks are separate: decoding may wait for the output queue to drain.
++ * The seek hold interrupts those waits before acquiring either lock. */
++#include <stdatomic.h>
++#include <libavutil/time.h>
++
++static pthread_mutex_t s_audio_decode_mx = PTHREAD_MUTEX_INITIALIZER;
++static pthread_mutex_t s_audio_output_mx = PTHREAD_MUTEX_INITIALIZER;
++static atomic_int s_audio_seek_hold;
++
++int evo_audio_seek_begin(void)
++{
++    atomic_store(&s_audio_seek_hold, 1);
++    const int64_t deadline = av_gettime_relative() + 2000000;
++    do {
++        if (pthread_mutex_trylock(&s_audio_decode_mx) == 0) {
++            if (pthread_mutex_trylock(&s_audio_output_mx) == 0)
++                return 1;
++            pthread_mutex_unlock(&s_audio_decode_mx);
++        }
++        usleep(1000);
++    } while (av_gettime_relative() < deadline);
++    /* No reset is safe if either worker is still using the old epoch. */
++    atomic_store(&s_audio_seek_hold, 0);
++    return 0;
++}
++
++void evo_audio_seek_end(void)
++{
++    pthread_mutex_unlock(&s_audio_output_mx);
++    pthread_mutex_unlock(&s_audio_decode_mx);
++    atomic_store(&s_audio_seek_hold, 0);
++}
++
+ int audio_handle = -1;
+ static int16_t audio_accum[2048 * EVO_AUDIO_MAX_CH];
+ int audio_accum_pos = 0;
+@@ -169,17 +203,9 @@
+     audio_queue_count++;
+ }
+ 
+-void *audio_output_thread(void *arg) {
++static void audio_output_step(double *video_rel_at_wait, int *video_stuck_iters) {
+     static int16_t silence[AUDIO_BLOCK_SAMPLES * EVO_AUDIO_MAX_CH];
+-    /*
+-     * State for the "video is not advancing" escape on the throttle below.
+-     * Video's own audio-master wait has the mirror of this (stuck_iters in
+-     * decode_next_video_frame); without it here, the two waits can hold each
+-     * other forever.
+-     */
+-    double video_rel_at_wait = -1.0;
+-    int    video_stuck_iters = 0;
+-    while (audio_thread_running) {
++
+         /*
+          * Hold output while a seek is still discarding video.
+          *
+@@ -201,10 +227,10 @@
+              * decode threads: while the seek bar is being dragged the picture
+              * is frozen, so audio running on would only build a lead it has to
+              * give back the moment the scrub commits. */
+-            video_rel_at_wait = -1.0;
+-            video_stuck_iters = 0;
++            (*video_rel_at_wait) = -1.0;
++            (*video_stuck_iters) = 0;
+             usleep(2000);
+-            continue;
++            return;
+         }
+         if (screen == 2 && !player_paused && audio_handle >= 1) {
+             /*
+@@ -229,7 +255,7 @@
+             if (video_stream_index >= 0 && first_video_pts_seconds < 0.0 &&
+                 video_decode_ready && !video_decode_done) {
+                 usleep(2000);
+-                continue;
++                return;
+             }
+ 
+             /*
+@@ -255,10 +281,10 @@
+              * forward-only test would never see it move again - leaving the
+              * throttle switched off for the rest of the file.
+              */
+-            if (video_rel < video_rel_at_wait - 0.0005 ||
+-                video_rel > video_rel_at_wait + 0.0005) {
+-                video_rel_at_wait = video_rel;
+-                video_stuck_iters = 0;
++            if (video_rel < (*video_rel_at_wait) - 0.0005 ||
++                video_rel > (*video_rel_at_wait) + 0.0005) {
++                (*video_rel_at_wait) = video_rel;
++                (*video_stuck_iters) = 0;
+             }
+             /*
+              * The 45 ms lead assumes a frame is shorter than that (24 fps and up).
+@@ -278,10 +304,10 @@
+             }
+             if (video_rel >= EVO_AV_SYNC_SETTLE_SEC &&
+                 audio_clock_seconds + (double)evo_av_get_audio_delay_ms() / 1000.0 > video_rel + lead_max &&
+-                video_stuck_iters < 125) {
+-                video_stuck_iters++;
++                (*video_stuck_iters) < 125) {
++                (*video_stuck_iters)++;
+                 usleep(2000);
+-                continue;
++                return;
+             }
+             if (evo_pt_is_active()) {
+                 static uint8_t pt_grain_buf[16384];
+@@ -316,10 +342,22 @@
+             }
+         } else {
+             /* Reset throttle tracker while paused or inactive so resume starts clean */
+-            video_rel_at_wait = -1.0;
+-            video_stuck_iters = 0;
++            (*video_rel_at_wait) = -1.0;
++            (*video_stuck_iters) = 0;
+             usleep(200);
+         }
++}
++
++void *audio_output_thread(void *arg) {
++    (void)arg;
++    double video_rel_at_wait = -1.0;
++    int video_stuck_iters = 0;
++    while (audio_thread_running) {
++        if (atomic_load(&s_audio_seek_hold)) { usleep(1000); continue; }
++        pthread_mutex_lock(&s_audio_output_mx);
++        if (!atomic_load(&s_audio_seek_hold))
++            audio_output_step(&video_rel_at_wait, &video_stuck_iters);
++        pthread_mutex_unlock(&s_audio_output_mx);
+     }
+     return NULL;
+ }
+@@ -415,7 +453,7 @@
+          * iteration, which also stopped the compiler vectorising it. Copy in
+          * runs instead and check the flag once per run.
+          */
+-        while (index < converted && audio_decode_thread_running) {
++        while (index < converted && audio_decode_thread_running && !atomic_load(&s_audio_seek_hold)) {
+             int run = converted - index;
+             const int space = AUDIO_BLOCK_SAMPLES - audio_accum_pos;
+             if (run > space)
+@@ -431,14 +469,14 @@
+ 
+             if (audio_accum_pos >= AUDIO_BLOCK_SAMPLES) {
+                 while (
+-                    audio_decode_thread_running &&
++                    audio_decode_thread_running && !atomic_load(&s_audio_seek_hold) &&
+                     audio_queue_count >=
+                         AUDIO_QUEUE_BLOCKS - 2
+                 ) {
+                     usleep(1000);
+                 }
+ 
+-                if (!audio_decode_thread_running) {
++                if (!audio_decode_thread_running || atomic_load(&s_audio_seek_hold)) {
+                     break;
+                 }
+ 
+@@ -458,11 +496,7 @@
+  * with room to spare and matches the capacity the reference PoC uses. */
+ static int16_t g_adec_pcm[32 * 1024];
+ 
+-void *audio_decode_thread_func(void *arg) {
+-    AVFrame *af = av_frame_alloc();
+-    if (!af) return NULL;
+-
+-    while (audio_decode_thread_running) {
++static void audio_decode_step(AVFrame *af) {
+         /*
+          * pb_prebuffer_hold parks audio alongside video at open. It has to be
+          * both or neither: audio is the master clock, so letting it run while
+@@ -472,13 +506,14 @@
+         if (player_paused || pb_prebuffer_hold || pb_scrub_hold || screen != 2) {
+             /* Parked - see the note on the video decode thread. */
+             usleep(5000);
+-            continue;
+-        }
+-
+-        while (audio_decode_thread_running && audio_queue_count > 10) {
++            return;
++        }
++
++        while (audio_decode_thread_running && !atomic_load(&s_audio_seek_hold) && audio_queue_count > 10) {
+             usleep(1000);
+         }
+ 
++        if (atomic_load(&s_audio_seek_hold)) return;
+         AVPacket *pkt = packet_queue_pop(&audio_packet_queue);
+         if (pkt && audio_seek_discard_until >= 0.0) {
+             /*
+@@ -491,7 +526,8 @@
+              * first kept packet primes it exactly as a fresh open would.
+              * A packet with no PTS clears the gate rather than being dropped.
+              */
+-            double pkt_seconds = -1.0;
++            const int has_pts = pkt->pts != AV_NOPTS_VALUE && play_fmt && audio_stream_index >= 0;
++            double pkt_seconds = 0.0;
+             if (pkt->pts != AV_NOPTS_VALUE && play_fmt && audio_stream_index >= 0)
+                 pkt_seconds = (double)pkt->pts *
+                     av_q2d(play_fmt->streams[audio_stream_index]->time_base);
+@@ -513,12 +549,12 @@
+                 s_dropped = 0;
+             }
+ 
+-            if (pkt_seconds >= 0.0) {
++            if (has_pts) {
+                 if (pkt_seconds < audio_seek_discard_until - 0.025 &&
+                     s_dropped < 2000) {
+                     s_dropped++;
+                     av_packet_free(&pkt);
+-                    continue;
++                    return;
+                 }
+                 s_dropped = 0;
+                 s_last_discard_target = -1.0;
+@@ -527,7 +563,7 @@
+                 if (s_dropped < 2000) {
+                     s_dropped++;
+                     av_packet_free(&pkt);
+-                    continue;
++                    return;
+                 }
+                 s_dropped = 0;
+                 s_last_discard_target = -1.0;
+@@ -545,14 +581,15 @@
+                     : 1000
+             );
+ 
+-            continue;
++            return;
+         }
+ 
+         if (evo_pt_is_active()) {
+             /* Throttle if the passthrough queue has accumulated enough grains (e.g. 64 grains ~ 340ms) */
+-            while (audio_decode_thread_running && evo_pt_queued_grains() > 64) {
++            while (audio_decode_thread_running && !atomic_load(&s_audio_seek_hold) && evo_pt_queued_grains() > 64) {
+                 usleep(2000);
+             }
++            if (atomic_load(&s_audio_seek_hold)) { av_packet_free(&pkt); return; }
+             if (pkt->pts != AV_NOPTS_VALUE && play_fmt && audio_stream_index >= 0) {
+                 audio_pts_seconds = (double)pkt->pts *
+                     av_q2d(play_fmt->streams[audio_stream_index]->time_base);
+@@ -565,7 +602,7 @@
+             int ch = (audio_ctx && audio_ctx->ch_layout.nb_channels > 0) ? audio_ctx->ch_layout.nb_channels : 2;
+             evo_pt_push_packet(pkt->data, (size_t)pkt->size, sr, ch);
+             av_packet_free(&pkt);
+-            continue;
++            return;
+         }
+ 
+         /*
+@@ -613,7 +650,7 @@
+         }
+ 
+         if (!handled_natively && avcodec_send_packet(audio_ctx, pkt) == 0) {
+-            while (audio_decode_thread_running && avcodec_receive_frame(audio_ctx, af) == 0) {
++            while (audio_decode_thread_running && !atomic_load(&s_audio_seek_hold) && avcodec_receive_frame(audio_ctx, af) == 0) {
+                 if (af->pts != AV_NOPTS_VALUE && play_fmt && audio_stream_index >= 0) {
+                     audio_pts_seconds = af->pts * av_q2d(play_fmt->streams[audio_stream_index]->time_base);
+                     if (first_audio_pts_seconds < 0.0) {
+@@ -628,6 +665,17 @@
+         }
+ 
+         av_packet_free(&pkt);
++}
++
++void *audio_decode_thread_func(void *arg) {
++    (void)arg;
++    AVFrame *af = av_frame_alloc();
++    if (!af) return NULL;
++    while (audio_decode_thread_running) {
++        if (atomic_load(&s_audio_seek_hold)) { usleep(1000); continue; }
++        pthread_mutex_lock(&s_audio_decode_mx);
++        if (!atomic_load(&s_audio_seek_hold)) audio_decode_step(af);
++        pthread_mutex_unlock(&s_audio_decode_mx);
+     }
+ 
+     av_frame_free(&af);
+--- a/projects/evoplayer/media/src/evo_demux.c
++++ b/projects/evoplayer/media/src/evo_demux.c
+@@ -12,6 +12,15 @@
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <unistd.h>
++#include <errno.h>
++#include <sys/socket.h>
++#include <libavformat/avio.h>
++
++/* Exact declarations from pinned FFmpeg 7.1.1 avio_internal.h and url.h.
++ * Use its URL/HTTP/TLS dispatch, never cast private protocol layouts. */
++struct URLContext;
++struct URLContext *ffio_geturlcontext(AVIOContext *s);
++int ffurl_get_file_handle(struct URLContext *h);
+ 
+ #include <libavformat/avformat.h>
+ #include <libavcodec/avcodec.h>
+@@ -31,6 +40,7 @@
+ #include "pp_stage_breadcrumb.h"
+ #include "evo_boot_log.h"
+ #include "evo_parallel_io.h"
++#include "evo_webui.h"
+ 
+ /* ---------------------------------------------------------------------------
+  * TRANSITIONAL: playback-core decode context + flags + the app playback
+@@ -236,6 +246,16 @@
+     }
+ 
+     
++    /* Never flush a live decoder or reset a live output completion. */
++    if ((video_thread_running && !video_decode_parked) || !evo_audio_seek_begin()) {
++        pp_stage_bc("SEEK_PARK", "worker timeout; seek cancelled before reset");
++        prospero_seek_in_progress = 0;
++        video_decode_hold = 0;
++        pp_playback_notify_seek_end(&g_pp_pb, 0, 0, 0);
++        if (!restore_paused) pp_playback_resume(&g_pp_pb);
++        player_paused = restore_paused ? 1 : 0;
++        return 0;
++    }
+     /*
+      * Clear EOF immediately. This wakes the video and audio decoder
+      * loops while the seek and queue reset are being completed.
+@@ -393,10 +413,7 @@
+          * target is dropped on the audio side too. Both clocks then restart
+          * from the target and the picture resumes without waiting for audio.
+          */
+-        if (target_seconds > 0.05)
+-            audio_seek_discard_until = target_seconds;
+-        else
+-            audio_seek_discard_until = -1.0;
++        audio_seek_discard_until = target_seconds;
+ 
+         audio_samples_played = 0;
+         audio_samples_decoded = 0;
+@@ -438,6 +455,7 @@
+     }
+ 
+     prospero_seek_in_progress = 0;
++    evo_audio_seek_end();
+     video_decode_hold = 0;
+ 
+     pp_playback_notify_seek_end(
+@@ -790,7 +808,7 @@
+     /* Through the parallel reader the player has already said so
+      * (PlayerScreen watches the reader); one toast per outage, not two. */
+     if (demux_recover_tries == 1 && !pio_open())
+-        toast("CONNECTION LOST", "The stream dropped - reconnecting...");
++        if (evo_webui_native_requested()) toast("CONNECTION LOST", "The stream dropped - reconnecting...");
+     const AVStream *st = play_fmt->streams[video_stream_index];
+     char err[64];
+     av_strerror(read_result, err, sizeof err);
+@@ -825,7 +843,7 @@
+         demux_catching_up &= ~1;
+         demux_recovering = 0;
+         if (!pio_open())
+-            toast("CONNECTION", "Reconnected - the stream is back");
++            if (evo_webui_native_requested()) toast("CONNECTION", "Reconnected - the stream is back");
+         return 0;
+     }
+     if (pkt->stream_index == audio_stream_index && (demux_catching_up & 2)) {
+@@ -868,7 +886,43 @@
+      * mid-playback rebuffer re-arms the hold and needs a fresh one. */
+     long long prebuffer_deadline_ms = now_ms() + (long long)pb_prebuffer_max_ms;
+ 
++    /* At most 24 five-second windows per network playback. AVIO bytes are
++     * payload read by libavformat, not socket bytes or a CDN speed test. */
++    int rd_reports = 0, rd_calls = 0, rd_video = 0, rd_audio = 0, rd_errors = 0;
++    int rd_counter_resets = 0, rd_last_rc = 0;
++    long long rd_since = av_gettime_relative();
++    long long rd_read_us = 0, rd_wait_us = 0, rd_max_us = 0, rd_bytes = 0;
+     while (demux_thread_running) {
++        if (pb_rebuffer_enabled && rd_reports < 24) {
++            const long long rd_now = av_gettime_relative();
++            if (rd_now - rd_since >= 5000000) {
++                struct URLContext *rd_url = ffio_geturlcontext(play_fmt->pb);
++                const int rd_fd = rd_url ? ffurl_get_file_handle(rd_url) : -1;
++                int rd_recvbuf = -1, rd_sock_rc = -1, rd_sock_error = 0;
++                socklen_t rd_sock_len = sizeof(rd_recvbuf);
++                if (rd_fd >= 0) {
++                    rd_sock_rc = getsockopt(rd_fd, SOL_SOCKET, SO_RCVBUF,
++                                           &rd_recvbuf, &rd_sock_len);
++                    if (rd_sock_rc < 0) rd_sock_error = errno;
++                }
++                if (rd_sock_rc != 0 || rd_sock_len != sizeof(rd_recvbuf)) rd_recvbuf = -1;
++                evo_boot_log("read path: window=%d elapsed_us=%lld calls=%d read_us=%lld "
++                    "max_read_us=%lld queue_wait_us=%lld avio_bytes=%lld io=%d resets=%d "
++                    "video=%d audio=%d errors=%d last_rc=%d vq=%d aq=%d paused=%d prebuffer=%d "
++                    "socket=%d recvbuf_bytes=%d sock_rc=%d sock_errno=%d sock_len=%u avio_buf=%d",
++                    ++rd_reports, rd_now - rd_since, rd_calls, rd_read_us, rd_max_us,
++                    rd_wait_us, rd_bytes, play_fmt->pb != NULL, rd_counter_resets,
++                    rd_video, rd_audio, rd_errors, rd_last_rc,
++                    packet_queue_count(&video_packet_queue), packet_queue_count(&audio_packet_queue),
++                    player_paused, (int)pb_prebuffer_hold,
++                    rd_fd >= 0, rd_recvbuf, rd_sock_rc, rd_sock_error, (unsigned)rd_sock_len,
++                    play_fmt->pb ? play_fmt->pb->buffer_size : 0);
++                rd_since = rd_now;
++                rd_calls = rd_video = rd_audio = rd_errors = rd_counter_resets = 0;
++                rd_read_us = rd_wait_us = rd_max_us = rd_bytes = 0;
++            }
++        }
++        const int rd_enabled = pb_rebuffer_enabled && rd_reports < 24;
+         /*
+          * Process seek requests before checking the paused state.
+          */
+@@ -883,11 +937,28 @@
+          * demux_wait_for_room() bounds it, and it no longer exits on a pause -
+          * that dropped the packet in hand, and a lost reference frame smears
+          * the picture until the next keyframe. */
++        const long long rd_begin = rd_enabled ? av_gettime_relative() : 0;
++        const int64_t rd_before = rd_enabled && play_fmt->pb ? play_fmt->pb->bytes_read : -1;
+         int read_result =
+             av_read_frame(
+                 play_fmt,
+                 pkt
+             );
++        if (rd_enabled) {
++            const long long rd_elapsed = av_gettime_relative() - rd_begin;
++            rd_read_us += rd_elapsed;
++            if (rd_elapsed > rd_max_us) rd_max_us = rd_elapsed;
++            ++rd_calls;
++            rd_last_rc = read_result;
++            if (read_result < 0) ++rd_errors;
++            else if (pkt->stream_index == video_stream_index) ++rd_video;
++            else if (pkt->stream_index == audio_stream_index) ++rd_audio;
++            if (rd_before >= 0 && play_fmt->pb) {
++                const int64_t rd_after = play_fmt->pb->bytes_read;
++                if (rd_after >= rd_before) rd_bytes += rd_after - rd_before;
++                else ++rd_counter_resets;
++            }
++        }
+ 
+         if (read_result < 0) {
+             if (!demux_read_is_final(read_result)) {
+@@ -898,7 +969,7 @@
+                 demux_gave_up_told = 1;
+                 demux_recovering = 0;
+                 evo_boot_log("demux: gave up after %d tries - stream stopped", demux_recover_tries);
+-                toast("PLAYBACK ERROR", "The connection did not come back - stream stopped");
++                if (evo_webui_native_requested()) toast("PLAYBACK ERROR", "The connection did not come back - stream stopped");
+             }
+             /*
+              * Keep the demux thread alive so seeking backward from EOF
+@@ -934,11 +1005,13 @@
+              * Do not drop non-keyframes in demux — that freezes for a full GOP
+              * (often every 1–2s). Cap queue by waiting only.
+              */
++            const long long rd_wait_begin = rd_enabled ? av_gettime_relative() : 0;
+             demux_wait_for_room(&video_packet_queue, video_packet_cap,
+                                 video_queue_byte_cap,
+                                 &audio_packet_queue, audio_packet_cap,
+                                 prebuffer_deadline_ms,
+                                 playback_profile >= 3 ? 300 : 500);
++            if (rd_enabled) rd_wait_us += av_gettime_relative() - rd_wait_begin;
+ 
+             /* A seek arrived while waiting: this packet is from before it, and
+              * the seek clears the queues anyway. Drop it; the loop top seeks. */
+@@ -957,10 +1030,12 @@
+             pkt->stream_index ==
+             audio_stream_index
+         ) {
++            const long long rd_wait_begin = rd_enabled ? av_gettime_relative() : 0;
+             demux_wait_for_room(&audio_packet_queue, audio_packet_cap,
+                                 audio_queue_byte_cap,
+                                 &video_packet_queue, video_packet_cap,
+                                 prebuffer_deadline_ms, 1000);
++            if (rd_enabled) rd_wait_us += av_gettime_relative() - rd_wait_begin;
+ 
+             if (
+                 demux_thread_running &&
+--- a/projects/evoplayer/media/src/evo_playback.c
++++ b/projects/evoplayer/media/src/evo_playback.c
+@@ -87,6 +87,7 @@
+  * a seek is the common trigger (#57). */
+ int    g_pb_decode_fatal = 0;
+ static int s_vdec_fatal_streak = 0;
++static volatile int s_video_drained;
+ #define EVO_VDEC_FATAL_STREAK_LIMIT 16
+ int evo_pb_decode_fatal(void) { return g_pb_decode_fatal; }
+ 
+@@ -98,6 +99,7 @@
+ {
+     g_pb_decode_fatal   = 0;
+     s_vdec_fatal_streak = 0;
++    s_video_drained = 0;
+ }
+ 
+ #ifdef EVO_APP_MODULE
+@@ -487,6 +489,7 @@
+ 
+ int decode_next_video_frame(void)
+ {
++    if (!video_decode_done) s_video_drained = 0;
+     if (!video_decode_ready || player_paused) return 0;
+ 
+     /*
+@@ -510,6 +513,7 @@
+         if (g_pb_decode_fatal)
+             return 0;
+         if (recv_ret >= 1) {
++            s_video_drained = 0;
+             double video_rel = 0.0;
+             double audio_rel = 0.0;
+             double behind = 0.0;
+@@ -707,6 +711,7 @@
+                 evo_vdec_send(g_vdec, NULL, 0, INT64_MIN);
+                 continue;
+             }
++            s_video_drained = 1;
+             return 0;
+         }
+ 
+@@ -778,6 +783,11 @@
+ int evo_pb_is_active(void)          { return video_decode_ready; }
+ int evo_pb_is_paused(void)          { return player_paused; }
+ int evo_pb_is_eof(void)            { return video_decode_done; }
++int evo_pb_is_finished(void) {
++    return video_decode_done && s_video_drained && !video_video_pending_pkt &&
++        packet_queue_count(&video_packet_queue) == 0 &&
++        packet_queue_count(&audio_packet_queue) == 0 && audio_queue_count == 0;
++}
+ double evo_pb_position_s(void)      { return prospero_media_clock_seconds(); }
+ double evo_pb_duration_s(void)      { return media_duration_sec; }
+ double evo_pb_audio_clock_s(void)   { return (double)audio_clock_seconds; }
 --- a/projects/evoplayer/media/src/evo_stream_io.c
 +++ b/projects/evoplayer/media/src/evo_stream_io.c
-@@ -229,6 +229,8 @@
+@@ -238,10 +238,16 @@
+         av_dict_set(opts, "headers", evo_stream_headers, 0);
+     if (evo_stream_user_agent[0])
+         av_dict_set(opts, "user_agent", evo_stream_user_agent, 0);
++    /* Controlled receive-buffer experiment: FFmpeg forwards this option
++     * through HTTP/TLS to TCP before connect. Read-path diagnostics report
++     * the actual accepted SO_RCVBUF, which the OS may cap or reject. */
++    av_dict_set(opts, "recv_buffer_size", "1048576", 0);
+     av_dict_set(opts, "reconnect", "1", 0);
      av_dict_set(opts, "reconnect_streamed", "1", 0);
      av_dict_set(opts, "reconnect_on_network_error", "1", 0);
      av_dict_set(opts, "reconnect_delay_max", "2", 0);
@@ -367,7 +2042,7 @@
      av_dict_set(opts, "rw_timeout", "5000000", 0);
      av_dict_set(opts, "timeout", "5000000", 0);
  
-@@ -468,21 +470,11 @@
+@@ -548,21 +554,11 @@
                                          ? EVO_STREAM_IO_NET_OPEN_DEADLINE_SEC
                                          : EVO_STREAM_IO_OPEN_DEADLINE_SEC);
  
@@ -392,13 +2067,309 @@
 +    if (ctx->is_network)
 +        SIO_BC("P8_01d1_HTTP_READER", "single connection");
  
-     int rc = avformat_open_input(&fmt, path, NULL, &opts);
-     /* avformat_open_input frees and NULLs *fmt on failure, including on an
+     if (evo_ntfs_is_url(path)) {
+         ctx->ntfs = sio_ntfs_open(path);
+--- a/projects/evoplayer/media/src/evo_subtitle.c
++++ b/projects/evoplayer/media/src/evo_subtitle.c
+@@ -9,6 +9,10 @@
+  */
+ #include "evo_ntfs.h"
+ #include "evo_subtitle.h"
++#include "ps5-preferences.h"
++#include "evo_online_subs.h"
++#include "evo_demux.h"
++#include "evo_playback.h"
+ #include "evo_langpref.h"
+ #include <ctype.h>
+ 
+@@ -508,7 +512,7 @@
+ /*
+  * Point `slot` at embedded text stream `stream_index` of `format`: open the
+  * decoder its codec needs and start following the stream. Returns 1, or 0 with
+- * the slot left closed. `title` heads the toast.
++ * the previous slot unchanged. `title` heads the toast.
+  */
+ static int prospero_sub_slot_start(
+     ProsperoSubSlot *slot,
+@@ -522,18 +526,7 @@
+     enum AVCodecID codec_id =
+         stream->codecpar->codec_id;
+ 
+-    prospero_sub_slot_close(slot);
+-
+-    pthread_mutex_lock(
+-        &slot->state_mutex
+-    );
+-
+-    *slot->stream_index = stream_index;
+-    slot->codec_id = codec_id;
+-
+-    if (slot == SUB_PRIMARY) {
+-        dbg_sub_cid = (int)codec_id;
+-    }
++    AVCodecContext *context = NULL;
+ 
+     /*
+      * Matroska SubRip packets already contain plain subtitle text.
+@@ -546,7 +539,6 @@
+                 codec_id
+             );
+ 
+-        AVCodecContext *context = NULL;
+         const char *failure = NULL;
+ 
+         if (!decoder) {
+@@ -584,13 +576,6 @@
+                 );
+             }
+ 
+-            *slot->stream_index = -1;
+-            slot->codec_id = AV_CODEC_ID_NONE;
+-
+-            pthread_mutex_unlock(
+-                &slot->state_mutex
+-            );
+-
+             toast(
+                 "SUBTITLES",
+                 failure
+@@ -599,12 +584,16 @@
+             return 0;
+         }
+ 
+-        *slot->ctx = context;
+-    }
+-
+-    pthread_mutex_unlock(
+-        &slot->state_mutex
+-    );
++    }
++
++    /* Commit only after decoder preparation succeeds. */
++    prospero_sub_slot_close(slot);
++    pthread_mutex_lock(&slot->state_mutex);
++    *slot->ctx = context;
++    *slot->stream_index = stream_index;
++    slot->codec_id = codec_id;
++    if (slot == SUB_PRIMARY) dbg_sub_cid = (int)codec_id;
++    pthread_mutex_unlock(&slot->state_mutex);
+ 
+     const char *codec_name =
+         avcodec_get_name(
+@@ -1651,73 +1640,60 @@
+ }
+ 
+ 
++/* External SRT and WebVTT share cues, but VTT permits MM:SS.mmm.
++ * Parse each endpoint independently: a cue can cross the one-hour boundary.
++ * Missing timestamps and malformed fractions must not become time zero. */
++static int prospero_subtitle_parse_timestamp(const char **cursor, double *seconds) {
++    const char *p = *cursor;
++    unsigned first = 0;
++    int digits = 0;
++    while (*p >= '0' && *p <= '9') {
++        if (++digits > 6) return 0;
++        first = first * 10 + (unsigned)(*p++ - '0');
++    }
++    if (digits < 1 || *p++ != ':') return 0;
++    if (p[0] < '0' || p[0] > '9' || p[1] < '0' || p[1] > '9') return 0;
++    unsigned middle = (unsigned)(p[0] - '0') * 10 + (unsigned)(p[1] - '0');
++    p += 2;
++    unsigned hour = 0, minute = first, second = middle;
++    if (*p == ':') {
++        p++;
++        if (p[0] < '0' || p[0] > '9' || p[1] < '0' || p[1] > '9') return 0;
++        hour = first;
++        minute = middle;
++        second = (unsigned)(p[0] - '0') * 10 + (unsigned)(p[1] - '0');
++        p += 2;
++    } else if (digits != 2) {
++        return 0;
++    }
++    if (minute > 59 || second > 59 || (*p != '.' && *p != ',')) return 0;
++    p++;
++    unsigned millisecond = 0;
++    for (int i = 0; i < 3; i++) {
++        if (*p < '0' || *p > '9') return 0;
++        millisecond = millisecond * 10 + (unsigned)(*p++ - '0');
++    }
++    if (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') return 0;
++    *seconds = hour * 3600.0 + minute * 60.0 + second + millisecond / 1000.0;
++    *cursor = p;
++    return 1;
++}
++
+ static int prospero_subtitle_parse_timing(
+     const char *line,
+     double *start_seconds,
+     double *end_seconds
+ ) {
+-    int start_hour = 0;
+-    int start_minute = 0;
+-    int start_second = 0;
+-    int start_millisecond = 0;
+-
+-    int end_hour = 0;
+-    int end_minute = 0;
+-    int end_second = 0;
+-    int end_millisecond = 0;
+-
+-    char start_separator = 0;
+-    char end_separator = 0;
+-
+-    int matched =
+-        sscanf(
+-            line,
+-            "%d:%d:%d%c%d --> %d:%d:%d%c%d",
+-            &start_hour,
+-            &start_minute,
+-            &start_second,
+-            &start_separator,
+-            &start_millisecond,
+-            &end_hour,
+-            &end_minute,
+-            &end_second,
+-            &end_separator,
+-            &end_millisecond
+-        );
+-
+-    if (matched != 10) {
+-        return 0;
+-    }
+-
+-    if (
+-        (
+-            start_separator != ',' &&
+-            start_separator != '.'
+-        ) ||
+-        (
+-            end_separator != ',' &&
+-            end_separator != '.'
+-        )
+-    ) {
+-        return 0;
+-    }
+-
+-    *start_seconds =
+-        start_hour * 3600.0 +
+-        start_minute * 60.0 +
+-        start_second +
+-        start_millisecond / 1000.0;
+-
+-    *end_seconds =
+-        end_hour * 3600.0 +
+-        end_minute * 60.0 +
+-        end_second +
+-        end_millisecond / 1000.0;
+-
+-    return (
+-        *end_seconds >=
+-        *start_seconds
+-    );
++    const char *p = line;
++    while (*p == ' ' || *p == '\t') p++;
++    if (!prospero_subtitle_parse_timestamp(&p, start_seconds)) return 0;
++    while (*p == ' ' || *p == '\t') p++;
++    if (strncmp(p, "-->", 3)) return 0;
++    p += 3;
++    while (*p == ' ' || *p == '\t') p++;
++    if (!prospero_subtitle_parse_timestamp(&p, end_seconds)) return 0;
++    /* WebVTT cue settings may follow the end timestamp. */
++    return *end_seconds >= *start_seconds;
+ }
+ 
+ 
+@@ -2929,9 +2905,10 @@
+ 
+ /*
+  * Make `track` the primary: -1 for the external SRT, or an embedded stream
+- * index. In place, exactly as the secondary switches: the demuxer already
+- * delivers every subtitle stream, and the decoder for the new track's codec
+- * is opened under the slot's lock. (The picker used to only write the stream
++ * index. The demuxer decodes only selected streams and may be minutes ahead
++ * of presentation. After opening a different embedded track, ask that same
++ * reader to seek to the presentation clock so its current cues are reread.
++ * Decoder replacement is committed under the slot's lock. (The picker used to only write the stream
+  * index, which left the old track's decoder and cues behind - harmless for two
+  * SubRip tracks, wrong the moment a file mixes ASS and SubRip.) The same
+  * source cannot be both tracks, so a secondary that held it is dropped.
+@@ -2948,6 +2925,7 @@
+ 
+         prospero_subtitle_use_external = 1;
+         prospero_subtitle_enabled = 1;
++        prospero_subtitle_requested_stream = -1;
+ 
+         return 1;
+     }
+@@ -2971,23 +2949,30 @@
+         return 0;
+     }
+ 
++    const int changed = track != prospero_embedded_subtitle_stream_index;
++    if (changed && !prospero_sub_slot_start(
++            SUB_PRIMARY, play_fmt, track, "EMBEDDED SUBTITLES")) {
++        return 0;
++    }
++
+     if (track == prospero_secondary_subtitle_stream_index) {
+         prospero_secondary_drop();
+     }
+ 
+     prospero_subtitle_use_external = 0;
+     prospero_subtitle_enabled = 1;
+-
+-    if (track == prospero_embedded_subtitle_stream_index) {
+-        return 1;
+-    }
+-
+-    return prospero_sub_slot_start(
+-        SUB_PRIMARY,
+-        play_fmt,
+-        track,
+-        "EMBEDDED SUBTITLES"
+-    );
++    prospero_subtitle_requested_stream = track;
++
++    /* An unchanged slot retains its cues, even when returning from external.
++     * Capture pause before the request: queuing a seek itself pauses playback.
++     * The clock is relative to the last seek/resume, but the request is absolute.
++     * The demuxer owns the seek/reset/refill and restores this pause state. */
++    if (changed) {
++        const int restore_paused = player_paused;
++        return prospero_request_inplace_seek(
++            resume_base_offset_seconds + evo_pb_position_s(), restore_paused);
++    }
++    return 1;
+ }
+ 
+ /* PROSPERO_SECONDARY_SUBTITLE_END */
+@@ -3111,3 +3096,21 @@
+ }
+ 
+ /* PROSPERO_SUBTITLE_AUTOSYNC_END */
++
++/* Capture before stopPlayback/clear; stack lifetime, no extra private storage. */
++void nuvio_preferences_capture(nuvio_preferences_snapshot *out, int audio)
++{
++    memset(out, 0, sizeof *out);
++    out->valid = 1;
++    out->audio = audio;
++    out->enabled = prospero_subtitle_enabled;
++    out->external = prospero_subtitle_use_external;
++    out->subtitle = prospero_embedded_subtitle_stream_index;
++    snprintf(out->path, sizeof out->path, "%s", prospero_subtitle_path);
++    snprintf(out->label, sizeof out->label, "%s", prospero_subtitle_external_label);
++    /* Picker scratch files can be overwritten by a later failed download.
++     * The cache already owns a stable copy of the successfully loaded online
++     * choice. Never use it to replace a later explicit embedded selection. */
++    if (out->external && evo_osubs_active() >= 0)
++        evo_osubs_remembered(out->path, sizeof out->path, out->label, sizeof out->label);
++}
 --- a/projects/evoplayer/pp/src/evo_theme.c
 +++ b/projects/evoplayer/pp/src/evo_theme.c
 @@ -28,7 +28,7 @@
   *
-  * elfldr payload: USB, as documented (docs/theming.md). App module: USB is
+  * elfldr payload: USB, as documented (docs/ui/theming.md). App module: USB is
   * ENOENT in the sandbox until tools/sandbox-unjail (task 7), so custom themes
 - * come from /download0/evoplayer/themes/ instead. */
 + * come from /download0/nuvio/themes/ instead. */
@@ -415,7 +2386,7 @@
 +  "conceptId": "99996",
    "contentBadgeType": 1,
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
--  "contentVersion": "01.012.000",
+-  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
 +  "contentVersion": "01.000.007",
    "downloadDataSize": 256,
@@ -440,7 +2411,7 @@
  }
 --- a/projects/evoplayer/src/evo_boot_log.c
 +++ b/projects/evoplayer/src/evo_boot_log.c
-@@ -93,7 +93,7 @@
+@@ -148,7 +148,7 @@
  extern int sceKernelSendNotificationRequest(int, void *, unsigned long, int);
  #endif
  
@@ -449,6 +2420,22 @@
  
  /*
   * Two phases:
+@@ -549,12 +549,12 @@
+         if (fp) {
+             g_log_path = EVO_LOG_PATH;
+         } else {
+-            fp = fopen("/data/evoplayer/evo.log", "a");
++            fp = fopen("/data/nuvio/evo.log", "a");
+             if (fp)
+-                g_log_path = "/data/evoplayer/evo.log";
++                g_log_path = "/data/nuvio/evo.log";
+         }
+         if (!fp)
+-            return;   /* /mnt/usb0 and /data/evoplayer not reachable yet — try again next call */
++            return;   /* /mnt/usb0 and /data/nuvio not reachable yet — try again next call */
+         pthread_mutex_lock(&g_io_lock);
+         fseek(fp, 0, SEEK_END);
+         g_written = ftell(fp);
 --- a/projects/evoplayer/src/evo_crash_note.c
 +++ b/projects/evoplayer/src/evo_crash_note.c
 @@ -40,8 +40,8 @@
@@ -495,6 +2482,181 @@
   * Extracted from main.c (lines 617–721, 1591–1607).
   */
  
+--- a/projects/evoplayer/src/evo_log_server.c
++++ b/projects/evoplayer/src/evo_log_server.c
+@@ -1003,18 +1003,7 @@
+ 
+ void evo_log_server_start(void)
+ {
+-    if (s_started) return;
+-    s_started = 1;
+-    pthread_t t;
+-    pthread_attr_t at;
+-    pthread_attr_init(&at);
+-    pthread_attr_setstacksize(&at, 128 * 1024);
+-    pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+-    if (pthread_create(&t, &at, server_thread, NULL) != 0) {
+-        s_started = 0;
+-        evo_log("logsrv: thread create failed");
+-    }
+-    pthread_attr_destroy(&at);
++    
+ }
+ 
+ int evo_log_server_port(void)       { pthread_mutex_lock(&s_pm); int v = s_actual; pthread_mutex_unlock(&s_pm); return v; }
+@@ -1033,13 +1022,7 @@
+ 
+ int evo_log_server_probe_port(int port)
+ {
+-    if (port < LS_PORT_MIN || port > LS_PORT_MAX) return EINVAL;
+-    if (port == evo_log_server_port()) return 0;
+-    int err = 0;
+-    int fd = bind_port(port, &err);
+-    if (fd < 0) return err ? err : EADDRINUSE;
+-    close(fd);
+-    return 0;
++    (void)port; return ENOTSUP;
+ }
+ 
+ int evo_log_server_try_port(int port)
+--- a/projects/evoplayer/src/evo_ntfs.c
++++ b/projects/evoplayer/src/evo_ntfs.c
+@@ -1123,116 +1123,7 @@
+     EVO_LOGI("ntfs", "/dev as EVO sees it: %s", n ? seen : "(no da/ugen/usb nodes)");
+ }
+ 
+-#ifdef EVO_APP_MODULE
+-/* ---- disks through the helper payload (helpers/ntfs_helper.c) ---- */
+-/*
+- * EVO's /dev has no disk nodes (measured 2026-11-03: usbctl, usb, ugen* only,
+- * while a root payload sees da1 and da1s1). So the helper, embedded in EVO,
+- * is sent to the ELF loader on 127.0.0.1:9021 when the set of USB devices
+- * changes; it lists the disks and serves read-only blocks on 127.0.0.1. It
+- * exits 30 s after EVO stops talking to it. Remote volumes use disk ids
+- * REMOTE_DISK + N for daN.
+- */
+-extern const unsigned char evo_ntfs_helper_elf[];
+-extern const size_t evo_ntfs_helper_elf_len;
+-
+-#define ELF_LOADER_PORT 9021
+-#define REMOTE_DISK     100
+-#define HELPER_TRIES    3          /* starts per change of the USB device set */
+-
+-static int g_remote_empty[MAX_DISKS];
+-
+-static int helper_start(void)
+-{
+-    int s = loopback_connect(ELF_LOADER_PORT);
+-    if (s < 0) return -1;
+-    const int rc = sock_all(s, (void *)evo_ntfs_helper_elf, evo_ntfs_helper_elf_len, 1);
+-    close(s);
+-    return rc;
+-}
+-
+-static int helper_list(char *out, size_t cap)
+-{
+-    int s = loopback_connect(HELPER_PORT);
+-    if (s < 0) return -1;
+-    const int rc = (sock_all(s, "LIST\n", 5, 1) == 0 && recv_line(s, out, cap) == 0) ? 0 : -1;
+-    close(s);
+-    return rc;
+-}
+-
+-/* The USB devices EVO can see (ugen nodes): plugging or pulling a drive
+- * changes it, which is when the disks are listed again. */
+-static void usb_signature(char *out, size_t cap)
+-{
+-    size_t n = 0;
+-    out[0] = 0;
+-    evo_dir_t *d = evo_opendir("/dev");
+-    if (!d) return;
+-    struct dirent *de;
+-    while ((de = evo_readdir(d)) != NULL) {
+-        if (strncmp(de->d_name, "ugen", 4)) continue;
+-        const int w = snprintf(out + n, cap - n, "%s ", de->d_name);
+-        if (w < 0 || (size_t)w >= cap - n) break;
+-        n += (size_t)w;
+-    }
+-    evo_closedir(d);
+-}
+-
+-static void refresh_remote(void)
+-{
+-    static char s_sig[256];
+-    static int s_first = 1, s_pending, s_tries;
+-    static time_t s_started;
+-    char sig[256], list[512];
+-    usb_signature(sig, sizeof sig);
+-    const int changed = strcmp(sig, s_sig) != 0;
+-    if (!s_first && !s_pending && !changed) return;
+-    if (changed) s_tries = 0;
+-
+-    if (helper_list(list, sizeof list) != 0) {
+-        const time_t now = time(NULL);
+-        if (s_tries < HELPER_TRIES && (!s_pending || now - s_started >= 5)) {
+-            s_tries++;
+-            s_started = now;
+-            if (helper_start() == 0)
+-                EVO_LOGI("ntfs", "disk helper sent to the ELF loader (%zu bytes)", evo_ntfs_helper_elf_len);
+-            else
+-                EVO_LOGW("ntfs", "no ELF loader on 127.0.0.1:%d - NTFS drives cannot be read", ELF_LOADER_PORT);
+-        }
+-        /* Try again on the next refresh; after HELPER_TRIES, only when the
+-         * USB devices change. */
+-        s_pending = s_tries < HELPER_TRIES;
+-        if (!s_pending) { snprintf(s_sig, sizeof s_sig, "%s", sig); s_first = 0; }
+-        return;
+-    }
+-    s_pending = 0;
+-    s_first = 0;
+-    snprintf(s_sig, sizeof s_sig, "%s", sig);
+-
+-    int present[MAX_DISKS] = {0};
+-    for (const char *p = list; *p;) {
+-        while (*p == ' ') p++;
+-        if (p[0] == 'd' && p[1] == 'a' && p[2] >= '0' && p[2] <= '9') {
+-            const int n = atoi(p + 2);
+-            if (n >= 0 && n < MAX_DISKS) present[n] = 1;
+-        }
+-        while (*p && *p != ' ') p++;
+-    }
+-    for (int n = 0; n < MAX_DISKS; ++n) {
+-        if (!present[n]) {
+-            if (disk_listed(REMOTE_DISK + n)) drop_disk(REMOTE_DISK + n);
+-            g_remote_empty[n] = 0;
+-            continue;
+-        }
+-        if (disk_listed(REMOTE_DISK + n) || g_remote_empty[n]) continue;
+-        char name[16];
+-        snprintf(name, sizeof name, "da%d", n);
+-        const int added = add_device_disk(name, name, REMOTE_DISK + n, 1);
+-        g_remote_empty[n] = added <= 0;
+-        EVO_LOGI("ntfs", "%s through the helper: %d NTFS volume%s", name, added > 0 ? added : 0, added == 1 ? "" : "s");
+-    }
+-}
+-#endif
++/* Nuvio does not launch the upstream NTFS disk helper. */
+ 
+ int evo_ntfs_refresh(void)
+ {
+@@ -1277,15 +1168,13 @@
+         g_disk_empty[n] = added <= 0;
+         if (added <= 0) EVO_LOGI("ntfs", "%s: no NTFS volume", path);
+     }
+-#ifdef EVO_APP_MODULE
+-    refresh_remote();
+-#endif
++
+ #ifdef EVO_USB_REMOTE
+     /* Development: an NTFS image stands in for a drive (tools/make_ntfs_image.sh). */
+     static int s_img_tried;
+     if (!s_img_tried) {
+         s_img_tried = 1;
+-        add_device_disk("/data/evoplayer/test/ntfs.img", "img0", MAX_DISKS, 0);
++        add_device_disk("/data/nuvio/test/ntfs.img", "img0", MAX_DISKS, 0);
+     }
+ #endif
+     return evo_ntfs_volume_count();
 --- a/projects/evoplayer/src/evo_recent.c
 +++ b/projects/evoplayer/src/evo_recent.c
 @@ -1,7 +1,7 @@
@@ -506,6 +2668,26 @@
   * Extracted from main.c (lines 600–614, 1611–1723, 1428–1445).
   */
  
+--- a/projects/evoplayer/src/evo_usb_remote.c
++++ b/projects/evoplayer/src/evo_usb_remote.c
+@@ -26,13 +26,13 @@
+ #endif
+ 
+ #define CMD_PATH        "/mnt/usb0/evo_cmd"
+-#define CMD_FALLBACK    "/data/evoplayer/evo_cmd"
++#define CMD_FALLBACK    "/data/nuvio/evo_cmd"
+ #define STATUS_PATH     "/mnt/usb0/evo_status"
+-#define STATUS_FALLBACK "/data/evoplayer/evo_status"
++#define STATUS_FALLBACK "/data/nuvio/evo_status"
+ #define UI_PATH         "/mnt/usb0/evo_ui.json"
+ #define UI_TMP_PATH     "/mnt/usb0/evo_ui.json.tmp"
+-#define UI_FALLBACK     "/data/evoplayer/evo_ui.json"
+-#define UI_TMP_FALLBACK "/data/evoplayer/evo_ui.json.tmp"
++#define UI_FALLBACK     "/data/nuvio/evo_ui.json"
++#define UI_TMP_FALLBACK "/data/nuvio/evo_ui.json.tmp"
+ 
+ extern int    screen;   /* main.c */
+ extern void   evo_iobench_run(const char *spec);   /* evo_iobench.c */
 --- a/projects/evoplayer/src/evo_webui.c
 +++ b/projects/evoplayer/src/evo_webui.c
 @@ -42,6 +42,7 @@
@@ -516,16 +2698,17 @@
  #include <fcntl.h>
  #include <poll.h>
  #include <stdarg.h>
-@@ -62,6 +63,8 @@
+@@ -62,6 +63,9 @@
  #include <openssl/ssl.h>
  
  #include "evo_webui.h"
++#include "evo_net.h"
 +#include "bootstrap.h"
 +#include "local_ui.h"
  #include "evo_boot_trace.h"
  #include "evo_provider.h"     /* evo_provider_parse_web_source */
- #include "evo_data_path.h"    /* evo_data_path, evo_mkdir - the saved page storage */
-@@ -141,7 +144,7 @@
+ #include "evo_net.h"          /* evo_net_connect_addr - a connect that gives up in time */
+@@ -142,7 +146,7 @@
  } probe_layout_t;
  
  static const probe_layout_t k_layouts[] = {
@@ -534,7 +2717,7 @@
      { "2: beside the rail, parts=0x7 control=0",    2, 108,  0, 1812, 1080, 0x7, 0x0 },
      { "3: inset card, parts=0 control=0x1",         2, 148, 40, 1732, 1000, 0x0, 0x1 },
      { "4: inset card, parts=0xFF control=0xFF",     2, 148, 40, 1732, 1000, 0xFF, 0xFF },
-@@ -179,7 +182,10 @@
+@@ -180,7 +184,10 @@
  static int  s_hold_frames = 25 * 60;
  
  static char s_url[1024];
@@ -546,7 +2729,7 @@
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
  
-@@ -194,6 +200,7 @@
+@@ -195,6 +202,7 @@
  static int  s_play_pending = 0;
  static char s_play_url[2048];
  static char s_play_title[256];
@@ -554,7 +2737,7 @@
  
  /* Fixed address for the whole dialog: the magic is derived from the block's
   * address, and the url pointer must stay valid while the browser runs. */
-@@ -222,6 +229,7 @@
+@@ -227,6 +235,7 @@
  static char s_h_url[2048];
  static char s_h_title[256];
  static char s_h_return[2048];
@@ -562,7 +2745,7 @@
  
  /*
   * The page's localStorage, kept by EVO. The PS5's browser dialog starts every
-@@ -410,17 +418,34 @@
+@@ -415,17 +424,34 @@
   * save whenever it changes: every 5 s, synchronously before a handoff or Back
   * to EVO, and by beacon when the page goes away. Values over 512 KB are
   * caches, not settings, and are left out. */
@@ -608,7 +2791,7 @@
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
-@@ -439,11 +464,8 @@
+@@ -444,11 +470,8 @@
  "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
  "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
  "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
@@ -622,7 +2805,7 @@
  "var nvTitle='';function nvNoteTitle(){var tt=document.querySelector('#stream .stream-route-title'),"
  " lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code');"
  " var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').trim();"
-@@ -451,15 +473,8 @@
+@@ -456,15 +479,8 @@
  /* Picking a stream (click or Enter) is the last moment the stream screen,
   * and so the title, is on the page: Nuvio clears it while the player mounts. */
  "if(NUVIO){document.addEventListener('keydown',function(e){if(e.keyCode===13)nvNoteTitle();},true);}"
@@ -640,22 +2823,23 @@
  /* Where to come back to: the last page that is not the site's own player.
   * By the time the hook fires, the site has already routed to its player
   * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
-@@ -488,9 +503,12 @@
+@@ -493,9 +509,13 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
 -" function go(t){if(done)return;done=1;saveNow(1);"
-+" function go(t){if(done)return;done=1;var back=good,start=0,session='';"
++" function go(t){if(done)return;done=1;function play(skip){if(skip===null)return;var back=good,start=0,session='',next='';"
 +" if(NUVIO){if(window.__nuvioSavePlaybackReturn)session=window.__nuvioSavePlaybackReturn()||'';"
++" if(window.__nuvioPlaybackNextPolicy)next=window.__nuvioPlaybackNextPolicy(session);"
 +" if(window.__nuvioPlaybackStartSeconds)start=window.__nuvioPlaybackStartSeconds();"
-+" var ret=new URL(good,location.href);ret.searchParams.set(\"nuvioPlaybackReturn\",\"1\");back=ret.href;}saveNow(1);"
++" var ret=new URL(good,location.href);ret.searchParams.set(\"nuvioPlaybackReturn\",\"1\");back=ret.href;}saveNow(1);function launch(){"
  "  fetch('/evo/play?url='+encodeURIComponent(abs)+'&title='+encodeURIComponent(t||'')+"
 -"   '&return='+encodeURIComponent(good));}"
-+"   '&return='+encodeURIComponent(back)+'&start='+encodeURIComponent(start)+'&session='+encodeURIComponent(session));}"
++"   '&return='+encodeURIComponent(back)+'&start='+encodeURIComponent(start)+'&session='+encodeURIComponent(session)+'&skip='+encodeURIComponent(skip||'')+'&next='+encodeURIComponent(next));}if(NUVIO&&window.__nuvioSendPresentation){window.__nuvioSendPresentation(session).then(function(ok){if(ok&&window.__nuvioSendSubtitles){window.__nuvioSendSubtitles(session).then(function(sent){if(sent)launch();else done=0;});}else if(ok)launch();else done=0;},function(){done=0;});}else launch();}if(NUVIO){Promise.all([window.__nuvioPlaybackSkipSegments?window.__nuvioPlaybackSkipSegments():Promise.resolve(''),window.__nuvioPreparePresentation?window.__nuvioPreparePresentation():Promise.resolve(true),window.__nuvioPrepareSubtitles?window.__nuvioPrepareSubtitles():Promise.resolve(true)]).then(function(v){if(v[1]!==null&&v[2]!==null)play(v[0]);},function(){done=0;});}else play('');}"
  " if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=['title','name','metaTitle','itemTitle','showTitle'],t='';"
  "  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]==='string')t=pr[ks[q]];}"
  /* The stream screen, still in the DOM under the player, has it in text. */
-@@ -532,9 +550,9 @@
+@@ -537,9 +557,9 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -667,7 +2851,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -803,17 +821,219 @@
+@@ -785,17 +805,1111 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -677,18 +2861,134 @@
 +static char s_progress_session[64];
 +static double s_progress_position, s_progress_duration;
 +static int s_progress_finished;
++static int s_progress_next_episode; /* Live return only, never a recovery checkpoint. */
++static int s_progress_return_detail; /* Explicit Circle action, not crash recovery. */
++static int s_progress_played, s_progress_recommendation;
++static uint64_t s_progress_revision;
++static pthread_mutex_t s_progress_disk_mx = PTHREAD_MUTEX_INITIALIZER;
++
++/* Two checksummed slots retain the preceding checkpoint if a write tears.
++ * Never modify the browser's profile/context snapshot while it is closed. */
++static uint32_t playback_progress_checksum(const char *data, size_t size)
++{
++    uint32_t hash = 2166136261u;
++    for (size_t i = 0; i < size; ++i) hash = (hash ^ (unsigned char)data[i]) * 16777619u;
++    return hash;
++}
++
++static void playback_progress_path(char *path, size_t size, int slot)
++{
++    pthread_mutex_lock(&s_store_mx);
++    snprintf(path, size, "%s.progress.%d", s_store_path, slot);
++    if (strncmp(s_store_path, "/data/", 6)) path[0] = 0;
++    pthread_mutex_unlock(&s_store_mx);
++}
++
++/* Called only by the existing HTTP accept thread, never by playback/rendering.
++ * Failed writes retry at the same bounded rate. Finishing requests a final save. */
++static void playback_progress_checkpoint(void)
++{
++    static uint64_t saved_revision, sequence, last_attempt;
++    static char last_session[64];
++    static int last_finished;
++    struct timespec now;
++    if (clock_gettime(CLOCK_MONOTONIC, &now)) return;
++    uint64_t ms = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
++    char session[64];
++    pthread_mutex_lock(&s_mx);
++    snprintf(session, sizeof session, "%s", s_progress_session);
++    double position = s_progress_position, duration = s_progress_duration;
++    int finished = s_progress_finished;
++    uint64_t revision = s_progress_revision;
++    pthread_mutex_unlock(&s_mx);
++    if (!session[0] || (position <= 0.0 && duration <= 0.0) || revision == saved_revision) return;
++    int changed_session = strcmp(session, last_session) != 0;
++    if (!changed_session && !(finished && !last_finished) && ms - last_attempt < 30000) return;
++    snprintf(last_session, sizeof last_session, "%s", session);
++    last_finished = finished;
++    last_attempt = ms;
++
++    char path[600], body[256];
++    unsigned long long generation = (unsigned long long)(sequence + 1);
++    int size = snprintf(body, sizeof body, "NUVIO1 %llu %s %.0f %.0f ",
++        generation, session, position * 1000.0, duration * 1000.0);
++    if (size < 0 || (size_t)size >= sizeof body - 12) return;
++    uint32_t checksum = playback_progress_checksum(body, (size_t)size);
++    size += snprintf(body + size, sizeof body - (size_t)size, "%u\n", checksum);
++    playback_progress_path(path, sizeof path, (int)(generation % 2));
++    if (!path[0]) return;
++    pthread_mutex_lock(&s_progress_disk_mx);
++    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0600);
++    int ok = 0;
++    if (fd >= 0) {
++        ok = write(fd, body, (size_t)size) == size;
++        if (close(fd)) ok = 0;
++    }
++    pthread_mutex_unlock(&s_progress_disk_mx);
++    if (ok) {
++        saved_revision = revision;
++        sequence = generation;
++    }
++}
++
++static int playback_progress_recover(const char *session, double *position, double *duration)
++{
++    unsigned long long newest = 0;
++    int io_error = 0;
++    pthread_mutex_lock(&s_progress_disk_mx);
++    for (int slot = 0; slot < 2; ++slot) {
++        char path[600], body[256], saved_session[64];
++        playback_progress_path(path, sizeof path, slot);
++        FILE *file = path[0] ? fopen(path, "rb") : NULL;
++        if (!file) {
++            if (path[0] && errno != ENOENT) io_error = 1;
++            continue;
++        }
++        size_t size = fread(body, 1, sizeof body - 1, file);
++        if (ferror(file)) io_error = 1;
++        int complete = feof(file) && !ferror(file);
++        fclose(file);
++        body[size] = 0;
++        unsigned long long sequence;
++        unsigned checksum;
++        double pos, dur;
++        int prefix = 0, end = 0;
++        if (!complete || sscanf(body, "NUVIO1 %llu %63s %lf %lf %n%u%n",
++            &sequence, saved_session, &pos, &dur, &prefix, &checksum, &end) != 5 ||
++            end + 1 != (int)size || body[end] != '\n' ||
++            checksum != playback_progress_checksum(body, (size_t)prefix) ||
++            strcmp(session, saved_session) || sequence <= newest ||
++            !isfinite(pos) || pos < 0.0 || !isfinite(dur) || dur < 0.0) continue;
++        newest = sequence;
++        *position = pos / 1000.0;
++        *duration = dur / 1000.0;
++    }
++    pthread_mutex_unlock(&s_progress_disk_mx);
++    return newest ? 1 : io_error ? -1 : 0;
++}
 +
 +void evo_webui_progress_sample(double position, double duration)
 +{
 +    pthread_mutex_lock(&s_mx);
 +    if (s_progress_session[0] && !s_progress_finished) {
++        double previous_position = s_progress_position, previous_duration = s_progress_duration;
 +        /* Active playback can seek to zero. Teardown also resets position, but
 +         * clears duration: do not replace a real sample with that reset. */
 +        if (isfinite(position) && (position > 0.0 ||
 +            (position == 0.0 && isfinite(duration) && duration > 0.0)))
 +            s_progress_position = position;
 +        if (isfinite(duration) && duration > 0.0) s_progress_duration = duration;
++        if (s_progress_position != previous_position || s_progress_duration != previous_duration)
++            ++s_progress_revision;
 +    }
++    pthread_mutex_unlock(&s_mx);
++}
++
++void evo_webui_return_to_nuvio(void)
++{
++    pthread_mutex_lock(&s_mx);
++    s_progress_return_detail = 1;
++    s_progress_next_episode = 0;
 +    pthread_mutex_unlock(&s_mx);
 +}
 +
@@ -699,20 +2999,241 @@
 +    pthread_mutex_lock(&s_mx);
 +    int matches = session[0] && !strcmp(session, s_progress_session);
 +    int finished = s_progress_finished;
++    int next_episode = matches ? s_progress_next_episode : 0;
++    int return_detail = matches ? s_progress_return_detail : 0;
++    int played = matches ? s_progress_played : 0;
++    int recommendation = matches ? s_progress_recommendation : 0;
 +    double position = s_progress_position, duration = s_progress_duration;
 +    pthread_mutex_unlock(&s_mx);
++    if (!matches && session[0]) {
++        int recovered = playback_progress_recover(session, &position, &duration);
++        if (recovered < 0) {
++            respond(fd, "503 Service Unavailable", "text/plain", "", 0);
++            return;
++        }
++        matches = recovered;
++        finished = 1;
++    }
 +    if (!matches) {
 +        respond(fd, "404 Not Found", "text/plain", "", 0);
 +    } else if (!finished) {
 +        respond(fd, "409 Conflict", "text/plain", "", 0);
-+    } else if (position <= 0.0) {
++    } else if (position <= 0.0 && !return_detail) {
 +        respond(fd, "204 No Content", "text/plain", "", 0);
 +    } else {
 +        int size = snprintf(body, sizeof body,
-+            "{\"positionMs\":%.0f,\"durationMs\":%.0f}",
++            "{\"positionMs\":%.0f,\"durationMs\":%.0f",
 +            position * 1000.0, duration * 1000.0);
++        if (next_episode)
++            size += snprintf(body + size, sizeof body - (size_t)size, ",\"nextEpisode\":%d", next_episode);
++        if (return_detail)
++            size += snprintf(body + size, sizeof body - (size_t)size, ",\"returnToDetail\":true");
++        if (played)
++            size += snprintf(body + size, sizeof body - (size_t)size, ",\"played\":true");
++        if (recommendation)
++            size += snprintf(body + size, sizeof body - (size_t)size, ",\"recommendation\":%d", recommendation);
++        body[size++] = '}';
 +        respond(fd, "200 OK", "application/json", body, (size_t)size);
 +    }
++}
++
++static void serve_skip_metadata(int fd, const char *path)
++{
++    char imdb[32], season[16], episode[16], movie[16], url[256];
++    query_param(path, "imdb_id", imdb, sizeof imdb);
++    query_param(path, "season", season, sizeof season);
++    query_param(path, "episode", episode, sizeof episode);
++    query_param(path, "is_movie", movie, sizeof movie);
++    int valid_id = !strncmp(imdb, "tt", 2) && imdb[2] &&
++        strspn(imdb + 2, "0123456789") == strlen(imdb + 2);
++    int series = season[0] && episode[0] &&
++        strspn(season, "0123456789") == strlen(season) &&
++        strspn(episode, "0123456789") == strlen(episode);
++    if (!valid_id || (strcmp(movie, "true") && (movie[0] || !series))) {
++        respond(fd, "400 Bad Request", "application/json", "{}", 2);
++        return;
++    }
++    if (!strcmp(movie, "true"))
++        snprintf(url, sizeof url, "https://api.introdb.app/segments?imdb_id=%s&is_movie=true", imdb);
++    else
++        snprintf(url, sizeof url, "https://api.introdb.app/segments?imdb_id=%s&season=%s&episode=%s", imdb, season, episode);
++    char *body = NULL;
++    size_t length = 0;
++    int status = 0;
++    int rc = evo_net_http_get_sync(url, NULL, 0, &body, &length, &status);
++    tlog("skip metadata: rc=%d status=%d bytes=%zu", rc, status, length);
++    if (!rc && status == 200 && body && length <= 32768)
++        respond(fd, "200 OK", "application/json", body, length);
++    else
++        respond(fd, "502 Bad Gateway", "application/json", "{}", 2);
++    free(body);
++}
++
++/* Included in evo_webui.c. Pending handoffs are copied under s_mx, then owned
++ * by the playback thread. No timestamp is persisted between title sessions. */
++typedef struct { double start, end; int type, automatic; } nuvio_skip_segment;
++static nuvio_skip_segment s_h_skip[4], s_play_skip[4], s_skip[4];
++static int s_skip_suppressed = -1;
++static uint64_t s_skip_retry_after;
++
++static void playback_skip_parse(const char *path)
++{
++    char value[256];
++    query_param(path, "skip", value, sizeof value);
++    memset(s_h_skip, 0, sizeof s_h_skip);
++    const char *p = value;
++    for (int i = 0; *p && i < 4; ++i) {
++        /* Uppercase marks only this interval for automatic skipping. */
++        int type = (*p == 'i' || *p == 'I') ? 1 : (*p == 'c' || *p == 'C') ? 2 :
++                   (*p == 'r' || *p == 'R') ? 3 : 0;
++        int automatic = *p == 'I' || *p == 'C' || *p == 'R';
++        if (!type || p[1] != ',') goto invalid;
++        char *next;
++        errno = 0;
++        double start = strtod(p + 2, &next);
++        if (errno || next == p + 2 || *next != ',') goto invalid;
++        p = next + 1;
++        errno = 0;
++        double end = strtod(p, &next);
++        if (errno || next == p || *next != ';' || !isfinite(start) ||
++            !isfinite(end) || start < 0.0 || end <= start) goto invalid;
++        s_h_skip[i] = (nuvio_skip_segment){start, end, type, automatic};
++        p = next + 1;
++    }
++    if (!*p) return;
++invalid:
++    /* Reject truncated and malformed payloads, not just their last record. */
++    memset(s_h_skip, 0, sizeof s_h_skip);
++}
++
++/* consume: 0 inspect, 1 manual action, 2 automatic action. */
++int evo_webui_skip_interval(double position, double duration, uint64_t now,
++                           int consume, double *target)
++{
++    if (!isfinite(position) || !isfinite(duration) || position < 0.0 || duration <= 0.0)
++        return 0;
++    for (int i = 0; i < 4; ++i) {
++        const nuvio_skip_segment *segment = &s_skip[i];
++        if (!segment->type || segment->end > duration ||
++            position < segment->start || position >= segment->end - 0.5) continue;
++        if (s_skip_suppressed == i && now < s_skip_retry_after) return 0;
++        if (consume == 2 && !segment->automatic) return 0;
++        if (consume) {
++            s_skip_suppressed = i;
++            s_skip_retry_after = now + 5000;
++        }
++        *target = segment->end;
++        return segment->type;
++    }
++    return 0;
++}
++
++/* Presentation only: reaching zero dims the prompt, never consumes a skip. */
++int evo_webui_skip_countdown(double target, uint64_t now, int running)
++{
++    static double previous_target;
++    static uint64_t elapsed, last;
++    static int was_running;
++    if (target <= 0.0 || target != previous_target) {
++        previous_target = target;
++        elapsed = 0;
++        was_running = 0;
++    } else if (was_running && now >= last) {
++        elapsed += now - last;
++        if (elapsed > 10000) elapsed = 10000;
++    }
++    last = now;
++    was_running = running;
++    return target <= 0.0 ? 0 : (int)((10000 - elapsed + 999) / 1000);
++}
++
++/* Included after ps5-skip.c. Native code receives policy, never episode URLs.
++ * Episode identity and stream selection remain in the saved Nuvio context. */
++typedef struct { int enabled, automatic, seconds, minutes; double threshold; } nuvio_next_policy;
++static nuvio_next_policy s_h_next, s_play_next, s_next;
++static int s_next_cancelled, s_next_launch, s_next_was_running;
++static int s_still_started;
++static uint64_t s_next_elapsed, s_next_last, s_still_start;
++
++static void playback_next_parse(const char *path)
++{
++    char value[96], mode;
++    int automatic, seconds, end = 0;
++    double threshold;
++    query_param(path, "next", value, sizeof value);
++    memset(&s_h_next, 0, sizeof s_h_next);
++    if (sscanf(value, "%d,%d,%c,%lf%n", &automatic, &seconds, &mode, &threshold, &end) != 4 ||
++        value[end] || automatic < 0 || automatic > 2 || (seconds != 0 && seconds != 3) ||
++        !isfinite(threshold) || (mode != 'p' && mode != 's') ||
++        (mode == 'p' && (threshold < 0.97 || threshold > 1.0)) ||
++        (mode == 's' && (threshold < 0.0 || threshold > 210.0))) return;
++    s_h_next = (nuvio_next_policy){1, automatic, seconds, mode == 's', threshold};
++}
++
++static void playback_next_begin(void)
++{
++    s_next = s_play_next;
++    s_next_cancelled = s_next_launch = s_next_was_running = 0;
++    s_still_started = 0;
++    s_next_elapsed = s_next_last = 0;
++}
++
++/* 0 hidden, -1 manual, 1..3 countdown, -2 transition, -3 exit to details,
++ * 1001..1060 Still Watching countdown (always wall time while paused).
++ * Actions: 0 update, 1 play now, 2 keep watching. Only playback owns this state. */
++int evo_webui_next_episode(double position, double duration, uint64_t now,
++                          int running, int visible, int action)
++{
++    int was_running = s_next_was_running;
++    uint64_t previous = s_next_last;
++    s_next_last = now;
++    s_next_was_running = 0;
++    if (!s_next.enabled || s_next_cancelled || !visible ||
++        !isfinite(position) || position < 0.0 || !isfinite(duration) || duration <= 120.999) return 0;
++    if (s_next_launch) return -2;
++    double remaining = s_next.minutes ? s_next.threshold : (1.0 - s_next.threshold) * duration;
++    double start = duration - remaining, first = duration, last = 0.0;
++    for (int i = 0; i < 4; ++i) {
++        if (s_skip[i].type != 2 || s_skip[i].end > duration) continue;
++        if (s_skip[i].start < first) first = s_skip[i].start;
++        if (s_skip[i].end > last) last = s_skip[i].end;
++    }
++    /* Match Nuvio's threshold rule without cutting a known post-outro gap. */
++    if (last > 0.0 && duration - last <= remaining) start = first;
++    if (position < start) {
++        s_next_elapsed = 0;
++        return 0;
++    }
++    if (s_next.automatic == 2) {
++        if (!s_still_started) { s_still_start = now; s_still_started = 1; }
++        uint64_t elapsed = now >= s_still_start ? now - s_still_start : 0;
++        if (action == 2 || elapsed >= 60000) {
++            s_next_cancelled = 1;
++            pthread_mutex_lock(&s_mx);
++            s_progress_return_detail = 1;
++            s_progress_next_episode = 0;
++            pthread_mutex_unlock(&s_mx);
++            return -3;
++        }
++        if (action != 1) return 1000 + (int)((60000 - elapsed + 999) / 1000);
++    }
++    if (action == 2) {
++        s_next_cancelled = 1;
++        return 0;
++    }
++    s_next_was_running = running;
++    if (was_running && now >= previous) s_next_elapsed += now - previous;
++    if (action == 1 || (s_next.automatic && running &&
++        s_next_elapsed >= (uint64_t)s_next.seconds * 1000)) {
++        s_next_launch = 1;
++        pthread_mutex_lock(&s_mx);
++        s_progress_next_episode = action == 1 ? 1 : 2;
++        pthread_mutex_unlock(&s_mx);
++        return -2;
++    }
++    if (!s_next.automatic) return -1;
++    if (s_next_elapsed >= (uint64_t)s_next.seconds * 1000) return s_next.seconds ? 1 : -1;
++    return (int)(((uint64_t)s_next.seconds * 1000 - s_next_elapsed + 999) / 1000);
 +}
 +
 +#include "evo_keyboard.h"
@@ -858,9 +3379,563 @@
 +    return 1;
 +}
 +
++/* Included in evo_webui.c after progress/skip/next policy definitions. */
++#include "nuvio_presentation.h"
++#include "cJSON.h"
++#include <time.h>
++
++static nuvio_presentation_t s_pending_presentation, s_h_presentation, s_play_presentation, s_presentation;
++static char s_presentation_session[64];
++static uint64_t s_presentation_last, s_presentation_running_ms, s_presentation_paused_ms;
++static int s_presentation_running, s_presentation_paused, s_recommendation_index, s_recommendation_dismissed;
++
++static int presentation_bool(const cJSON *root, const char *key)
++{
++    return cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, key));
++}
++
++static double presentation_number(const cJSON *root, const char *key, double fallback, double low, double high)
++{
++    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, key);
++    return cJSON_IsNumber(value) && isfinite(value->valuedouble) &&
++        value->valuedouble >= low && value->valuedouble <= high ? value->valuedouble : fallback;
++}
++
++static void presentation_text(const cJSON *root, const char *key, char *out, size_t cap)
++{
++    const cJSON *value = cJSON_GetObjectItemCaseSensitive(root, key);
++    if (!cJSON_IsString(value) || !value->valuestring) return;
++    const char *text = value->valuestring;
++    size_t len = strlen(text);
++    if (len >= cap) {
++        len = cap - 1;
++        while (len && ((unsigned char)text[len] & 0xc0) == 0x80) --len;
++    }
++    memcpy(out, text, len);
++    out[len] = 0;
++}
++
++static int presentation_decode(const char *body, size_t size)
++{
++    cJSON *root = cJSON_ParseWithLength(body, size + 1);
++    if (!cJSON_IsObject(root)) { cJSON_Delete(root); return 0; }
++    char session[64] = "";
++    presentation_text(root, "session", session, sizeof session);
++    const cJSON *raw_session = cJSON_GetObjectItemCaseSensitive(root, "session");
++    if (!session[0] || !cJSON_IsString(raw_session) || strlen(raw_session->valuestring) >= sizeof session ||
++        strspn(session, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-") != strlen(session)) {
++        cJSON_Delete(root);
++        return 0;
++    }
++    nuvio_presentation_t p = {0};
++    p.active = 1;
++    p.loading = presentation_bool(root, "loading");
++    p.loading_detail = presentation_bool(root, "loadingDetail");
++    p.pause = presentation_bool(root, "pause");
++    p.clock = presentation_bool(root, "clock");
++    p.utc_offset_minutes = (int)presentation_number(root, "utcOffsetMinutes", 0, -840, 840);
++    p.pause_delay_ms = (int)presentation_number(root, "pauseDelayMs", 3000, 0, 60000);
++    p.movie = presentation_bool(root, "movie");
++    p.recommendation_enabled = presentation_bool(root, "recommendationEnabled");
++    p.threshold_minutes = !p.movie && presentation_bool(root, "thresholdMinutes");
++    p.threshold = presentation_number(root, "threshold", p.threshold_minutes ? 120 : p.movie ? 0.9 : 0.99,
++        p.threshold_minutes ? 0 : p.movie ? 0.8 : 0.97, p.threshold_minutes ? 210 : 1);
++    p.episode_threshold_minutes = presentation_bool(root, "episodeThresholdMinutes");
++    p.episode_threshold = presentation_number(root, "episodeThreshold", p.episode_threshold_minutes ? 120 : 0.99,
++        p.episode_threshold_minutes ? 0 : 0.97, p.episode_threshold_minutes ? 210 : 1);
++    p.credits_start = presentation_number(root, "creditsStart", 0, 0, 864000);
++    p.credits_end = presentation_number(root, "creditsEnd", 0, 0, 864000);
++    p.post_credits_end = presentation_number(root, "postCreditsEnd", 0, 0, 864000);
++    presentation_text(root, "description", p.description, sizeof p.description);
++    presentation_text(root, "parental", p.parental, sizeof p.parental);
++    const cJSON *recommendations = cJSON_GetObjectItemCaseSensitive(root, "recommendations");
++    if (cJSON_IsArray(recommendations) && p.recommendation_enabled) {
++        int count = cJSON_GetArraySize(recommendations);
++        if (count > 3) count = 3;
++        for (int i = 0; i < count; ++i) {
++            const cJSON *item = cJSON_GetArrayItem(recommendations, i);
++            presentation_text(item, "title", p.recommendations[i].title, sizeof p.recommendations[i].title);
++            presentation_text(item, "description", p.recommendations[i].description, sizeof p.recommendations[i].description);
++            if (!p.recommendations[i].title[0]) break;
++            ++p.recommendation_count;
++        }
++    }
++    cJSON_Delete(root);
++    pthread_mutex_lock(&s_mx);
++    s_pending_presentation = p;
++    snprintf(s_presentation_session, sizeof s_presentation_session, "%s", session);
++    pthread_mutex_unlock(&s_mx);
++    return 1;
++}
++
++static void serve_presentation(int fd, const char *method, char *req, size_t got, size_t hl)
++{
++    if (strcmp(method, "POST")) { respond(fd, "405 Method Not Allowed", "text/plain", "", 0); return; }
++    char length[32];
++    long size = header_value(req, hl, "Content-Length", length, sizeof length) ? parse_long(length) : -1;
++    if (size < 2 || size > 8192) { respond(fd, "413 Payload Too Large", "text/plain", "", 0); return; }
++    char body[8193];
++    size_t have = got - hl;
++    if (have > (size_t)size) have = (size_t)size;
++    memcpy(body, req + hl, have);
++    while (have < (size_t)size) {
++        ssize_t n = recv(fd, body + have, (size_t)size - have, 0);
++        if (n <= 0) break;
++        have += (size_t)n;
++    }
++    body[have] = 0;
++    int ok = have == (size_t)size && presentation_decode(body, have);
++    respond(fd, ok ? "204 No Content" : "400 Bad Request", "text/plain", "", 0);
++}
++
++static void presentation_handoff(const char *session)
++{
++    memset(&s_h_presentation, 0, sizeof s_h_presentation);
++    if (session[0] && !strcmp(session, s_presentation_session)) s_h_presentation = s_pending_presentation;
++    s_presentation_session[0] = 0;
++    memset(&s_pending_presentation, 0, sizeof s_pending_presentation);
++}
++
++static void presentation_begin(void)
++{
++    s_presentation = s_play_presentation;
++    s_presentation_last = s_presentation_running_ms = s_presentation_paused_ms = 0;
++    s_presentation_running = s_presentation_paused = s_recommendation_dismissed = 0;
++    s_recommendation_index = 1;
++}
++
++const nuvio_presentation_t *evo_webui_presentation(void) { return &s_presentation; }
++
++void evo_webui_presentation_started(void)
++{
++    pthread_mutex_lock(&s_mx);
++    if (s_progress_session[0] && !s_progress_finished) s_progress_played = 1;
++    pthread_mutex_unlock(&s_mx);
++}
++
++void evo_webui_recommendation_selected(int index)
++{
++    if (index < 1 || index > s_presentation.recommendation_count) return;
++    pthread_mutex_lock(&s_mx);
++    s_progress_recommendation = index;
++    s_progress_next_episode = s_progress_return_detail = 0;
++    pthread_mutex_unlock(&s_mx);
++}
++
++/* Matches the browser's known-scene rule. Never show recommendations over a
++ * known post-credit scene just because a percentage threshold was reached. */
++static double presentation_recommendation_start(double duration)
++{
++    const nuvio_presentation_t *p = &s_presentation;
++    double remaining = p->threshold_minutes ? p->threshold : (1.0 - p->threshold) * duration;
++    double start = duration - remaining;
++    if (p->movie) {
++        if (p->post_credits_end > 0 && p->post_credits_end <= duration + 1)
++            return fmin(duration, p->post_credits_end);
++        if (p->credits_end > p->credits_start && p->credits_end <= duration + 1) {
++            double user_remaining = p->episode_threshold_minutes ? p->episode_threshold :
++                (1.0 - p->episode_threshold) * duration;
++            return duration - p->credits_end > user_remaining
++                ? fmax(p->credits_end, duration - user_remaining) : p->credits_start;
++        }
++    } else {
++        double first = duration, last = 0;
++        for (int i = 0; i < 4; ++i) {
++            if (s_skip[i].type != 2 || s_skip[i].end > duration) continue;
++            first = fmin(first, s_skip[i].start);
++            last = fmax(last, s_skip[i].end);
++        }
++        if (last > 0 && duration - last <= remaining) start = first;
++    }
++    return start;
++}
++
++nuvio_presentation_view_t evo_webui_presentation_update(double position, double duration,
++    uint64_t now, int ready, int paused, int blocked, int ended)
++{
++    nuvio_presentation_view_t view = {0};
++    uint64_t delta = now >= s_presentation_last ? now - s_presentation_last : 0;
++    if (s_presentation_running && ready && !paused) s_presentation_running_ms += delta;
++    if (s_presentation_paused && paused && ready) s_presentation_paused_ms += delta;
++    else s_presentation_paused_ms = 0;
++    s_presentation_last = now;
++    s_presentation_running = ready && !paused;
++    s_presentation_paused = ready && paused;
++    const nuvio_presentation_t *p = &s_presentation;
++    if (!p->active || !ready) return view;
++    evo_webui_presentation_started();
++    if (blocked) return view;
++    view.parental = p->parental[0] && !paused && s_presentation_running_ms < 8000;
++    view.pause = p->pause && paused && !ended && s_presentation_paused_ms >= (uint64_t)p->pause_delay_ms;
++    view.recommendation = p->recommendation_enabled && p->recommendation_count &&
++        !s_recommendation_dismissed && !paused && !view.parental && isfinite(position) && position >= 0 &&
++        isfinite(duration) && duration > 120.999 && position >= presentation_recommendation_start(duration)
++        ? s_recommendation_index : 0;
++    return view;
++}
++
++void evo_webui_presentation_action(int action)
++{
++    if (action == 1 && s_presentation.recommendation_count)
++        s_recommendation_index = s_recommendation_index % s_presentation.recommendation_count + 1;
++    if (action == 2) s_recommendation_dismissed = 1;
++}
++
++void evo_webui_presentation_clock(double position, double duration, char *out, size_t size)
++{
++    out[0] = 0;
++    if (!s_presentation.active || !s_presentation.clock) return;
++    time_t now = time(NULL) + s_presentation.utc_offset_minutes * 60;
++    struct tm clock;
++    char current[16], end[16];
++    if (!gmtime_r(&now, &clock) || !strftime(current, sizeof current, "%H:%M", &clock)) return;
++    if (!isfinite(position) || !isfinite(duration) || duration <= position || position < 0) {
++        snprintf(out, size, "%s", current);
++        return;
++    }
++    now += (time_t)(duration - position);
++    if (!gmtime_r(&now, &clock) || !strftime(end, sizeof end, "%H:%M", &clock)) return;
++    snprintf(out, size, "%s   Ends %s", current, end);
++}
++
++/* Included in evo_webui.c. Explicit, single-connection TorBox download test.
++ * No stream headers, account data, persistent files or browser-side transfers. */
++#include "cJSON.h"
++#include <libavformat/avio.h>
++#include <libavutil/dict.h>
++#include <libavutil/error.h>
++#include <libavutil/time.h>
++
++#define SPEEDTEST_BYTES (100 * 1024 * 1024)
++#define SPEEDTEST_DOWNLOAD_US 15000000
++#define SPEEDTEST_TOTAL_US 25000000
++
++static pthread_mutex_t s_speedtest_mx = PTHREAD_MUTEX_INITIALIZER;
++static int s_speedtest_active, s_speedtest_cancel, s_speedtest_blocked = 1;
++static const char *s_speedtest_state = "idle", *s_speedtest_error = "";
++static char s_speedtest_region[16];
++static int64_t s_speedtest_bytes, s_speedtest_started, s_speedtest_elapsed;
++
++/* Only this worker touches its deadline. Cancellation crosses threads under
++ * the mutex. FFmpeg polls during connect/read; synchronous DNS can take longer. */
++static int speedtest_interrupt(void *opaque)
++{
++    pthread_mutex_lock(&s_speedtest_mx);
++    int cancel = s_speedtest_cancel;
++    pthread_mutex_unlock(&s_speedtest_mx);
++    return cancel || av_gettime_relative() >= *(int64_t *)opaque;
++}
++
++static int speedtest_open(AVIOContext **io, const char *url, int64_t *deadline)
++{
++    AVDictionary *options = NULL;
++    /* Do not use evo_stream_io_apply_network_options: it adds private headers.
++     * These are declared options in the pinned FFmpeg HTTP/TCP protocols. */
++    av_dict_set(&options, "protocol_whitelist", "https,tls,tcp", 0);
++    av_dict_set(&options, "rw_timeout", "5000000", 0);
++    av_dict_set(&options, "timeout", "5000000", 0);
++    av_dict_set(&options, "seekable", "0", 0);
++    av_dict_set(&options, "reconnect", "0", 0);
++    av_dict_set(&options, "reconnect_at_eof", "0", 0);
++    av_dict_set(&options, "user_agent", "Nuvio-Pro-speedtest", 0);
++    AVIOInterruptCB interrupt = {speedtest_interrupt, deadline};
++    int rc = avio_open2(io, url, AVIO_FLAG_READ, &interrupt, &options);
++    av_dict_free(&options);
++    return rc;
++}
++
++/* Accept only the public short-test file on TorBox CDN hostnames. Neither the
++ * browser nor an addon can supply a URL. Reject credentials, ports and queries. */
++static int speedtest_url(const char *url)
++{
++    if (strncmp(url, "https://", 8)) return 0;
++    const char *host = url + 8, *path = strchr(host, '/');
++    if (!path || strcmp(path, "/dld/100MB.bin")) return 0;
++    size_t size = (size_t)(path - host);
++    if (!size || size > 127 || strspn(host, "abcdefghijklmnopqrstuvwxyz0123456789-.") != size) return 0;
++    static const char *suffixes[] = {".tb-cdn.io", ".tb-cdn.st", ".tb-cdn.cx",
++        ".tb-cdn.earth", ".tb-cdn.pw", ".tb-cdn.to"};
++    for (size_t i = 0; i < sizeof suffixes / sizeof *suffixes; ++i) {
++        size_t len = strlen(suffixes[i]);
++        if (size > len && !memcmp(path - len, suffixes[i], len)) return 1;
++    }
++    return 0;
++}
++
++static int speedtest_discover(char *url, size_t cap, int64_t *deadline)
++{
++    AVIOContext *io = NULL;
++    if (speedtest_open(&io, "https://api.torbox.app/v1/api/speedtest?test_length=short", deadline) < 0) {
++        avio_closep(&io);
++        return 0;
++    }
++    char body[16385];
++    int used = 0, rc = 0;
++    while (used < (int)sizeof body - 1 && !speedtest_interrupt(deadline)) {
++        rc = avio_read(io, (unsigned char *)body + used, (int)sizeof body - 1 - used);
++        if (rc <= 0) break;
++        used += rc;
++    }
++    avio_closep(&io);
++    if (rc != AVERROR_EOF || used == (int)sizeof body - 1 || speedtest_interrupt(deadline)) return 0;
++    body[used] = 0;
++    cJSON *root = cJSON_ParseWithLength(body, (size_t)used + 1);
++    int found = 0;
++    if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "success"))) {
++        const cJSON *item;
++        cJSON_ArrayForEach(item, cJSON_GetObjectItemCaseSensitive(root, "data")) {
++            if (!cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(item, "closest"))) continue;
++            const cJSON *link = cJSON_GetObjectItemCaseSensitive(item, "url");
++            const cJSON *region = cJSON_GetObjectItemCaseSensitive(item, "region");
++            if (cJSON_IsString(link) && strlen(link->valuestring) < cap && speedtest_url(link->valuestring) &&
++                cJSON_IsString(region) && region->valuestring[0] && strlen(region->valuestring) < sizeof s_speedtest_region &&
++                strspn(region->valuestring, "abcdefghijklmnopqrstuvwxyz0123456789-") == strlen(region->valuestring)) {
++                snprintf(url, cap, "%s", link->valuestring);
++                pthread_mutex_lock(&s_speedtest_mx);
++                snprintf(s_speedtest_region, sizeof s_speedtest_region, "%s", region->valuestring);
++                pthread_mutex_unlock(&s_speedtest_mx);
++                found = 1;
++            }
++            break;
++        }
++    }
++    cJSON_Delete(root);
++    return found;
++}
++
++static void *speedtest_worker(void *unused)
++{
++    (void)unused;
++    int64_t deadline = av_gettime_relative() + SPEEDTEST_TOTAL_US;
++    char url[256];
++    const char *error = "Could not find a TorBox test server.";
++    AVIOContext *io = NULL;
++    if (speedtest_discover(url, sizeof url, &deadline) && !speedtest_interrupt(&deadline)) {
++        int64_t start = av_gettime_relative();
++        int64_t download_deadline = start + SPEEDTEST_DOWNLOAD_US;
++        if (download_deadline < deadline) deadline = download_deadline;
++        pthread_mutex_lock(&s_speedtest_mx);
++        s_speedtest_started = start;
++        s_speedtest_state = "downloading";
++        pthread_mutex_unlock(&s_speedtest_mx);
++        error = "Could not download the TorBox test file.";
++        if (speedtest_open(&io, url, &deadline) >= 0 && avio_size(io) == SPEEDTEST_BYTES) {
++            unsigned char buffer[64 * 1024];
++            int64_t bytes = 0;
++            error = "The TorBox download stopped before the test finished.";
++            while (bytes < SPEEDTEST_BYTES && !speedtest_interrupt(&deadline)) {
++                int size = SPEEDTEST_BYTES - bytes < (int64_t)sizeof buffer ?
++                    (int)(SPEEDTEST_BYTES - bytes) : (int)sizeof buffer;
++                int rc = avio_read(io, buffer, size);
++                if (rc <= 0) break;
++                bytes += rc;
++                pthread_mutex_lock(&s_speedtest_mx);
++                s_speedtest_bytes = bytes;
++                pthread_mutex_unlock(&s_speedtest_mx);
++            }
++            /* A timed sample is valid, but an early EOF or network error is
++             * not. Never turn a failed partial transfer into a success. */
++            if (bytes && (bytes == SPEEDTEST_BYTES || av_gettime_relative() >= deadline)) error = "";
++        }
++    }
++    avio_closep(&io);
++    pthread_mutex_lock(&s_speedtest_mx);
++    s_speedtest_elapsed = s_speedtest_started ? av_gettime_relative() - s_speedtest_started : 0;
++    s_speedtest_state = s_speedtest_cancel ? "cancelled" : error[0] ? "error" : "completed";
++    s_speedtest_error = s_speedtest_cancel ? "" : error;
++    s_speedtest_active = 0;
++    pthread_mutex_unlock(&s_speedtest_mx);
++    return NULL;
++}
++
++static void speedtest_suspend(void)
++{
++    pthread_mutex_lock(&s_speedtest_mx);
++    s_speedtest_blocked = 1;
++    s_speedtest_cancel = 1;
++    pthread_mutex_unlock(&s_speedtest_mx);
++}
++
++static void speedtest_resume(void)
++{
++    pthread_mutex_lock(&s_speedtest_mx);
++    s_speedtest_blocked = 0;
++    pthread_mutex_unlock(&s_speedtest_mx);
++}
++
++/* Main-thread handoff waits without blocking a frame or freeing worker state. */
++static int speedtest_quiet(void)
++{
++    speedtest_suspend();
++    pthread_mutex_lock(&s_speedtest_mx);
++    int quiet = !s_speedtest_active;
++    pthread_mutex_unlock(&s_speedtest_mx);
++    return quiet;
++}
++
++static void serve_speedtest(int fd, const char *method, const char *path)
++{
++    int start = !strcmp(path, "/evo/speedtest/start");
++    int cancel = !strcmp(path, "/evo/speedtest/cancel");
++    const char *status = "200 OK", *request_error = NULL;
++    if (!start && !cancel && strcmp(path, "/evo/speedtest/status")) {
++        respond(fd, "404 Not Found", "application/json", "{}", 2);
++        return;
++    }
++    if (strcmp(method, start || cancel ? "POST" : "GET")) {
++        respond(fd, "405 Method Not Allowed", "application/json", "{}", 2);
++        return;
++    }
++    pthread_mutex_lock(&s_speedtest_mx);
++    if (cancel) s_speedtest_cancel = 1;
++    if (start && (s_speedtest_active || s_speedtest_blocked)) {
++        status = "409 Conflict";
++        request_error = s_speedtest_active ? "A speed test is already running." : "Return to browsing before testing.";
++    } else if (start) {
++        s_speedtest_cancel = 0;
++        s_speedtest_active = 1;
++        s_speedtest_state = "discovering";
++        s_speedtest_region[0] = 0;
++        s_speedtest_error = "";
++        s_speedtest_bytes = s_speedtest_started = s_speedtest_elapsed = 0;
++        pthread_t thread;
++        pthread_attr_t attr;
++        pthread_attr_init(&attr);
++        pthread_attr_setstacksize(&attr, 256 * 1024);
++        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
++        int rc = pthread_create(&thread, &attr, speedtest_worker, NULL);
++        pthread_attr_destroy(&attr);
++        if (rc) {
++            s_speedtest_active = 0;
++            s_speedtest_state = "error";
++            s_speedtest_error = "Could not start the speed test.";
++            status = "503 Service Unavailable";
++        }
++    }
++    int64_t elapsed = s_speedtest_active && s_speedtest_started ?
++        av_gettime_relative() - s_speedtest_started : s_speedtest_elapsed;
++    double mbps = elapsed > 0 ? s_speedtest_bytes * 8.0 / elapsed : 0;
++    char body[512];
++    int size = snprintf(body, sizeof body,
++        "{\"state\":\"%s\",\"region\":\"%s\",\"bytes\":%lld,\"elapsedMs\":%.0f,\"mbps\":%.3f,\"error\":\"%s\"}",
++        s_speedtest_state, s_speedtest_region, (long long)s_speedtest_bytes, elapsed / 1000.0, mbps,
++        request_error ? request_error : s_speedtest_error);
++    pthread_mutex_unlock(&s_speedtest_mx);
++    respond(fd, status, "application/json", body, (size_t)size);
++}
++
++/* Session-bound browser candidates, never written to settings or diagnostics. */
++#include "evo_online_subs.h"
++#include "ps5-preferences.h"
++
++typedef struct {
++    char session[64];
++    int count;
++    evo_osub_t entries[EVO_OSUB_MAX];
++    nuvio_preferences_t preferences;
++    int forced[EVO_OSUB_MAX];
++} nuvio_subtitles_t;
++static nuvio_subtitles_t s_pending_subtitles, s_h_subtitles, s_play_subtitles;
++
++static int subtitle_field(const cJSON *object, const char *name, char *out, size_t cap)
++{
++    const cJSON *v = cJSON_GetObjectItemCaseSensitive(object, name);
++    if (!cJSON_IsString(v) || !v->valuestring || strlen(v->valuestring) >= cap) return 0;
++    for (const unsigned char *p = (const unsigned char *)v->valuestring; *p; ++p)
++        if (*p < 32 || *p == 127) return 0;
++    strcpy(out, v->valuestring);
++    return 1;
++}
++
++static int subtitles_decode(const char *body, size_t size)
++{
++    cJSON *root = cJSON_ParseWithLength(body, size + 1);
++    nuvio_subtitles_t *p = calloc(1, sizeof *p);
++    int ok = p && cJSON_IsObject(root) && subtitle_field(root, "session", p->session, sizeof p->session);
++    if (ok) ok = nuvio_preferences_decode(
++        cJSON_GetObjectItemCaseSensitive(root, "preferences"), &p->preferences);
++    if (ok) ok = p->session[0] && strspn(p->session,
++        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-") == strlen(p->session);
++    const cJSON *array = cJSON_GetObjectItemCaseSensitive(root, "subtitles");
++    if (ok) ok = cJSON_IsArray(array) && cJSON_GetArraySize(array) <= EVO_OSUB_MAX;
++    for (int i = 0; ok && i < cJSON_GetArraySize(array); ++i) {
++        const cJSON *item = cJSON_GetArrayItem(array, i);
++        evo_osub_t *s = &p->entries[p->count];
++        ok = subtitle_field(item, "url", s->url, sizeof s->url) &&
++             subtitle_field(item, "lang", s->lang_tag, sizeof s->lang_tag) &&
++             subtitle_field(item, "source", s->source, sizeof s->source);
++        if (ok) ok = (!strncmp(s->url, "http://", 7) || !strncmp(s->url, "https://", 8)) &&
++                      !strchr(s->url, ' ');
++        const cJSON *forced = cJSON_GetObjectItemCaseSensitive(item, "forced");
++        if (forced && !cJSON_IsBool(forced)) ok = 0;
++        /* Cache insertion deduplicates URLs; reject duplicates here so
++         * candidate classification cannot shift to another cache row. */
++        for (int j = 0; ok && j < p->count; ++j)
++            if (!strcmp(p->entries[j].url, s->url)) ok = 0;
++        if (ok) { p->forced[p->count] = cJSON_IsTrue(forced); ++p->count; }
++    }
++    if (ok) {
++        pthread_mutex_lock(&s_mx);
++        s_pending_subtitles = *p;
++        pthread_mutex_unlock(&s_mx);
++    }
++    free(p);
++    cJSON_Delete(root);
++    return ok;
++}
++
++static void serve_subtitles(int fd, const char *method, char *req, size_t got, size_t hl)
++{
++    if (strcmp(method, "POST")) { respond(fd, "405 Method Not Allowed", "text/plain", "", 0); return; }
++    char length[32];
++    long size = header_value(req, hl, "Content-Length", length, sizeof length) ? parse_long(length) : -1;
++    if (size < 2 || size > 49152) { respond(fd, "413 Payload Too Large", "text/plain", "", 0); return; }
++    char *body = malloc((size_t)size + 1);
++    if (!body) { respond(fd, "503 Service Unavailable", "text/plain", "", 0); return; }
++    size_t have = got - hl;
++    if (have > (size_t)size) have = (size_t)size;
++    memcpy(body, req + hl, have);
++    while (have < (size_t)size) {
++        ssize_t n = recv(fd, body + have, (size_t)size - have, 0);
++        if (n <= 0) break;
++        have += (size_t)n;
++    }
++    body[have] = 0;
++    int ok = have == (size_t)size && subtitles_decode(body, have);
++    free(body);
++    respond(fd, ok ? "204 No Content" : "400 Bad Request", "text/plain", "", 0);
++}
++
++/* Called with the handoff mutex held; only a matching session receives data. */
++static void subtitles_handoff(const char *session)
++{
++    memset(&s_h_subtitles, 0, sizeof s_h_subtitles);
++    if (session[0] && !strcmp(session, s_pending_subtitles.session)) s_h_subtitles = s_pending_subtitles;
++    memset(&s_pending_subtitles, 0, sizeof s_pending_subtitles);
++}
++
++void evo_webui_import_subtitles(char *key, size_t cap)
++{
++    pthread_mutex_lock(&s_mx);
++    snprintf(key, cap, "web:%s", s_play_subtitles.session);
++    evo_osubs_begin(key);
++    for (int i = 0; i < s_play_subtitles.count; ++i) {
++        const evo_osub_t *s = &s_play_subtitles.entries[i];
++        evo_osubs_add(key, s->url, s->lang_tag, s->source);
++    }
++    nuvio_preferences_import(s_play_subtitles.session, &s_play_subtitles.preferences,
++                             s_play_subtitles.forced, s_play_subtitles.count);
++    memset(&s_play_subtitles, 0, sizeof s_play_subtitles);
++    pthread_mutex_unlock(&s_mx);
++}
++
  static void serve_evo(int fd, const char *path)
  {
 -    if (!strncmp(path, "/evo/hook.js", 12)) {
++    if (!strncmp(path, "/evo/skip-metadata?", 19)) {
++        serve_skip_metadata(fd, path);
++        return;
++    }
 +    if (!strcmp(path, "/evo/progress") || !strncmp(path, "/evo/progress?", 14)) {
 +        playback_progress_serve(fd, path);
 +        return;
@@ -881,6 +3956,7 @@
 +        pthread_mutex_unlock(&s_mx);
 +        respond(fd, "200 OK", "application/json", body, (size_t)n);
      } else if (!strncmp(path, "/evo/close", 10)) {
++        speedtest_suspend();
          tlog("close requested by the page");
          pthread_mutex_lock(&s_mx);
          s_close_req = 1;
@@ -888,7 +3964,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -828,6 +1048,12 @@
+@@ -810,6 +1924,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -901,19 +3977,37 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -836,6 +1062,8 @@
+@@ -818,6 +1938,13 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
 +        s_h_start = seconds;
++        playback_skip_parse(path);
++        playback_next_parse(path);
 +        query_param(path, "session", s_h_progress_session, sizeof s_h_progress_session);
++        presentation_handoff(s_h_progress_session);
++        subtitles_handoff(s_h_progress_session);
++        if (url[0]) speedtest_suspend();
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1126,7 +1354,13 @@
+@@ -1209,13 +2336,25 @@
+     if (req && read_head(fd, req, cap, &got, &hl) == 0) {
+         char method[16] = "", path[4096] = "";
+         sscanf(req, "%15s %4095s", method, path);
+-        if (!strncmp(path, "/evo/storage", 12))
++        if (!strcmp(path, "/evo/subtitles"))
++            serve_subtitles(fd, method, req, got, hl);
++        else if (!strncmp(path, "/evo/speedtest/", 15))
++            serve_speedtest(fd, method, path);
++        else if (!strcmp(path, "/evo/presentation"))
++            serve_presentation(fd, method, req, got, hl);
++        else if (!strncmp(path, "/evo/storage", 12))
              serve_storage(fd, method, req, got, hl);
-         else if (!strncmp(path, "/evo/", 5) || !s_up.enabled)
+         else if (!strncmp(path, "/evo/", 5) || (!s_up.enabled && !s_local_root[0]))
              serve_evo(fd, path);
+         else if (s_local_root[0])
+             serve_local(fd, method, path);
 -        else
 +        else if (!strcmp(s_hook_profile, "nuvio")) {
 +            char tag[96];
@@ -925,15 +4019,22 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1140,6 +1374,7 @@
+@@ -1227,8 +2366,14 @@
+ {
+     (void)arg;
      while (!s_srv_stop) {
++        playback_progress_checkpoint();
++        struct pollfd listener = {s_listen_fd, POLLIN, 0};
++        int ready = poll(&listener, 1, 1000);
++        if (ready == 0 || (ready < 0 && errno == EINTR)) continue;
++        if (ready < 0 || !(listener.revents & POLLIN)) break;
          int c = accept(s_listen_fd, NULL, NULL);
          if (c >= 0 && s_srv_stop) { close(c); break; }
 +        if (c >= 0) LOG("server: connection accepted");
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1161,8 +1396,16 @@
+@@ -1250,8 +2395,16 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -951,7 +4052,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1170,11 +1413,20 @@
+@@ -1259,11 +2412,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -974,7 +4075,15 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1229,6 +1481,7 @@
+@@ -1279,6 +2441,7 @@
+ static void server_stop(void)
+ {
+     if (s_listen_fd < 0) return;
++    speedtest_suspend();
+     s_srv_stop = 1;
+     /* Wake the accept thread with a connection of our own; it sees the stop
+      * flag and exits. Then the socket can go. */
+@@ -1318,6 +2481,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -982,7 +4091,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1253,6 +1506,7 @@
+@@ -1342,6 +2506,7 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -990,7 +4099,15 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1316,7 +1570,7 @@
+@@ -1356,6 +2521,7 @@
+         s_state = P_OFF;
+         return;
+     }
++    speedtest_resume();
+     s_state = P_RUN;
+     s_frames = 0;
+     s_last_status = -1;
+@@ -1405,7 +2571,7 @@
  
  int evo_webui_active(void)
  {
@@ -999,52 +4116,73 @@
  }
  
  void evo_webui_shutdown(void)
-@@ -1401,6 +1655,15 @@
-     LOG("open: %s via %s hook=%s", s_open_url, s_up.base,
+@@ -1505,7 +2671,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
-+    /* Packaged Nuvio files need no second HTTP process. Keep the
-+     * configured origin as the browser-storage key for existing profiles. */
-+    if (!strcmp(s_hook_profile, "nuvio")) {
-+        s_check_rc = 1;
-+        s_state = P_CHECK;
-+        s_frames = 0;
-+        LOG("title-ui: packaged assets selected");
-+        return 0;
-+    }
      s_check_rc = 0;
-     pthread_t t;
-     pthread_attr_t at;
-@@ -1414,18 +1677,27 @@
+-    if (s_local_root[0]) {
++    /* Keep the configured origin as the existing browser-storage key;
++     * packaged Nuvio needs no external host preflight. */
++    if (!strcmp(s_hook_profile, "nuvio") || s_local_root[0]) {
+         s_check_rc = 1;                  /* nothing to reach: the page is in the app */
+     } else {
+         pthread_t t;
+@@ -1521,18 +2689,51 @@
      return 0;
  }
  
 -int evo_webui_take_play(char *url, size_t url_cap, char *title, size_t title_cap)
+-{
+-    if (!s_play_pending) return 0;
 +int evo_webui_take_play(char *url, size_t url_cap, char *title, size_t title_cap, double *start)
- {
-     if (!s_play_pending) return 0;
++{
++    if (!s_play_pending || !speedtest_quiet()) return 0;
      s_play_pending = 0;
      snprintf(url, url_cap, "%s", s_play_url);
      snprintf(title, title_cap, "%s", s_play_title);
 +    *start = s_play_start;
++    memcpy(s_skip, s_play_skip, sizeof s_skip);
++    int skipRecords = 0;
++    for (int i = 0; i < 4; ++i) {
++        if (!s_skip[i].type) continue;
++        ++skipRecords;
++        LOG("skip session: type=%d auto=%d start=%.3f end=%.3f",
++            s_skip[i].type, s_skip[i].automatic, s_skip[i].start, s_skip[i].end);
++    }
++    LOG("skip session: records=%d", skipRecords);
++    s_skip_suppressed = -1;
++    s_skip_retry_after = 0;
++    evo_webui_skip_countdown(0.0, 0, 0);
++    playback_next_begin();
++    presentation_begin();
 +    pthread_mutex_lock(&s_mx);
 +    snprintf(s_progress_session, sizeof s_progress_session, "%s", s_play_progress_session);
 +    s_progress_position = s_progress_duration = 0.0;
 +    s_progress_finished = 0;
++    s_progress_next_episode = 0;
++    s_progress_return_detail = 0;
++    s_progress_played = s_progress_recommendation = 0;
++    ++s_progress_revision;
 +    pthread_mutex_unlock(&s_mx);
      return 1;
  }
  
  void evo_webui_playback_ended(int played)
  {
++    memset(s_skip, 0, sizeof s_skip);
++    memset(&s_presentation, 0, sizeof s_presentation);
++    /* A later native-library source has no browser handoff to replace this. */
++    memset(&s_play_next, 0, sizeof s_play_next);
++    playback_next_begin();
      if (s_state != P_PLAYING) return;
 +    pthread_mutex_lock(&s_mx);
 +    s_progress_finished = 1;
++    ++s_progress_revision;
 +    pthread_mutex_unlock(&s_mx);
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
      s_frames = OPEN_DELAY_FRAMES / 2;    /* ~1 s: the player screen is going away */
-@@ -1433,6 +1705,7 @@
+@@ -1540,6 +2741,7 @@
  
  void evo_webui_pump(void)
  {
@@ -1052,16 +4190,20 @@
      if (!s_checked) {
          s_checked = 1;
          if (!read_trigger()) return;
-@@ -1494,6 +1767,8 @@
+@@ -1601,6 +2803,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
 +            s_play_start = s_h_start;
++            memcpy(s_play_skip, s_h_skip, sizeof s_play_skip);
++            s_play_next = s_h_next;
++            s_play_presentation = s_h_presentation;
++            s_play_subtitles = s_h_subtitles;
 +            snprintf(s_play_progress_session, sizeof s_play_progress_session, "%s", s_h_progress_session);
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1547,3 +1822,23 @@
+@@ -1654,3 +2862,23 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -1087,8 +4229,8 @@
 +}
 --- a/projects/evoplayer/ui/include/evo_keyboard.h
 +++ b/projects/evoplayer/ui/include/evo_keyboard.h
-@@ -76,6 +76,8 @@
- int  evo_keyboard_phone_info(char *title, size_t tcap);
+@@ -114,6 +114,8 @@
+ void evo_keyboard_mark_secret(void);
  
  /* Close the keyboard without submitting. */
 +int evo_keyboard_open_native(const char *title, const char *initial_value,
@@ -1103,10 +4245,10 @@
  #include <stdlib.h>
  #include <string.h>
 +#include <time.h>
+ #include <errno.h>
  
  #include "evo_keyboard.h"
- #include "evo_ime_dialog.h"
-@@ -63,6 +64,17 @@
+@@ -65,6 +66,17 @@
  }
  
  #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
@@ -1124,7 +4266,7 @@
  static uint16_t g_ime_buf[1024];
  static uint16_t g_ime_title[256];
  static uint16_t g_ime_placeholder[256];
-@@ -359,7 +371,7 @@
+@@ -447,7 +459,7 @@
  }
  
  static void kb_open(const char *title, const char *initial_value, int max_len,
@@ -1133,7 +4275,7 @@
  
  void evo_keyboard_open(const char *title,
                         const char *initial_value,
-@@ -367,7 +379,7 @@
+@@ -455,7 +467,7 @@
                         evo_keyboard_cb on_submit,
                         void *userdata)
  {
@@ -1142,7 +4284,7 @@
  }
  
  void evo_keyboard_open_phone(const char *title,
-@@ -376,7 +388,7 @@
+@@ -464,7 +476,7 @@
                               evo_keyboard_cb on_submit,
                               void *userdata)
  {
@@ -1151,7 +4293,12 @@
  }
  
  int evo_keyboard_phone_info(char *title, size_t tcap)
-@@ -387,7 +399,7 @@
+@@ -523,11 +535,11 @@
+                               evo_keyboard_cb on_submit, void *userdata)
+ {
+     g_open_number = 1;
+-    kb_open(title, initial_value, max_len, on_submit, userdata, 0);
++    kb_open(title, initial_value, max_len, on_submit, userdata, 0, 0);
  }
  
  static void kb_open(const char *title, const char *initial_value, int max_len,
@@ -1159,20 +4306,31 @@
 +                    evo_keyboard_cb on_submit, void *userdata, int phone, int native_only)
  {
      memset(&g_kb, 0, sizeof(g_kb));
-     g_kb.is_open = 1;
-@@ -420,9 +432,10 @@
+     g_kb_seq++;
+@@ -544,7 +556,7 @@
+     (void)phone;   /* every prompt gets the phone link when the console has an address */
+     g_kb.number = g_open_number;
+     g_open_number = 0;
+-    if (!g_kb.number) kb_setup_phone();
++    if (!native_only && !g_kb.number) kb_setup_phone();
+ 
+     if (initial_value) {
+         g_kb.cursor = -1;
+@@ -563,10 +575,11 @@
      g_kb.userdata = userdata;
  
  #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
--    if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !phone) {
-+    if ((native_only || g_kb_type == EVO_KEYBOARD_TYPE_NATIVE) && !g_native_ime_broken && !phone) {
+-    if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !g_kb.phone &&
+-        !g_kb.number && !g_kb.noport) {
++    if (!g_native_ime_broken && (native_only ||
++        (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_kb.phone && !g_kb.number && !g_kb.noport))) {
          int cd_rc = init_native_ime_subsystem();
          if (cd_rc != 0) {
 +            if (native_only) { g_kb.is_open = 0; return; }
              /* No CommonDialog, no IME. Don't try again this session. */
              g_native_ime_broken = 1;
              evo_log("ime: CommonDialog unavailable (0x%08x) - virtual keyboard",
-@@ -479,6 +492,10 @@
+@@ -623,6 +636,10 @@
          evo_log("ime: -> sceImeDialogInit (panel %ux%u)",
                  (unsigned)width, (unsigned)height);
          evo_log_flush();
@@ -1183,7 +4341,7 @@
          int rc = sceImeDialogInit(&param, NULL);
          evo_log("ime: sceImeDialogInit userId=0x%08x len=%u panel=%ux%u -> 0x%08x",
                  (unsigned)userId, (unsigned)param.maxTextLength,
-@@ -496,6 +513,7 @@
+@@ -640,6 +657,7 @@
  
          /* Latch: if the system dialog won't start once it won't start later
           * either, and a failed toast per prompt is worse than just typing. */
@@ -1191,7 +4349,7 @@
          g_native_ime_broken = 1;
          char err_msg[64];
          snprintf(err_msg, sizeof(err_msg), "ERR 0x%08X", (unsigned)rc);
-@@ -505,6 +523,7 @@
+@@ -649,6 +667,7 @@
  #endif
  
  
@@ -1199,7 +4357,7 @@
      g_kb.is_native_active = 0;
      evo_feedback(EVO_FB_OPEN);
  }
-@@ -513,8 +532,12 @@
+@@ -657,8 +676,12 @@
  {
  #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
      if (g_kb.is_open && g_kb.is_native_active) {
@@ -1214,7 +4372,7 @@
          g_kb.is_native_active = 0;
      }
  #endif
-@@ -556,10 +579,24 @@
+@@ -705,10 +728,24 @@
  #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
      if (g_kb.is_open && g_kb.is_native_active) {
          int status = sceImeDialogGetStatus();
@@ -1240,7 +4398,7 @@
              if (result.endStatus == SCE_IME_DIALOG_END_STATUS_OK) {
                  utf16_to_utf8(g_ime_buf, g_kb.buffer, sizeof(g_kb.buffer));
                  if (g_kb.callback) {
-@@ -569,11 +606,15 @@
+@@ -718,11 +755,15 @@
              } else {
                  evo_feedback(EVO_FB_CANCEL);
              }
@@ -1258,8 +4416,8 @@
              g_kb.is_open = 0;
              g_kb.is_native_active = 0;
          }
-@@ -794,3 +835,13 @@
-     evo_rmlui_render_keyboard(fb, 1920, 1080);
+@@ -1151,3 +1192,13 @@
+     if (g_kb.phone && g_qr_ok) draw_phone_qr(fb);
  }
  
 +
@@ -1272,9 +4430,289 @@
 +    kb_open(title, initial_value, max_len, callback, userdata, 0, 1);
 +    return evo_keyboard_is_native_active();
 +}
+--- a/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
++++ b/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
+@@ -6,7 +6,7 @@
+  * signed distance fields (stb_truetype) into an atlas that grows as text
+  * appears, and the kit draws that atlas like any other font. Thai and the
+  * Indic scripts use Noto faces embedded in the binary; Chinese, Japanese and
+- * Korean use the Noto Sans CJK files in /data/evoplayer/fonts when they are
++ * Korean use the Noto Sans CJK files in /data/nuvio/fonts when they are
+  * there (4-8 MB each, too big to embed).
+  */
+ #pragma once
+--- a/projects/evoplayer/ui_kit/include/evo_hui_osd.hpp
++++ b/projects/evoplayer/ui_kit/include/evo_hui_osd.hpp
+@@ -32,6 +32,8 @@
+     bool focus(FocusInfo *out) const;
+ 
+   private:
++    void draw_nuvio_general(hui::gfx::DrawList &list, const Context &ctx) const;
++    void draw_nuvio_prompts(hui::gfx::DrawList &list, const Context &ctx) const;
+     void draw_top(hui::gfx::DrawList &list, const Context &ctx) const;
+     void draw_bottom(hui::gfx::DrawList &list, const Context &ctx) const;
+     void draw_centre(hui::gfx::DrawList &list, const Context &ctx) const;
+@@ -42,6 +44,11 @@
+ 
+     evo_playback_osd_params_t raw_{}; /* numbers only: its strings dangle */
+     std::string title_, meta_;
++    std::string nuvio_pause_text_;
++    std::string nuvio_parental_;
++    std::string nuvio_recommendation_;
++    std::string nuvio_clock_;
++    std::string nuvio_loading_status_;
+     std::string badges_[9]; /* res hdr codec fps audio decoder upscale smooth deepblack */
+     std::string audio_track_, sub_track_, music_codec_;
+     std::string chapter_title_, scrub_chapter_title_, ends_at_, remaining_;   /* #150 / #151 */
+--- a/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
++++ b/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
+@@ -64,7 +64,7 @@
+ struct FaceSpec
+ {
+     const char *bundle; /* embedded in the binary, or null */
+-    const char *file;   /* under /data/evoplayer/fonts, or null */
++    const char *file;   /* under /data/nuvio/fonts, or null */
+     const char *lang;
+ };
+ 
+--- a/projects/evoplayer/ui_kit/src/evo_hui_osd.cpp
++++ b/projects/evoplayer/ui_kit/src/evo_hui_osd.cpp
+@@ -180,6 +180,16 @@
+     if (skip_on_)
+         skip_label_ = p.skip_label;
+     raw_.skip_label = nullptr;
++    nuvio_pause_text_ = str(p.nuvio_pause_text);
++    raw_.nuvio_pause_text = nullptr;
++    nuvio_parental_ = str(p.nuvio_parental);
++    raw_.nuvio_parental = nullptr;
++    nuvio_recommendation_ = str(p.nuvio_recommendation);
++    raw_.nuvio_recommendation = nullptr;
++    nuvio_clock_ = str(p.nuvio_clock);
++    raw_.nuvio_clock = nullptr;
++    nuvio_loading_status_ = str(p.nuvio_loading_status);
++    raw_.nuvio_loading_status = nullptr;
+     sub_lines_ = split_lines(p.subtitle_text);
+     sub2_lines_ = split_lines(p.subtitle_text2);
+     raw_.title = raw_.metadata = nullptr; /* never read the copied pointers */
+@@ -264,9 +274,62 @@
+     for (const std::string &l : sub2_lines_)
+         if (!font_covers(*font.font, l))
+             return false;
++    for (const auto &line : split_lines(nuvio_parental_.c_str()))
++        if (!font_covers(*fonts.semibold.font, line)) return false;
++    for (const std::string *text : {&nuvio_pause_text_, &nuvio_recommendation_})
++        for (const auto &line : split_lines(text->c_str()))
++            if (!font_covers(*fonts.regular.font, line)) return false;
+     /* The title is not checked: a missing glyph there costs one blank, and
+      * dropping the whole kit OSD for it would cost far more. */
+     return true;
++}
++
++void OsdScreen::draw_nuvio_prompts(DrawList &list, const Context &ctx) const
++{
++    if (!raw_.nuvio_active) return;
++    const ui::Fonts &fonts = ctx.fonts;
++    const Palette &p = ctx.palette;
++    if (skip_on_)
++    {
++        const Rect card{1920 - kMargin - 500, 740, 500, 76};
++        list.push_opacity(raw_.skip_countdown > 0 ? 1.0f : 0.5f);
++        list.bordered_rect(card, 12, kInk.with_alpha(0.95f), 2, p.accent);
++        ui::Hint hint{ui::Button::r1, skip_label_.c_str()};
++        ui::HintLayout layout;
++        layout.size = 32;
++        layout.text_size = 24;
++        layout.cy = card.cy();
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), &hint, 1, card.x + 24, false, layout);
++        if (raw_.skip_countdown > 0)
++        {
++            const std::string countdown = "Dims in " + std::to_string(raw_.skip_countdown) + "s";
++            ui::text(list, fonts.regular, countdown, card.x + card.w - 24, card.y + 46,
++                18, kWhite.with_alpha(0.8f), Align::right);
++        }
++        list.pop_opacity();
++    }
++    if (raw_.next_episode || raw_.playback_ended)
++    {
++        const Rect card{1920 - kMargin - 620, !skip_on_ ? 740.0f : 600.0f, 620, 124};
++        list.bordered_rect(card, 12, kInk.with_alpha(0.95f), 2, p.accent);
++        const std::string label = raw_.next_episode > 0
++            ? "Next episode in " + std::to_string(raw_.next_episode) + "s"
++            : raw_.next_episode ? "Next episode" : "Playback ended";
++        ui::text(list, fonts.semibold, label, card.x + 24, card.y + 38, 24, kWhite);
++        ui::Hint hints[3];
++        int n = 0;
++        if (raw_.next_episode && !skip_on_)
++            hints[n++] = {ui::Button::r1, "Play now"};
++        if (raw_.next_episode)
++            hints[n++] = {ui::Button::l1, "Keep watching"};
++        hints[n++] = {ui::Button::circle, "Back to Nuvio"};
++        ui::HintLayout layout;
++        layout.size = 28;
++        layout.text_size = 18;
++        layout.item_gap = 20;
++        layout.cy = card.y + 88;
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, card.x + 24, false, layout);
++    }
+ }
+ 
+ void OsdScreen::draw_top(DrawList &list, const Context &ctx) const
+@@ -412,10 +475,12 @@
+         list.circle(960, 520, 64, kBlack.with_alpha(0.55f));
+         list.arc(960, 520, 44, 6, 0.0f, 6.2831853f, kWhite.with_alpha(0.15f));
+         list.arc(960, 520, 44, 6, std::fmod(time_ * 5.5f, 6.2831853f), 1.6f, p.accent);
+-        ui::text(list, fonts.semibold, "LOADING", 960, 630, 18, kWhite.with_alpha(0.85f), Align::center, 3.0f);
++        if (!raw_.nuvio_active || !nuvio_loading_status_.empty())
++            ui::text(list, fonts.semibold, raw_.nuvio_active ? nuvio_loading_status_ : "LOADING",
++                960, 630, 18, kWhite.with_alpha(0.85f), Align::center, 3.0f);
+         list.pop_opacity();
+     }
+-    if (paused_.value > 0.01f)
++    if (paused_.value > 0.01f && nuvio_pause_text_.empty() && !raw_.nuvio_still_countdown)
+     {
+         const float s = 0.85f + 0.15f * paused_.value;
+         list.push_transform(s, 960, 520, 0, 0);
+@@ -518,7 +583,7 @@
+  * own opacity so it shows with the controls hidden too. */
+ void OsdScreen::draw_skip(DrawList &list, const Context &ctx) const
+ {
+-    if (skip_.value <= 0.01f || skip_label_.empty())
++    if (raw_.nuvio_active || skip_.value <= 0.01f || skip_label_.empty())
+         return;
+     const ui::Fonts &fonts = ctx.fonts;
+     ui::Hint hint{ui::Button::triangle, skip_label_.c_str()};
+@@ -642,6 +707,8 @@
+     {
+         draw_centre(list, ctx);
+         draw_captions(list, ctx, chrome);
++        draw_nuvio_prompts(list, ctx);
++        draw_nuvio_general(list, ctx);
+         draw_skip(list, ctx);
+     }
+     if (hud_on_)
+@@ -664,7 +731,85 @@
+     out->text = title_;
+     out->index = out->total = 1;
+     out->rect = {0, 0, 1920, 1080};
+-    return chrome_.value > 0.01f || raw_.scrub_active || raw_.paused;
++    return !nuvio_parental_.empty() || !nuvio_pause_text_.empty() ||
++        !nuvio_recommendation_.empty() || raw_.nuvio_still_countdown ||
++        chrome_.value > 0.01f || raw_.scrub_active || raw_.paused ||
++        skip_on_ || raw_.next_episode || raw_.playback_ended;
++}
++
++void OsdScreen::draw_nuvio_general(DrawList &list, const Context &ctx) const
++{
++    const auto &fonts = ctx.fonts;
++    auto lines = [&](const std::string &text, float x, float y, float width, int maximum) {
++        int count = 0;
++        for (const auto &paragraph : split_lines(text.c_str())) {
++            if (count >= maximum) return;
++            std::string line;
++            size_t start = paragraph.find_first_not_of(" \t");
++            while (start != std::string::npos) {
++                const size_t end = paragraph.find_first_of(" \t", start);
++                const std::string word = paragraph.substr(start, end - start);
++                std::string next = line.empty() ? word : line + " " + word;
++                if (!line.empty() && fonts.regular.measure(next, 24) > width) {
++                    ui::text(list, fonts.regular, line, x, y + count++ * 34, 24, kWhite);
++                    if (count >= maximum) return;
++                    line = word;
++                } else line = next;
++                start = end == std::string::npos ? end : paragraph.find_first_not_of(" \t", end);
++            }
++            ui::text(list, fonts.regular, fit(fonts.regular, line, 24, width),
++                x, y + count++ * 34, 24, kWhite);
++        }
++    };
++    auto card = [&](Rect box, const std::string &heading, const std::string &body, int max_lines) {
++        list.bordered_rect(box, 16, kInk.with_alpha(0.96f), 2, ctx.palette.accent);
++        ui::text(list, fonts.semibold, heading, box.x + 30, box.y + 42, 26, ctx.palette.accent);
++        lines(body, box.x + 30, box.y + 86, box.w - 60, max_lines);
++    };
++    if (!nuvio_clock_.empty() && !raw_.chrome_hidden) {
++        list.push_opacity(chrome_.value);
++        ui::text(list, fonts.mono, nuvio_clock_, 1920 - kMargin, 175, 23, kWhite, Align::right);
++        list.pop_opacity();
++    }
++    float tag_x = 1920 - kMargin, tag_y = 210;
++    for (const auto &warning : split_lines(nuvio_parental_.c_str())) {
++        if (warning.empty()) continue;
++        const std::string label = fonts.semibold.font->fit(warning, 16, 976, 1.5f);
++        const float width = fonts.semibold.measure(label, 16, 1.5f) + 24;
++        if (tag_x - width < 1920 - kMargin - 1000) {
++            tag_x = 1920 - kMargin;
++            tag_y += 42;
++        }
++        const Rect tag{tag_x - width, tag_y, width, 32};
++        list.bordered_rect(tag, 8, kBlack.with_alpha(0.35f), 1.5f, kWhite.with_alpha(0.45f));
++        ui::text(list, fonts.semibold, label, tag.cx(), tag.y + 22, 16, kWhite, Align::center, 1.5f);
++        tag_x -= width + 10;
++    }
++    if (!nuvio_pause_text_.empty()) {
++        card({kMargin, 280, 1100, 360}, "You're watching", nuvio_pause_text_, 8);
++    }
++    if (!nuvio_recommendation_.empty()) {
++        const Rect box{1920 - kMargin - 740, 470, 740, 230};
++        card(box, "Watch next", nuvio_recommendation_, 3);
++        ui::Hint hints[3];
++        int n = 0;
++        if (!skip_on_) hints[n++] = {ui::Button::r1, "View details"};
++        hints[n++] = {ui::Button::triangle, "Next pick"};
++        hints[n++] = {ui::Button::l1, "Keep watching"};
++        ui::HintLayout layout;
++        layout.size = 28; layout.text_size = 18; layout.item_gap = 18;
++        layout.cy = box.y + box.h - 30;
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, box.x + 30, false, layout);
++    }
++    if (raw_.nuvio_still_countdown > 0) {
++        const Rect box{560, 350, 800, 280};
++        card(box, "Are you still watching?", "Stopping in " +
++            std::to_string(raw_.nuvio_still_countdown) + "s", 2);
++        ui::Hint hints[] = {{ui::Button::cross, "Play next episode"}, {ui::Button::circle, "Back to Nuvio"}};
++        ui::HintLayout layout;
++        layout.size = 32; layout.text_size = 24; layout.item_gap = 36; layout.cy = box.y + 215;
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, 2, box.x + 30, false, layout);
++    }
+ }
+ 
+ } // namespace evo::kit
 --- a/projects/evoplayer/ui_rml/include/evo_rmlui_app.h
 +++ b/projects/evoplayer/ui_rml/include/evo_rmlui_app.h
-@@ -658,6 +658,7 @@
+@@ -12,6 +12,16 @@
+ #include "evo_rmlui_bridge.h"   /* evo_perf_hud_t */
+ 
+ struct EvoPlaybackState {
++    std::string nuvio_pause_text;
++    std::string nuvio_parental;
++    std::string nuvio_recommendation;
++    std::string nuvio_clock;
++    std::string nuvio_loading_status;
++    int nuvio_active = 0, nuvio_still_countdown = 0;
++    std::string skip_label;
++    int playback_ended = 0;
++    int next_episode = 0;
++    int skip_countdown = 0;
+     std::string title;
+     std::string meta;
+     std::string res_badge;
+@@ -53,7 +63,14 @@
+     std::string music_codec;
+ 
+     bool operator==(const EvoPlaybackState& o) const {
+-        return title == o.title && meta == o.meta && res_badge == o.res_badge &&
++        return nuvio_active == o.nuvio_active && nuvio_still_countdown == o.nuvio_still_countdown &&
++               nuvio_pause_text == o.nuvio_pause_text &&
++               nuvio_parental == o.nuvio_parental &&
++               nuvio_recommendation == o.nuvio_recommendation &&
++               nuvio_clock == o.nuvio_clock &&
++               nuvio_loading_status == o.nuvio_loading_status &&
++               playback_ended == o.playback_ended && next_episode == o.next_episode && skip_countdown == o.skip_countdown && skip_label == o.skip_label &&
++               title == o.title && meta == o.meta && res_badge == o.res_badge &&
+                hdr_badge == o.hdr_badge && codec_badge == o.codec_badge &&
+                fps_badge == o.fps_badge && audio_badge == o.audio_badge &&
+                decoder_badge == o.decoder_badge &&
+@@ -682,6 +699,7 @@
  
      void UpdateLaunchState(const EvoLaunchState& state);
      void RenderLaunch(uint32_t* framebuffer, int width, int height);
@@ -1282,7 +4720,7 @@
  
      void UpdatePlaybackState(const EvoPlaybackState& state);
      void UpdatePerfHud(const evo_perf_hud_t* hud);   // #81/#63 diagnostic HUD
-@@ -760,6 +761,7 @@
+@@ -784,6 +802,7 @@
      Rml::Context* m_context = nullptr;
      /* panel width / EVO_UI_DESIGN_W; 1.0 at 1080p. Applied to every context. */
      float m_dp_ratio = 1.0f;
@@ -1292,7 +4730,25 @@
      Rml::ElementDocument* m_browser_doc = nullptr;
 --- a/projects/evoplayer/ui_rml/include/evo_rmlui_bridge.h
 +++ b/projects/evoplayer/ui_rml/include/evo_rmlui_bridge.h
-@@ -743,6 +743,7 @@
+@@ -73,7 +73,17 @@
+     /* Settings -> DEFAULT FONT STYLE for both captions:
+      * 0 standard, 1 light, 2 rounded, 3 bold (prospero_subtitle_style). */
+     int subtitle_style;
++    const char *nuvio_pause_text;
++    const char *nuvio_parental;
++    const char *nuvio_recommendation;
++    const char *nuvio_clock;
++    const char *nuvio_loading_status;
++    int nuvio_active;
++    int nuvio_still_countdown;
+     int chrome_hidden;
++    int playback_ended;
++    int next_episode; /* 0 hidden, -1 manual, positive countdown. */
++    int skip_countdown; /* Seconds at full opacity, then dim at zero. */
+     /* GL-5 (#81): dev FPS pill (#fps-pill), independent of the OSD chrome. */
+     int fps;
+     int debug_overlay;
+@@ -1023,6 +1033,7 @@
  /* Launch / home screen API */
  void evo_rmlui_update_launch(const evo_rmlui_launch_params_t* params);
  void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);
@@ -1302,7 +4758,7 @@
  void evo_rmlui_update_list(const evo_rmlui_list_params_t* params);
 --- a/projects/evoplayer/ui_rml/src/evo_rmlui_app.cpp
 +++ b/projects/evoplayer/ui_rml/src/evo_rmlui_app.cpp
-@@ -229,7 +229,7 @@
+@@ -232,7 +232,7 @@
          m_launch_doc, m_list_doc, m_browser_doc, m_changelog_doc, m_reader_doc,
          m_image_doc, m_surround_doc, m_playback_doc, m_dialog_doc,
          m_settings_doc, m_about_doc, m_subtitles_doc, m_mediainfo_doc,
@@ -1311,7 +4767,7 @@
      };
      for (Rml::ElementDocument* doc : screens) {
          if (!doc || doc == keep) continue;
-@@ -319,7 +319,7 @@
+@@ -322,7 +322,7 @@
       * the /app0 sandbox's broken directory traversal never comes into play.
       * The remaining entries are host/dev fallbacks (fopen against loose
       * files) for when the bundle hasn't been (re)generated. The old
@@ -1320,7 +4776,16 @@
       * #44 out-of-band FTP sync target - are gone: that sync is removed
       * (deploy-app.sh), and shipping a self-contained .ffpfsc means those
       * loose console-side copies must have zero effect on rendering. */
-@@ -379,6 +379,10 @@
+@@ -355,7 +355,7 @@
+             Rml::LoadFontFace(p + "NotoSansThai-Bold.ttf", true);
+             /* CJK is 4-8 MB a script, too big to embed in the binary: load
+              * whichever Noto Sans CJK subset files are in the data folder
+-             * (/data/evoplayer/fonts/NotoSansSC-Regular.otf, ...JP, ...KR). */
++             * (/data/nuvio/fonts/NotoSansSC-Regular.otf, ...JP, ...KR). */
+ #if defined(EVO_AGC_DEVICE)
+             for (const char* cjk : { "NotoSansSC-Regular.otf", "NotoSansJP-Regular.otf",
+                                      "NotoSansKR-Regular.otf" }) {
+@@ -396,6 +396,10 @@
      };
  
      for (const auto& p : rml_prefixes) {
@@ -1331,7 +4796,117 @@
          if (!m_launch_doc) {
              m_launch_doc = m_context->LoadDocument(p + "launch.rml");
              if (m_launch_doc) m_launch_doc->Hide();
-@@ -4237,3 +4241,14 @@
+@@ -2748,6 +2752,89 @@
+     m_theme_gen_playback = m_theme_generation;
+     m_frame_dirty = true;
+ 
++    if (state.skip_label != m_last_state.skip_label) {
++        if (auto* prompt = m_playback_doc->GetElementById("nuvio-skip")) {
++            prompt->SetProperty("display", state.skip_label.empty() ? "none" : "flex");
++            if (auto* label = m_playback_doc->GetElementById("nuvio-skip-label"))
++                label->SetInnerRML(state.skip_label);
++        }
++        if (auto* chapter = m_playback_doc->GetElementById("item-chapter"))
++            chapter->SetInnerRML(state.skip_label.empty()
++                ? "<span class=\"btn-tag\">L1 / R1</span><span class=\"control-label\">CHAPTER</span>"
++                : "<span class=\"btn-tag\">L1</span><span class=\"control-label\">CHAPTER</span>");
++    }
++    if (state.skip_countdown != m_last_state.skip_countdown || state.skip_label != m_last_state.skip_label) {
++        if (auto* prompt = m_playback_doc->GetElementById("nuvio-skip"))
++            prompt->SetProperty("opacity", state.skip_countdown > 0 ? "1" : "0.5");
++        if (auto* countdown = m_playback_doc->GetElementById("nuvio-skip-countdown")) {
++            countdown->SetProperty("display", state.skip_countdown > 0 ? "block" : "none");
++            countdown->SetInnerRML("Dims in " + std::to_string(state.skip_countdown) + "s");
++        }
++    }
++    if (state.next_episode != m_last_state.next_episode || state.playback_ended != m_last_state.playback_ended || state.skip_label != m_last_state.skip_label) {
++        if (auto* prompt = m_playback_doc->GetElementById("nuvio-next"))
++            prompt->SetProperty("display", state.next_episode || state.playback_ended ? "flex" : "none");
++        if (auto* label = m_playback_doc->GetElementById("nuvio-next-label"))
++            label->SetInnerRML(state.next_episode > 0
++                ? "Next episode in " + std::to_string(state.next_episode) + "s"
++                : state.next_episode ? "Next episode" : "Playback ended");
++        if (auto* play = m_playback_doc->GetElementById("nuvio-next-play"))
++            play->SetProperty("display", state.next_episode && state.skip_label.empty() ? "flex" : "none");
++        if (auto* keep = m_playback_doc->GetElementById("nuvio-next-keep"))
++            keep->SetProperty("display", state.next_episode ? "flex" : "none");
++    }
++    auto general_text = [](const std::string &text) {
++        std::string escaped;
++        for (char c : text) {
++            if (c == '&') escaped += "&amp;";
++            else if (c == '<') escaped += "&lt;";
++            else if (c == '>') escaped += "&gt;";
++            else if (c == '\n') escaped += "<br/>";
++            else if (c != '\r') escaped += c;
++        }
++        return escaped;
++    };
++    auto general_card = [&](const char *id, const char *heading, const std::string &text, const std::string &actions) {
++        if (auto *card = m_playback_doc->GetElementById(id)) {
++            card->SetProperty("display", text.empty() ? "none" : "block");
++            card->SetInnerRML(std::string("<div class=\"nuvio-general-heading\">") + heading +
++                "</div><div class=\"nuvio-general-body\">" + general_text(text) + "</div>" +
++                (actions.empty() ? "" : "<div class=\"nuvio-general-actions\">" + actions + "</div>"));
++        }
++    };
++    if (state.nuvio_parental != m_last_state.nuvio_parental) {
++        if (auto *tags = m_playback_doc->GetElementById("nuvio-parental")) {
++            tags->SetProperty("display", state.nuvio_parental.empty() ? "none" : "flex");
++            std::string markup;
++            size_t start = 0;
++            while (start < state.nuvio_parental.size()) {
++                const size_t end = state.nuvio_parental.find('\n', start);
++                const auto label = state.nuvio_parental.substr(start, end - start);
++                if (!label.empty()) markup += "<span class=\"badge-codec nuvio-parental-tag\">" + general_text(label) + "</span>";
++                if (end == std::string::npos) break;
++                start = end + 1;
++            }
++            tags->SetInnerRML(markup);
++        }
++    }
++    if (state.nuvio_pause_text != m_last_state.nuvio_pause_text)
++        general_card("nuvio-pause", "You're watching", state.nuvio_pause_text, "");
++    if (state.nuvio_recommendation != m_last_state.nuvio_recommendation || state.skip_label != m_last_state.skip_label)
++        general_card("nuvio-recommendation", "Watch next", state.nuvio_recommendation,
++            std::string(state.skip_label.empty() ? "R1 View details   " : "") + "Triangle Next pick   L1 Keep watching");
++    if (state.nuvio_still_countdown != m_last_state.nuvio_still_countdown)
++        general_card("nuvio-still", "Are you still watching?", state.nuvio_still_countdown > 0 ?
++            "Stopping in " + std::to_string(state.nuvio_still_countdown) + "s" : "", "X Play next episode   O Back to Nuvio");
++    if (auto *clock = m_playback_doc->GetElementById("nuvio-clock")) {
++        clock->SetProperty("display", state.chrome_hidden || state.nuvio_clock.empty() ? "none" : "block");
++        clock->SetProperty("opacity", std::to_string(state.alpha / 255.0));
++        if (state.nuvio_clock != m_last_state.nuvio_clock)
++            clock->SetInnerRML(general_text(state.nuvio_clock));
++    }
++    if (state.nuvio_active != m_last_state.nuvio_active || state.nuvio_loading_status != m_last_state.nuvio_loading_status)
++        if (auto *label = m_playback_doc->GetElementById("loading-label"))
++            label->SetInnerRML(state.nuvio_active ? general_text(state.nuvio_loading_status) : "LOADING");
++
+     m_last_state = state;
+ 
+     /* GL-5 (#81): caption-only mode — a subtitle cue is up but the playback
+@@ -2995,7 +3082,8 @@
+             el_pause_lbl->SetProperty("color", ink_on(m_theme.accent));
+         /* A seek raises the engine's paused flag while it runs: LOADING says
+          * what is really going on, PAUSED would be wrong. */
+-        if (state.paused && !state.scrub_active && !state.loading) {
++        if (state.paused && !state.scrub_active && !state.loading &&
++            state.nuvio_pause_text.empty() && !state.nuvio_still_countdown) {
+             el_pause->SetProperty("display", "flex");
+         } else {
+             el_pause->SetProperty("display", "none");
+@@ -3035,7 +3123,8 @@
+             "item-seek", "item-chapter", "progress-container", "time-row" };
+         for (const char* id : k_vod_only)
+             if (Rml::Element* e = m_playback_doc->GetElementById(id))
+-                e->SetProperty("display", live_off);
++                e->SetProperty("display", state.next_episode && std::strcmp(id, "item-chapter") == 0
++                    ? "none" : live_off);
+         /* #150: the chapter hint only for a file that has chapters. */
+         if (Rml::Element* e = m_playback_doc->GetElementById("item-chapter"))
+             e->SetProperty("display", (state.is_live || state.chapter_count == 0) ? "none" : "flex");
+@@ -4331,3 +4420,16 @@
  #endif
  }
  
@@ -1339,6 +4914,8 @@
 +void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const char* message) {
 +    if (!m_context || !m_nuvio_doc) return;
 +    ShowOnlyScreen(m_nuvio_doc);
++    m_nuvio_doc->SetProperty("opacity", message && !*message ? "0" : "1");
++    m_frame_dirty = true;
 +    if (m_nav_doc) m_nav_doc->Hide();
 +    Rml::Element* status = m_nuvio_doc->GetElementById("nuvio-status");
 +    if (status && status->GetInnerRML() != (message ? message : "Opening Nuvio Pro"))
@@ -1348,7 +4925,25 @@
 +}
 --- a/projects/evoplayer/ui_rml/src/evo_rmlui_bridge.cpp
 +++ b/projects/evoplayer/ui_rml/src/evo_rmlui_bridge.cpp
-@@ -753,3 +753,7 @@
+@@ -463,6 +463,17 @@
+     state.subtitle2_color = p->subtitle2_color;
+     state.subtitle_style = p->subtitle_style;
+     state.chrome_hidden = (p->chrome_hidden != 0);
++    state.nuvio_pause_text = p->nuvio_pause_text ? p->nuvio_pause_text : "";
++    state.nuvio_parental = p->nuvio_parental ? p->nuvio_parental : "";
++    state.nuvio_recommendation = p->nuvio_recommendation ? p->nuvio_recommendation : "";
++    state.nuvio_clock = p->nuvio_clock ? p->nuvio_clock : "";
++    state.nuvio_loading_status = p->nuvio_loading_status ? p->nuvio_loading_status : "";
++    state.nuvio_active = p->nuvio_active;
++    state.nuvio_still_countdown = p->nuvio_still_countdown;
++    state.skip_label = p->skip_label ? p->skip_label : "";
++    state.skip_countdown = p->skip_countdown;
++    state.next_episode = p->next_episode;
++    state.playback_ended = p->playback_ended;
+     state.fps = p->fps;
+     state.debug_overlay = (p->debug_overlay != 0);
+     state.music_mode = (p->music_mode != 0);
+@@ -779,3 +790,7 @@
  
  } // extern "C"
  
@@ -1369,7 +4964,7 @@
          std::vector<std::string> candidates = {
 --- a/scripts/package-app.sh
 +++ b/scripts/package-app.sh
-@@ -183,7 +183,7 @@
+@@ -187,7 +187,7 @@
  # 2. Native-app dependency bootstrap (static zlib for the host converter).
  # ---------------------------------------------------------------------------
  begin "native-app dependencies"
@@ -1378,7 +4973,7 @@
  need_file "${ZLIB_ARCHIVE:?}" "zlib bootstrap did not yield an archive"
  
  # ---------------------------------------------------------------------------
-@@ -192,7 +192,7 @@
+@@ -196,7 +196,7 @@
  begin "building host converter (ps5-native-tool)"
  TOOL="${BUILD}/host/ps5-native-tool"
  clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
@@ -1387,16 +4982,25 @@
      "${NATIVE}/native_app_builder.cpp" "${NATIVE}/self_container.cpp" \
      "${NATIVE}/elf_object.cpp" "${NATIVE}/sce_module_writer.cpp" \
      "${ZLIB_ARCHIVE}" -o "${TOOL}"
-@@ -285,7 +285,7 @@
+@@ -289,7 +289,7 @@
      # cached mount is caught immediately instead of costing a console session.
      # Written to a generated header to sidestep -D string quoting through the
      # make -> /bin/sh recipe chain.
 -    BUILD_SHA="$(git -C "${EVO}" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)"
-+    BUILD_SHA="9ee9a542-nuvio"
++    BUILD_SHA="f6e43e65-nuvio"
      git -C "${EVO}" diff --quiet -- "${EVO}" 2>/dev/null || BUILD_SHA="${BUILD_SHA}-dirty"
      printf '#pragma once\n#define EVO_BUILD_ID "%s_%s"\n' \
          "${BUILD_SHA}" "$(date -u +%m%d-%H%M)" > "${EVO}/include/evo_build_id.h"
-@@ -406,16 +406,10 @@
+@@ -309,7 +309,7 @@
+     # A raw connect() is a 75 s freeze on a dead host on the PS5 (see the script).
+     "${REPO_ROOT}/tools/check_raw_connect.sh" || die "raw connect() found - see above"
+     # #217: the NTFS disk helper payload, embedded in EVO (src/generated/).
+-    bash "${REPO_ROOT}/tools/gen_ntfs_helper.sh" || die "NTFS helper payload did not build"
++    # Nuvio does not build or embed the upstream NTFS disk helper.
+     # The quotes must survive two hops - this shell, then the make recipe's
+     # shell. Written as \\" the backslash escaped the space that followed and
+     # glued the NEXT -D flag into this one's value, so --usb-remote silently
+@@ -414,16 +414,10 @@
      ok "librmlui.a patched"
      ARCHIVE_GROUP+=("${RML_A}")
  
@@ -1411,10 +5015,10 @@
      for a in libSDL2 \
 -             libavformat libavcodec libswresample libavutil libswscale libdav1d \
 +             libavformat libavcodec libswresample libavutil libswscale \
+              libsmb2 \
               libass libfreetype libharfbuzz libharfbuzz-subset libfribidi \
               libpng16 libsamplerate libssl libcrypto libiconv libxml2 \
-              libz libbz2 liblzma libzstd libm; do
-@@ -702,7 +696,7 @@
+@@ -748,7 +742,7 @@
  
  echo ""
  ok "app module: ${APPDIR#"${REPO_ROOT}/"}/"

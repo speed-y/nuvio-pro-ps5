@@ -122,6 +122,13 @@ Start over uses zero. Percentage-only progress requires a saved duration.
 EVO receives the offset through its existing startup-seek path.
 Unknown duration or a rejected demuxer seek can still prevent startup resume.
 
+The AGC playback bridge prefers the homebrew-ui HUD when that renderer can draw the current captions.
+RmlUi remains the fallback for unsupported caption glyphs.
+Both HUDs must consume the skip, next-episode and playback-ended fields.
+Homebrew-ui copies the skip label before drawing, independent of the input string's lifetime.
+The prompt cards remain outside the fading controls, including when those controls are hidden.
+Host RmlUi renders alone do not validate the preferred console HUD.
+
 Before browser closure, the frontend saves an opaque session ID with the originating profile and PlayerController's progress context.
 EVO samples position and duration during playback and immediately before native teardown.
 Both sampling paths skip uncommitted scrub previews and retain the last measured position instead.
@@ -131,8 +138,35 @@ PlayerController's existing progress writer saves the movie or exact episode and
 Failed starts without a positive position cannot erase saved progress.
 Pending imports retain their return identity until success or a terminal missing report, allowing retries after transport or writer failures.
 An active seek to zero invalidates an older positive sample. Teardown's zero duration does not replace a valid sample.
-The native report stays in memory until return. Abrupt title termination or power loss has no recovery checkpoint.
+The existing HTTP accept thread checkpoints changed samples every 30 seconds, without disk work on the playback thread.
+The first measured sample and a finished report request an earlier checkpoint.
+Two small, checksummed files beside the browser snapshot alternate synchronous writes. Failed writes leave the preceding slot intact.
+After a forced close or restart, `/evo/progress` can recover the newest intact matching session.
+Nuvio imports it after the originating profile becomes active, including after normal profile or PIN selection on a cold launch.
+Recovery does not need the playback-return URL or its route lifetime. It does not bypass profile selection or restart playback automatically.
+Successful imports clear the pending browser context. Missing or damaged checkpoints cannot supply another session's progress.
+Healthy checkpoints normally limit lost progress to approximately 30 seconds plus scheduling delay.
+Storage failures or a damaged latest slot can require an older position. Console power-loss durability and playback performance remain unverified.
 This bridge does not implement live Trakt or Simkl scrobbling.
+
+Before native handoff, Nuvio uses its existing IntroDB repository and playback identity to fetch intro, recap and credits intervals.
+Lookup respects the active profile's Skip Intro setting and has a four-second deadline.
+Failure or missing data starts playback without prompts. A changed route, selection or profile cancels the stale handoff.
+Only bounded timestamp records enter EVO. No metadata lookup runs during native playback.
+The native overlay shows Skip intro, Skip recap or Skip credits while measured playback lies inside a valid interval.
+R1 seeks to the supplied segment end. Outside a prompt, R1 retains chapter navigation and X retains pause.
+Prompts remain visible after controls fade. Scrubbing, buffering, live streams, music and the diagnostics overlay suppress them.
+The "Dims in" countdown keeps a newly shown prompt at full opacity for ten seconds of unpaused display time.
+At zero, the countdown text disappears and the prompt dims to 50% opacity. R1 remains available through the segment.
+Newly shown intervals and native handoffs reset the countdown. Countdown expiry never initiates a seek.
+Known post-credit scenes remain reachable through Nuvio's existing target-selection rules.
+The handoff marks each interval using the active profile's individual auto-skip settings.
+EVO automatically seeks through enabled types during ready, unpaused playback. Other types keep their manual prompts.
+Outro aliases share the outro setting. Movie credits retain their independent setting before both use the native credits label.
+The Skip Intro master switch disables both modes. Settings apply at handoff because the browser closes during native playback.
+The player rejects malformed intervals and targets beyond the current duration. It clears intervals between native handoffs.
+A five-second suppression window hides stale pre-seek samples while allowing another attempt after a failed seek.
+These host-checked paths still require console validation. Timestamps cannot establish that the stream uses the matching cut.
 
 The storage hook rejects failed or incomplete reads rather than saving an empty or partial snapshot.
 It tracks explicit Storage API removals so sign-out and reset can still delete saved keys.
@@ -140,10 +174,56 @@ Restore or tracking failure disables saves for that document, preserving the dis
 Serialized synchronous loopback POSTs advance the baseline only after acknowledgement. This avoids asynchronous write reordering but can block the browser.
 Teardown rejection can lose recent unsaved changes. Native file writes remain in-place, not crash-safe or transactional.
 
+Native next episode captures episode metadata and normalized playback policy before browser closure, without copying the current stream URL.
+EVO displays a three-second autoplay countdown or a manual next-episode prompt at Nuvio's configured threshold.
+Known credits can advance that threshold, except when their post-credit gap exceeds the user's threshold.
+Pause, buffering, scrubbing and hidden playback screens freeze the countdown. L1 cancels the transition for that title session.
+R1 skips an eligible intro or credits segment first, starts a visible next-episode action second, and otherwise retains chapter navigation.
+The still-watching limit disables automatic transitions until the user chooses the manual action.
+The finished progress report carries a live-only transition request. Recovery checkpoints never contain launch intent.
+After importing progress through the existing profile gate, startup consumes an in-memory, one-use route authorization.
+The player then calls Nuvio's existing next-episode resolver and stream-selection policy, without starting the preceding stream or another countdown.
+Manual selection or a missing automatic match opens Nuvio's existing episode stream picker.
+No per-frame network request or filesystem write enters the next-episode path.
+
+### Playback General presentation
+
+Before browser closure, a separate recommendation controller prepares bounded text through Nuvio's existing metadata, source and watched-title filters.
+It does not run the browser controller's trailer or playback pipeline.
+Parental warnings, pause metadata and recommendation preparation share a four-second deadline with skip lookup.
+Late results cannot change the captured session. Missing data leaves the corresponding card absent.
+The browser posts an allowlisted, session-bound DTO to `/evo/presentation` before requesting native playback.
+The request accepts at most 8,192 bytes. Native playback receives policies and text, not recommendation routes or stream URLs.
+
+Both homebrew-ui and RmlUi draw pause, parental, clock, recommendation and Still Watching states.
+Loading Overlay and Detailed Loading Status independently control native loading presentation and real preparation, seek or buffering labels.
+The pause synopsis waits for the configured delay. Parental warnings consume eight seconds of ready, unpaused playback.
+The clock uses the browser's timezone offset and recomputes estimated finish time from remaining playback.
+Recommendation thresholds preserve known post-credit scenes and the existing episode threshold rules.
+R1 selects details unless a skip prompt owns it. Triangle cycles up to three prepared choices, while L1 dismisses recommendations.
+Recommendation navigation retains the originating profile/session gate and forces manual detail navigation without automatic playback.
+This native presentation does not implement recommendation trailers.
+
+Still Watching has its own handoff policy, separate from ordinary manual next episode.
+It pauses playback and counts 60 seconds of wall time. Continue requests a user-initiated next episode, while dismissal or timeout returns to details.
+Ready native frames authorize remembered-source persistence on return. Selection alone does not establish a working source.
+Cross-session binge reuse reads the newest matching series preference, while exact-video source reuse retains its cache expiry.
+Plugin capability checks hide unsupported plugin choices on PS5 and normalize old plugin-only scope to installed addons.
+Native teardown clears presentation policy before native-library playback can inherit it.
+These changes have host checks, but still require console validation beyond the owner's confirmed skip prompt.
+
 Circle stops playback that started through Nuvio, and the EVO playback pump then
 requests a browser reopen. Playback that started through the native settings
 keeps the EVO confirmation. The loading screen stays hidden while a native
 playback session is active.
+
+The next-episode card also offers Circle, Back to Nuvio. Movies and final episodes show a separate end card with this action.
+The end card waits for demux EOF, decoder drain and empty audio queues, not just the end of network read-ahead.
+Circle on either card carries a live-only return request. The browser restores the originating title through the existing profile gate.
+Series returns retain the season and focus the played episode. Movie returns open the detail page without automatic playback.
+Recovery checkpoints never carry this navigation request. Ordinary mid-playback Circle retains its previous browsing-route behavior.
+Nuvio playback hides connection-lost, reconnected and retry-exhausted connection toasts. Buffering indicators, recovery attempts and private diagnostics remain active.
+Unrelated decoder failures and native-library playback retain their existing error presentation.
 
 ## Decoder and seeking
 
@@ -162,6 +242,19 @@ on the recorded UsenetStreamer source. See [Validation](VALIDATION.md).
 The fix does not change decoder timing and does not force a shorter settle
 interval. Source access, keyframes, demuxing and network delay all affect seek
 time. A successful seek on one stream does not show performance for another.
+
+### Native download test
+
+Settings > Playback > Speed test controls a native worker through loopback GET status and POST start/cancel endpoints.
+Opening the dialog does not start a download. The browser never downloads the test payload.
+The worker queries TorBox's public, key-free speedtest API and selects its `closest` CDN entry.
+It accepts only HTTPS TorBox CDN URLs for `/dld/100MB.bin`, without browser-supplied URLs or account headers.
+One FFmpeg AVIO HTTP/TLS connection reads at most 100 MiB, with a 15-second download deadline and 25-second overall deadline.
+Network operations use five-second timeouts and the interrupt callback. Synchronous DNS resolution can exceed the deadline or delay cancellation.
+The average includes connection setup but excludes CDN discovery. This is a download test, not upload speed, ping or media-file throughput.
+The worker does not forward playback headers, change socket buffers, retry failed downloads or save results.
+Browser closure requests cancellation. Nuvio's playback handoff waits for worker exit without blocking the main thread.
+The UI reports unconfirmed requests honestly and checks status before offering another start. PS5 execution remains pending.
 
 ## Network endpoints
 
@@ -278,6 +371,7 @@ the process's main thread served every request.
 | `/data/homebrew/PPSA99996` | Native folder title, including `webui/` |
 | `/data/nuvio/nuvio.conf` | Console UI origin the title opens |
 | `/data/nuvio/webui/<host>_<port>.json` | Private browser state for that origin |
+| `/data/nuvio/webui/<host>_<port>.json.progress.0` and `.progress.1` | Alternating native playback recovery checkpoints |
 | `/data/nuvio/addons.json` | Native addon manifest list |
 | `/data/nuvio/evo.log` | Private native diagnostics |
 | `/data/homebrew/ps5-homebrew-dev` | Install staging and update backups |
@@ -290,6 +384,65 @@ The runtime `libc.prx` comes from independently authored boilerplate in EVO, and
 the build does not extract Sony modules. etaHEN can stall when FTP downloads this
 generated runtime, so `control-4` hashes the staged runtime on the console
 instead.
+
+## EVO v0.13.5 integration
+
+The source and UI-kit pins target EVO v0.13.5. Nuvio retains its browser origin,
+title identity, permission bootstrap and single-connection HTTP reader.
+The adapter disables stock EVO updating, the extra LAN phone/log server and the embedded NTFS-helper launch.
+Ordinary SMB and NTFS reader branches remain intact.
+
+`scripts/native_playback.py` serializes seek resets against complete audio decode and output iterations.
+A seek-owned hold interrupts queue waits before the seek acquires both worker locks.
+The demuxer resets codecs, queues, the resampler and clocks only after audio and video stop using them.
+A worker timeout cancels the seek before reset. Audio preroll filtering also applies when seeking to zero.
+Failed worker creation unwinds partial playback instead of reporting a successful start.
+These host-checked fixes do not establish the cause or resolution of a particular console desync or preparation stall.
+
+`scripts/native_subtitles.py` extends external timing parsing to short WebVTT timestamps.
+It applies existing external-track selection policy after both local and remote subtitle loading.
+Changed embedded selections request an in-place seek at the presentation position, preserving pause state,
+so the single reader refills cues skipped by read-ahead. Replacement decoders open before existing slots close.
+Embedded PGS and MOV_TEXT support come from the newer engine, not this external parser.
+
+`scripts/subtitle_handoff.py` transfers up to 32 browser addon/sidecar candidates through a bounded,
+session-matched `/evo/subtitles` POST into EVO's online-subtitle cache and native picker.
+Discovery waits at most four seconds and retains available candidates on timeout.
+Candidates remain available for manual choice. The profile policy below can also select a matching addon subtitle at startup.
+The handoff does not import browser track indices.
+URLs stay out of return storage and diagnostics. The handoff excludes candidates needing custom headers.
+New titles and explicit off/embedded/external selections invalidate pending online downloads.
+An explicit embedded choice also prevents remembered online restoration from overriding it on reopen.
+The external loader supports SRT/WebVTT. It does not decode external ASS/SSA or subtitle archives.
+
+`scripts/native_preferences.py` extends that session-bound handoff with the active profile's resolved audio and subtitle targets.
+The browser uses Nuvio's existing startup helpers for primary, secondary, system and original-language preferences, plus off and forced modes.
+Native startup considers decodable audio in the selected program. An explicit audio-track request wins over automatic selection.
+For each subtitle target, startup tries supported embedded tracks, then parseable addon subtitles, before moving to the fallback language.
+Missing matches leave subtitles off rather than introducing an unrelated English preference.
+Forced selection follows the actual selected native audio and retains regional matching restrictions.
+
+An exact provider/session/URL reopen captures current manual audio, subtitle source and enabled state before teardown.
+It restores those choices rather than reapplying the profile policy. New sessions discard old secondary-track indices.
+Profile policy never changes persistent native settings or native-library playback.
+Automatic addon selection retains the handoff's header and format limits. Unknown language aliases and label-only metadata are not guessed.
+These paths have host checks. Console language selection and playback remain unverified.
+
+Browser arrows, Enter and Back already use the normal navigation handlers.
+`scripts/ps5-tv-remote.js` adds a bounded, opt-in numeric event observer, disabled in ordinary builds.
+Native input separately opens the system-user remote port using the pinned PS5 SDL contract in [Sources](SOURCES.md#native-tv-remote-contract).
+`scripts/native_remote.py` merges remote buttons before EVO calculates edges and repeats, even without a DualSense handle.
+It uses existing native navigation and player actions, with one dispatch per frame.
+Read failures release remote input. Recovery requires a neutral state and uses a one-second acquisition backoff.
+Browser ownership suspends the native receiver. Cleanup closes owned handles, not borrowed handles.
+Basic arrows, OK, Back and Menu are mapped. Supported transport codes reuse existing playback actions.
+Dedicated Play and Pause remain unbound because they must not act as toggles.
+Actual TV-remote delivery and behavior on firmware 12.70 remain hardware checks.
+
+The browser subtitle loader shares matching in-flight discovery across initial mount and native handoff.
+Its PS5 request tokens remain monotonic across remounts, so older lookups cannot overwrite a newer mount's candidates.
+The handoff checks mount identity as well as route, profile and source before transferring candidates.
+The four-second discovery limit can still exclude slower responses.
 
 ## Release layout
 
