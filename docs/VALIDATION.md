@@ -5427,6 +5427,32 @@ loading accent `#7b62ff`. Host frames under `output/uiview/` need a fresh
 preview run after that palette change.
 
 [PENDING] Side-by-side console install into `/data/homebrew/PPSA99995` only.
+
+## Native UI PoC one-screen Home layout, 2026-11-10
+
+[SOURCE-VERIFIED] Theme defaults now match measured browser Home tokens:
+background `#0d0d0d`, muted text `#b3b3b3`, sidebar about 144px, content start
+about 168px, posters about 221x339, white focus ring, accent `#7b62ff`.
+The draw path adds a left rail, hero overview, and a Popular - Movie shelf title.
+
+[LOCALLY BUILT] Host preview optionally loads JPEG art from
+`build/native_ui_poc_preview/art/` (or `NUVIO_POC_ART`). That art is local scrape
+output and is not committed. Fresh host frames and a browser-versus-PoC
+side-by-side image are regenerated with the preview script.
+
+HandshakeHackin `Nuvio-maxd-releases` was glanced at as an optional same-kit
+reference and then dropped. It is not required for this PoC.
+
+[LOCALLY BUILT] Host frames regenerated with scrape art under
+`build/native_ui_poc_preview/art/` (local only, not committed).
+Side-by-side image: `output/uiview/nuvio_vs_poc_side_by_side.png`.
+
+`make check` PoC unit tests pass. One unrelated host Chrome headless
+timeout remains in `test_home_hero` under this VM after a GUI session.
+That failure is not from the PoC sources.
+
+[PENDING] Owner review of the refreshed host side-by-side.
+Console install of `PPSA99995` remains pending.
 Confirm product `PPSA99996` and `/data/nuvio` remain untouched afterward.
 Judge Phase 1 identity (dark field, brand, hero, shelf, focus, purple accent),
 not pixel parity with browser Home.

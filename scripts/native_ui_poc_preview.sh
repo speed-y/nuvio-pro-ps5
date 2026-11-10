@@ -51,7 +51,7 @@ EVOP="$EVO/projects/evoplayer"
 CXX="$(command -v g++ || command -v clang++)"
 FLAGS=(-std=c++20 -O2 -w -DGL_GLEXT_PROTOTYPES=1
        -I"$KIT/src" -I"$KIT" -I"$KIT/host"
-       -I"$EVOP/ui_kit/include" -I"$EVOP/ui_rml/include" -I"$EVOP/include"
+       -I"$EVOP" -I"$EVOP/ui_kit/include" -I"$EVOP/ui_rml/include" -I"$EVOP/include"
        -I"$ROOT/scripts/native_ui_poc")
 
 SOURCES=(
@@ -78,5 +78,13 @@ done
 
 BIN="$WORKDIR/nuvio_poc_host_preview"
 "$CXX" "${OBJS[@]}" -lEGL -lGL -lm -o "$BIN"
-"$BIN" "$EVO" "$OUT" "$WIDTH" "$HEIGHT"
+
+ART_DIR="${NUVIO_POC_ART:-$WORKDIR/art}"
+if [[ -d "$ART_DIR" && -f "$ART_DIR/hero_0.jpg" ]]; then
+  echo "using Home scrape art from $ART_DIR"
+  "$BIN" "$EVO" "$OUT" "$WIDTH" "$HEIGHT" "$ART_DIR"
+else
+  echo "no art dir at $ART_DIR; using synthetic posters"
+  "$BIN" "$EVO" "$OUT" "$WIDTH" "$HEIGHT"
+fi
 ls -la "$OUT"/hui_nuvio_poc*.png

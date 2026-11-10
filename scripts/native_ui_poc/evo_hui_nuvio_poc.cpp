@@ -1,5 +1,6 @@
 /*
  * Nuvio native UI proof draw path. GPL-3.0-or-later.
+ * One-screen Home-like layout measured against the packaged browser UI.
  */
 #include "evo_hui_nuvio_poc.hpp"
 
@@ -22,10 +23,8 @@ using hui::gfx::DrawList;
 using hui::gfx::Rect;
 namespace ui = hui::ui;
 
-constexpr float kMargin = 96.0f;
-constexpr float kHeroH = 420.0f;
-constexpr float kRowY = 520.0f;
-constexpr float kCardGap = 28.0f;
+constexpr float kHeroH = 620.0f;
+constexpr float kRowY = 700.0f;
 
 Color hex(uint32_t rgb, float a = 1.0f)
 {
@@ -34,13 +33,24 @@ Color hex(uint32_t rgb, float a = 1.0f)
 
 } // namespace
 
+float NuvioPocScreen::content_x() const
+{
+    return theme_.content_x > 1.0f ? theme_.content_x : 168.0f;
+}
+
+float NuvioPocScreen::card_gap() const
+{
+    return theme_.card_gap > 1.0f ? theme_.card_gap : 16.0f;
+}
+
 void NuvioPocScreen::set(const nuvio_poc_params_t &params)
 {
     theme_ = params.theme.poster_w > 1.0f ? params.theme : nuvio_poc_default_theme();
-    brand_ = params.brand ? params.brand : "Nuvio Native PoC";
+    brand_ = params.brand ? params.brand : "Nuvio";
     hero_title_ = params.hero_title ? params.hero_title : "";
     hero_detail_ = params.hero_detail ? params.hero_detail : "";
-    shelf_title_ = params.shelf_title ? params.shelf_title : "Featured";
+    hero_overview_ = params.hero_overview ? params.hero_overview : "";
+    shelf_title_ = params.shelf_title ? params.shelf_title : "Popular - Movie";
     status_ = params.status ? params.status : "";
     status_is_error_ = params.status_is_error;
     focus_index_ = std::max(0, params.focus_index);
@@ -97,9 +107,9 @@ void NuvioPocScreen::update(float dt)
 
 Rect NuvioPocScreen::poster_rect(int absolute_index) const
 {
-    const float stride = theme_.poster_w + kCardGap;
-    const float x = kMargin + (static_cast<float>(absolute_index) - scroll_x_) * stride;
-    return {x, kRowY + 48.0f, theme_.poster_w, theme_.poster_h};
+    const float stride = theme_.poster_w + card_gap();
+    const float x = content_x() + (static_cast<float>(absolute_index) - scroll_x_) * stride;
+    return {x, kRowY + 42.0f, theme_.poster_w, theme_.poster_h};
 }
 
 Rect NuvioPocScreen::focus_rect() const
@@ -108,14 +118,13 @@ Rect NuvioPocScreen::focus_rect() const
     {
         if (play_focused_)
         {
-            /* Match draw_detail(): poster at card+48, text column after poster+48. */
-            const float text_x = 120.0f + 48.0f + theme_.poster_w + 48.0f;
+            const float text_x = content_x() + 48.0f + theme_.poster_w + 48.0f;
             return {text_x, 220.0f + 470.0f, 220.0f, 64.0f};
         }
-        return {120.0f, 220.0f, 1680.0f, 640.0f};
+        return {content_x(), 180.0f, 1920.0f - content_x() - 48.0f, 720.0f};
     }
     if (items_.empty())
-        return {kMargin, kRowY + 48.0f, theme_.poster_w, theme_.poster_h};
+        return {content_x(), kRowY + 42.0f, theme_.poster_w, theme_.poster_h};
     return poster_rect(focus_index_);
 }
 
@@ -127,29 +136,53 @@ std::uint32_t NuvioPocScreen::art_texture(const Context &ctx, const std::uint32_
     return ctx.textures.pixels(art, w, h, static_cast<std::uint64_t>(std::hash<std::string>{}(tag)));
 }
 
+void NuvioPocScreen::draw_sidebar(DrawList &list, const Context &ctx) const
+{
+    const float w = theme_.sidebar_w > 1.0f ? theme_.sidebar_w : 144.0f;
+    const Color rail = hex(0x111111);
+    const Color well = hex(0x1c1c1c);
+    const Color accent = hex(theme_.accent);
+    const Color muted = hex(theme_.text_muted);
+    list.rounded_rect({0, 0, w, 1080}, 0, rail);
+
+    const char *labels[] = {"Home", "Search", "Library", "Settings"};
+    for (int i = 0; i < 4; ++i)
+    {
+        const float y = 120.0f + static_cast<float>(i) * 110.0f;
+        const Rect icon{w * 0.5f - 28.0f, y, 56.0f, 56.0f};
+        const bool active = i == 0;
+        list.rounded_rect(icon, 16.0f, active ? accent.with_alpha(0.28f) : well);
+        if (active)
+            list.bordered_rect(icon, 16.0f, Color::rgb(0x000000, 0.0f), 2.0f, Color::rgb(0xffffff, 0.85f));
+        ui::text(list, ctx.fonts.regular, labels[i], w * 0.5f, y + 78.0f, 14.0f,
+                 active ? hex(theme_.text) : muted, Align::center);
+    }
+}
+
 void NuvioPocScreen::draw_hero(DrawList &list, const Context &ctx) const
 {
     const auto &fonts = ctx.fonts;
     const Color top = hex(theme_.bg_top);
     const Color bottom = hex(theme_.bg_bottom);
-    const Color accent = hex(theme_.accent);
     const Color text = hex(theme_.text);
     const Color muted = hex(theme_.text_muted);
+    const float left = content_x();
 
     list.gradient_rect({0, 0, 1920, 1080}, 0, top, bottom);
 
-    const Rect hero{0, 0, 1920, kHeroH};
+    const Rect hero{left, 0, 1920.0f - left, kHeroH};
     if (hero_art_ && hero_art_w_ > 0 && hero_art_h_ > 0)
     {
         const std::uint32_t tex = art_texture(ctx, hero_art_, hero_art_w_, hero_art_h_, "poc-hero");
         if (tex)
-            list.image(tex, hero, ::hui::gfx::kFullUv, Color::rgb(0xffffff, 0.55f));
+            list.image(tex, hero, ::hui::gfx::kFullUv, Color::rgb(0xffffff, 0.92f));
     }
-    list.gradient_rect(hero, 0, Color::rgb(0x000000, 0.15f), Color::rgb(0x000000, 0.85f));
+    /* Left readable field + bottom fade into the shelf, matching modern Home. */
+    list.gradient_rect(hero, 0, Color::rgb(0x000000, 0.72f), Color::rgb(0x000000, 0.08f));
+    list.gradient_rect({left, kHeroH - 180.0f, 1920.0f - left, 180.0f}, 0, Color::rgb(0x000000, 0.05f),
+                       Color::rgb(theme_.bg_bottom, 0.98f));
 
-    ui::text(list, fonts.display, brand_, kMargin, 110.0f, 64.0f, text);
-    ui::text(list, fonts.semibold, ui::upper("Native proof"), kMargin, 158.0f, 18.0f, accent, Align::left,
-             2.0f);
+    ui::text(list, fonts.semibold, brand_, left + 8.0f, 56.0f, 22.0f, muted);
 
     const std::string title =
         hero_title_.empty() && !items_.empty() ? items_[static_cast<std::size_t>(focus_index_)].title
@@ -157,16 +190,21 @@ void NuvioPocScreen::draw_hero(DrawList &list, const Context &ctx) const
     const std::string detail =
         hero_detail_.empty() && !items_.empty() ? items_[static_cast<std::size_t>(focus_index_)].subtitle
                                                 : hero_detail_;
-    ui::text(list, fonts.display, fonts.display.font->fit(title, 46.0f, 1100.0f), kMargin, 300.0f, 46.0f,
+    const std::string overview =
+        hero_overview_.empty() && !items_.empty() ? items_[static_cast<std::size_t>(focus_index_)].overview
+                                                  : hero_overview_;
+
+    ui::text(list, fonts.display, fonts.display.font->fit(title, 56.0f, 820.0f), left + 8.0f, 250.0f, 56.0f,
              text);
-    ui::text(list, fonts.regular, fonts.regular.font->fit(detail, 22.0f, 1100.0f), kMargin, 348.0f, 22.0f,
+    ui::text(list, fonts.regular, fonts.regular.font->fit(detail, 22.0f, 820.0f), left + 8.0f, 318.0f, 22.0f,
              muted);
+    if (!overview.empty())
+        ui::paragraph(list, fonts.regular, overview, left + 8.0f, 360.0f, 20.0f, 760.0f, 30.0f, muted, 5);
 
     if (!status_.empty())
     {
         const Color status_color = status_is_error_ ? Color::rgb(0xff7a7a) : muted;
-        ui::text(list, fonts.semibold, status_, 1920.0f - kMargin, 110.0f, 20.0f, status_color,
-                 Align::right);
+        ui::text(list, fonts.semibold, status_, 1920.0f - 48.0f, 56.0f, 18.0f, status_color, Align::right);
     }
 }
 
@@ -176,46 +214,39 @@ void NuvioPocScreen::draw_row(DrawList &list, const Context &ctx) const
     const Color text = hex(theme_.text);
     const Color muted = hex(theme_.text_muted);
     const Color surface = hex(theme_.surface);
-    const Color accent = hex(theme_.accent);
+    const float left = content_x();
 
-    ui::text(list, fonts.display, shelf_title_, kMargin, kRowY, 30.0f, text);
+    ui::text(list, fonts.display, shelf_title_, left, kRowY, 28.0f, text);
 
     if (items_.empty())
     {
-        const Rect empty{kMargin, kRowY + 48.0f, 640.0f, theme_.poster_h};
+        const Rect empty{left, kRowY + 42.0f, 640.0f, theme_.poster_h};
         list.rounded_rect(empty, theme_.poster_radius, surface);
-        ui::text(list, fonts.regular,
-                 status_is_error_ ? "Metadata unavailable" : "No titles yet", empty.cx(),
+        ui::text(list, fonts.regular, status_is_error_ ? "Metadata unavailable" : "No titles yet", empty.cx(),
                  empty.cy(), 22.0f, muted, Align::center);
         return;
     }
 
-    const float stride = theme_.poster_w + kCardGap;
+    const float stride = theme_.poster_w + card_gap();
     for (int i = 0; i < static_cast<int>(items_.size()); ++i)
     {
         const Rect poster = poster_rect(i);
-        if (poster.x > 1920.0f || poster.x + poster.w < -stride)
+        if (poster.x > 1920.0f || poster.x + poster.w < left - stride)
             continue;
 
         const Item &item = items_[static_cast<std::size_t>(i)];
-        list.shadow(poster, theme_.poster_radius, 18.0f, Color::rgb(0x000000, 0.40f));
+        list.shadow(poster, theme_.poster_radius, 16.0f, Color::rgb(0x000000, 0.45f));
         const std::uint32_t tex =
             art_texture(ctx, item.poster, item.poster_w, item.poster_h, "poc-" + std::to_string(i));
         if (tex)
             list.image(tex, poster, ::hui::gfx::kFullUv, Color::rgb(0xffffff));
         else
             list.gradient_rect(poster, theme_.poster_radius, surface, hex(theme_.bg_bottom));
-
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(item.title, 18.0f, theme_.poster_w),
-                 poster.x + 2.0f, poster.y + poster.h + 28.0f, 18.0f, text);
-        ui::text(list, fonts.regular, fonts.regular.font->fit(item.subtitle, 15.0f, theme_.poster_w),
-                 poster.x + 2.0f, poster.y + poster.h + 52.0f, 15.0f, muted);
     }
 
     if (!detail_open_)
     {
         const Rect ring = ring_.value();
-        list.glow(ring, theme_.poster_radius, 18.0f, accent.with_alpha(0.28f + 0.10f * ui::breathe(ctx.time)));
         list.bordered_rect(ring.inset(-theme_.focus_ring), theme_.poster_radius + theme_.focus_ring,
                            Color::rgb(0x000000, 0.0f), 4.0f, Color::rgb(0xffffff));
     }
@@ -236,10 +267,11 @@ void NuvioPocScreen::draw_detail(DrawList &list, const Context &ctx) const
     const Color text = hex(theme_.text);
     const Color muted = hex(theme_.text_muted);
     const Color accent = hex(theme_.accent);
+    const float left = content_x();
 
-    const Rect card{120.0f, 220.0f, 1680.0f, 640.0f};
-    list.rounded_rect(card, 28.0f, Color::rgb(0x000000, 0.55f));
-    list.bordered_rect(card, 28.0f, surface, 2.0f, accent.with_alpha(0.55f));
+    const Rect card{left, 180.0f, 1920.0f - left - 48.0f, 720.0f};
+    list.rounded_rect(card, 22.0f, Color::rgb(0x000000, 0.55f));
+    list.bordered_rect(card, 22.0f, surface, 2.0f, Color::rgb(0xffffff, 0.18f));
 
     const Rect poster{card.x + 48.0f, card.y + 56.0f, theme_.poster_w, theme_.poster_h};
     const std::uint32_t tex =
@@ -273,6 +305,7 @@ void NuvioPocScreen::draw_detail(DrawList &list, const Context &ctx) const
 void NuvioPocScreen::draw(DrawList &list, const Context &ctx) const
 {
     draw_hero(list, ctx);
+    draw_sidebar(list, ctx);
     if (!detail_open_)
         draw_row(list, ctx);
     else

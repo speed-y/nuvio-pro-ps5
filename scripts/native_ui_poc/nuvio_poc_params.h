@@ -30,7 +30,7 @@ typedef struct nuvio_poc_item {
 } nuvio_poc_item_t;
 
 typedef struct nuvio_poc_theme {
-    /* Theme tokens for the proof. Later phases measure Nuvio CSS. */
+    /* Measured from the packaged browser Home CSS / live 1920x1080 layout. */
     uint32_t bg_top;      /* 0xRRGGBB */
     uint32_t bg_bottom;
     uint32_t surface;
@@ -41,6 +41,9 @@ typedef struct nuvio_poc_theme {
     float poster_h;
     float poster_radius;
     float focus_ring;
+    float sidebar_w;
+    float content_x;
+    float card_gap;
 } nuvio_poc_theme_t;
 
 typedef struct nuvio_poc_params {
@@ -48,6 +51,7 @@ typedef struct nuvio_poc_params {
     const char *brand;
     const char *hero_title;
     const char *hero_detail;
+    const char *hero_overview;
     const char *shelf_title;
     const char *status; /* empty, loading, error, or ready note */
     int status_is_error;
@@ -64,18 +68,23 @@ typedef struct nuvio_poc_params {
 
 static inline nuvio_poc_theme_t nuvio_poc_default_theme(void)
 {
-    /* Dark Nuvio-like proof palette. Accent matches the browser loading RML. */
+    /* Tokens from build/ui/css/bundle.css and a live 1920x1080 Home measure:
+     * --bg-color #0d0d0d, --card-bg #222, --text-secondary #b3b3b3,
+     * sidebar ~144px, posters ~221x339, white focus ring. */
     nuvio_poc_theme_t t;
-    t.bg_top = 0x0b0d10;
-    t.bg_bottom = 0x050607;
-    t.surface = 0x161a20;
+    t.bg_top = 0x0d0d0d;
+    t.bg_bottom = 0x0d0d0d;
+    t.surface = 0x222222;
     t.accent = 0x7b62ff;
-    t.text = 0xf2f4f7;
-    t.text_muted = 0x9aa3af;
-    t.poster_w = 176.0f;
-    t.poster_h = 264.0f;
-    t.poster_radius = 18.0f;
-    t.focus_ring = 5.0f;
+    t.text = 0xffffff;
+    t.text_muted = 0xb3b3b3;
+    t.poster_w = 221.0f;
+    t.poster_h = 339.0f;
+    t.poster_radius = 12.0f;
+    t.focus_ring = 4.0f;
+    t.sidebar_w = 144.0f;
+    t.content_x = 168.0f;
+    t.card_gap = 16.0f;
     return t;
 }
 

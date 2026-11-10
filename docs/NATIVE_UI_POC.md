@@ -21,8 +21,8 @@ builds keep `PPSA99996` and `/data/nuvio`.
 
 ## What it adds
 
-- One themed native shelf with a dark full-frame background and a hero block
-- One horizontal virtualized poster row with a focus ring
+- One Home-like native shelf with measured dark tokens (`#0d0d0d`), a left rail, hero, and overview
+- One horizontal virtualized poster row (~221x339) with a white focus ring
 - D-pad and stick movement along the row
 - One detail card for the focused item
 - A small metadata load that can fail without freezing the frame
@@ -53,6 +53,9 @@ screen, and writes:
 - `output/uiview/hui_nuvio_poc_error.png`
 
 Optional size arguments are width and height. The default is 1920 by 1080.
+If `build/native_ui_poc_preview/art/` holds a Home scrape (`hero_0.jpg`, posters,
+`catalog.json`), the host preview loads that art. Set `NUVIO_POC_ART` to override
+the art directory. Without art, the preview uses synthetic posters.
 
 A full EVO `tools/hui_preview.sh` run also gains `nuvio_poc*` fixtures after a
 normal title build unpacks and polishes the player tree. Set
@@ -92,22 +95,21 @@ goal is “looks identical to current Nuvio.”
 
 ### Check now (host PNG or console PoC tile)
 
-- Dark full-bleed background (not EVO’s blue rail chrome)
-- Large brand text reading **Nuvio Native PoC**
-- One hero block and one horizontal poster shelf
+- Dark full-bleed background near browser Home `#0d0d0d` (not EVO blue chrome)
+- Left rail with Home active, content starting near 168px
+- Brand mark **Nuvio**, hero title, short overview, and one Popular - Movie row
 - Focus ring moves with Left/Right
 - Accent reads purple (`#7b62ff`), matching the browser loading accent
-- Typography hierarchy: brand > hero title > shelf labels
+- Poster cells near 221x339 with a white focus ring
 
 ### Do not fail Phase 1 for these yet
 
-- Missing sidebar, Continue Watching, profiles, addons, Trakt, settings
-- Placeholder gradient posters instead of real artwork
-- Different layout density than browser Home
-- Missing browser chrome, search, or category rows
-- Exact CSS spacing, radii, or font metrics
+- Missing Continue Watching, profiles, addons, Trakt, settings
+- Synthetic posters when no Home scrape art is present
+- Exact CSS spacing, radii, or font metrics versus every browser breakpoint
+- Missing search chrome or extra category rows
 
-Those belong to later phases after measuring the live browser CSS.
+Full multi-row Home parity belongs to later phases.
 
 ### Useful side-by-side check on the console
 

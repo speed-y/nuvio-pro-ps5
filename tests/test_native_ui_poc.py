@@ -14,8 +14,10 @@ import native_ui_poc
 class NativeUiPocSourceTests(unittest.TestCase):
     def test_theme_defaults_are_dark_nuvio_like(self):
         header = (ROOT / 'scripts/native_ui_poc/nuvio_poc_params.h').read_text()
-        self.assertIn('0x0b0d10', header)
+        self.assertIn('0x0d0d0d', header)
         self.assertIn('0x7b62ff', header)
+        self.assertIn('sidebar_w', header)
+        self.assertIn('hero_overview', header)
         self.assertIn('NUVIO_POC_MAX_ITEMS', header)
 
     def test_sample_catalog_is_small_json_array(self):

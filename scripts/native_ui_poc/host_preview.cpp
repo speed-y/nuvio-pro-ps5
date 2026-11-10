@@ -1,7 +1,8 @@
 /*
  * Host preview for the Nuvio native UI proof.
  * Same DrawList + OpenGL kit path as EVO tools/hui_preview.sh.
- * usage: host_preview <evo-repo-root> <output-dir> [width height]
+ * usage: host_preview <evo-repo-root> <output-dir> [width height [art-dir]]
+ * Optional art-dir holds hero_0.jpg, poster_*.jpg and catalog.json from a live Home scrape.
  */
 #include "evo_hui_nuvio_poc.hpp"
 #include "nuvio_poc_params.h"
@@ -15,6 +16,8 @@
 #include <EGL/eglext.h>
 #include <GL/glcorearb.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "third_party/stb/stb_image_write.h"
 
@@ -100,6 +103,85 @@ std::vector<std::uint32_t> fake_art(int w, int h, std::uint32_t a, std::uint32_t
     return px;
 }
 
+bool load_jpeg_abgr(const std::string &path, std::vector<std::uint32_t> *out, int *out_w, int *out_h)
+{
+    int w = 0, h = 0, n = 0;
+    unsigned char *rgba = stbi_load(path.c_str(), &w, &h, &n, 4);
+    if (!rgba || w <= 0 || h <= 0)
+    {
+        if (rgba)
+            stbi_image_free(rgba);
+        return false;
+    }
+    out->resize(static_cast<std::size_t>(w * h));
+    for (int i = 0; i < w * h; ++i)
+    {
+        const unsigned char *p = rgba + i * 4;
+        (*out)[static_cast<std::size_t>(i)] =
+            0xff000000u | (static_cast<std::uint32_t>(p[2]) << 16) |
+            (static_cast<std::uint32_t>(p[1]) << 8) | static_cast<std::uint32_t>(p[0]);
+    }
+    stbi_image_free(rgba);
+    *out_w = w;
+    *out_h = h;
+    return true;
+}
+
+bool load_art_bundle(const std::string &art_dir, std::vector<std::uint32_t> *hero, int *hero_w,
+                     int *hero_h, std::vector<std::vector<std::uint32_t>> *posters, int *poster_w,
+                     int *poster_h)
+{
+    if (art_dir.empty())
+        return false;
+
+    /* Catalog order from a live Home Popular - Movie scrape. */
+    static const char *poster_names[] = {"poster_0.jpg", "poster_3.jpg", "poster_4.jpg",
+                                         "poster_5.jpg", "poster_6.jpg", "poster_7.jpg",
+                                         "poster_8.jpg", "poster_9.jpg"};
+    static const uint32_t pairs[][2] = {{0x1a1040, 0x7b62ff}, {0x2b1055, 0xd16ba5}, {0x3a1c0b, 0xf2a541},
+                                        {0x0b1f3a, 0x5aa9e6}, {0x1e2a12, 0x9bd16b}, {0x331022, 0xff6f91},
+                                        {0x102033, 0x6bb6ff}, {0x241018, 0xff8f6b}};
+    if (!load_jpeg_abgr(art_dir + "/hero_0.jpg", hero, hero_w, hero_h))
+    {
+        std::fprintf(stderr, "art: no hero_0.jpg under %s (falling back to fake art)\n",
+                     art_dir.c_str());
+        return false;
+    }
+
+    posters->clear();
+    int pw = 300, ph = 450;
+    int loaded = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        std::vector<std::uint32_t> px;
+        int w = 0, h = 0;
+        if (load_jpeg_abgr(art_dir + "/" + poster_names[i], &px, &w, &h))
+        {
+            if (loaded == 0)
+            {
+                pw = w;
+                ph = h;
+            }
+            ++loaded;
+        }
+        else
+        {
+            std::fprintf(stderr, "art: missing %s, using synthetic fill\n", poster_names[i]);
+            px = fake_art(pw, ph, pairs[i][0], pairs[i][1], static_cast<float>(i));
+            w = pw;
+            h = ph;
+        }
+        posters->push_back(std::move(px));
+        (void)w;
+        (void)h;
+    }
+    *poster_w = pw;
+    *poster_h = ph;
+    std::fprintf(stderr, "art: loaded hero %dx%d and %d/%zu real posters from %s\n", *hero_w, *hero_h,
+                 loaded, posters->size(), art_dir.c_str());
+    return true;
+}
+
 bool load_font(hui::gfx::Renderer &renderer, const std::string &path, hui::gfx::Font *font,
                hui::ui::FontRef *ref)
 {
@@ -122,13 +204,20 @@ int main(int argc, char **argv)
 {
     if (argc < 3)
     {
-        std::fprintf(stderr, "usage: %s <evo-repo-root> <output-dir> [width height]\n", argv[0]);
+        std::fprintf(stderr,
+                     "usage: %s <evo-repo-root> <output-dir> [width height [art-dir]]\n",
+                     argv[0]);
         return 2;
     }
     const std::string root = argv[1];
     const std::string output = argv[2];
     const int width = argc > 4 ? std::atoi(argv[3]) : 1920;
     const int height = argc > 4 ? std::atoi(argv[4]) : 1080;
+    std::string art_dir;
+    if (argc > 5)
+        art_dir = argv[5];
+    else if (const char *env = std::getenv("NUVIO_POC_ART"))
+        art_dir = env;
     const std::string assets = root + "/projects/evoplayer/assets";
     const std::string fdir = root + "/third_party/ps5-homebrew-ui/assets/fonts/";
 
@@ -153,11 +242,17 @@ int main(int argc, char **argv)
     HostTextures host(renderer, assets);
     evo::kit::TextureCache textures(host);
     evo::kit::Palette palette;
-    palette.bg_top = hui::gfx::Color::rgb(0x0b0d10);
-    palette.bg_bottom = hui::gfx::Color::rgb(0x050607);
+    palette.bg_top = hui::gfx::Color::rgb(0x0d0d0d);
+    palette.bg_bottom = hui::gfx::Color::rgb(0x0d0d0d);
     palette.accent = hui::gfx::Color::rgb(0x7b62ff);
-    palette.text = hui::gfx::Color::rgb(0xf2f4f7);
-    palette.text_muted = hui::gfx::Color::rgb(0x9aa3af);
+    palette.text = hui::gfx::Color::rgb(0xffffff);
+    palette.text_muted = hui::gfx::Color::rgb(0xb3b3b3);
+
+    std::vector<std::uint32_t> shared_hero;
+    std::vector<std::vector<std::uint32_t>> shared_posters;
+    int hero_w = 0, hero_h = 0, poster_w = 221, poster_h = 339;
+    const bool have_art =
+        load_art_bundle(art_dir, &shared_hero, &hero_w, &hero_h, &shared_posters, &poster_w, &poster_h);
 
     GLuint framebuffer = 0, color = 0;
     glGenFramebuffers(1, &framebuffer);
@@ -183,14 +278,17 @@ int main(int argc, char **argv)
     for (const Case &c : cases)
     {
         nuvio_poc_params_t params{};
-        std::vector<std::uint32_t> hero;
-        std::vector<std::vector<std::uint32_t>> posters;
+        std::vector<std::uint32_t> hero = have_art ? shared_hero : std::vector<std::uint32_t>{};
+        std::vector<std::vector<std::uint32_t>> posters =
+            have_art ? shared_posters : std::vector<std::vector<std::uint32_t>>{};
+        const int hw = have_art ? hero_w : 1280;
+        const int hh = have_art ? hero_h : 720;
         if (c.which == 0)
-            fill_nuvio_poc_fixture(params, hero, posters, 1);
+            fill_nuvio_poc_fixture(params, hero, hw, hh, posters, poster_w, poster_h, 1);
         else if (c.which == 1)
-            fill_nuvio_poc_detail_fixture(params, hero, posters);
+            fill_nuvio_poc_detail_fixture(params, hero, hw, hh, posters, poster_w, poster_h);
         else
-            fill_nuvio_poc_error_fixture(params, hero, posters);
+            fill_nuvio_poc_error_fixture(params, hero, hw, hh, posters, poster_w, poster_h);
 
         evo::kit::NuvioPocScreen screen;
         screen.set(params);

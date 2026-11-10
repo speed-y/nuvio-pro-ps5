@@ -35,26 +35,28 @@ void fill_builtin(std::vector<NuvioPocScreen::CatalogItem> *out)
         uint32_t a;
         uint32_t b;
     };
+    /* Titles mirror a live Home Popular - Movie row for the one-screen proof. */
     static const Seed kSeeds[] = {
-        {"Night Circuit", "Movie · 2024",
-         "A driver returns to a closed city loop after years away. The shelf proof uses this title for focus and Play.",
+        {"Resident Evil", "Movie · Action · 1h 34m",
+         "Follows a hapless courier tasked with delivering a package to a remote hospital.",
          "", 0x1a1040, 0x7b62ff},
-        {"Harbor Light", "Series · S01E03",
-         "A coastal town keeps a lighthouse running after the mainland grid fails.", "", 0x2b1055,
-         0xd16ba5},
-        {"Glass Orchard", "Movie · 2023",
-         "A botanist maps a greenhouse that grows memories instead of fruit.", "", 0x3a1c0b, 0xf2a541},
-        {"Static Season", "Series · S02E01",
-         "Radio operators chase a signal that only appears during storms.", "", 0x0b1f3a, 0x5aa9e6},
-        {"Copper Meridian", "Movie · 2022",
-         "Surveyors follow an old transit line buried under a new city.", "", 0x1e2a12, 0x9bd16b},
-        {"Low Orbit Mail", "Series · S01E08",
-         "Couriers ferry sealed letters between stations that refuse radio contact.", "", 0x331022,
-         0xff6f91},
-        {"Paper Tide", "Movie · 2021", "Archivists race a flood that dissolves every unread page.", "",
-         0x102033, 0x6bb6ff},
-        {"Quiet Frequency", "Movie · 2020",
-         "A technician hears music in the interference between two towers.", "", 0x241018, 0xff8f6b},
+        {"Hocus Pocus", "Movie · 1993",
+         "A teenage boy and his younger sister face three witches raised from the dead on Halloween.",
+         "", 0x2b1055, 0xd16ba5},
+        {"Halloween", "Movie · 1978",
+         "Fifteen years after murdering his sister, Michael Myers escapes from a mental hospital.",
+         "", 0x3a1c0b, 0xf2a541},
+        {"Primetime", "Movie · 2026",
+         "A tense thriller set behind the cameras of a live broadcast.", "", 0x0b1f3a, 0x5aa9e6},
+        {"Obsession", "Movie · Horror", "A chilling tale of desire that turns deadly.", "", 0x1e2a12,
+         0x9bd16b},
+        {"A Dog's Perfect Christmas", "Movie · 2026",
+         "A holiday story about family and a loyal dog.", "", 0x331022, 0xff6f91},
+        {"Verity", "Movie · 2026",
+         "A ghostwriter discovers a manuscript that may not be fiction.", "", 0x102033, 0x6bb6ff},
+        {"The Nightmare Before Christmas", "Movie · 1993",
+         "Jack Skellington discovers Christmas Town and tries to take over the holiday.", "",
+         0x241018, 0xff8f6b},
     };
     out->clear();
     for (const Seed &seed : kSeeds)
@@ -64,8 +66,8 @@ void fill_builtin(std::vector<NuvioPocScreen::CatalogItem> *out)
         item.subtitle = seed.subtitle;
         item.overview = seed.overview;
         item.play_url = seed.url;
-        item.poster_w = 176;
-        item.poster_h = 264;
+        item.poster_w = 221;
+        item.poster_h = 339;
         item.poster = NuvioPocScreen::makePoster(seed.a, seed.b, static_cast<float>(out->size()));
         out->push_back(std::move(item));
     }
@@ -126,8 +128,8 @@ int parse_simple_catalog(const std::string &json, std::vector<NuvioPocScreen::Ca
         }
         if (item.title.empty())
             continue;
-        item.poster_w = 176;
-        item.poster_h = 264;
+        item.poster_w = 221;
+        item.poster_h = 339;
         const uint32_t a = 0x102030u + static_cast<uint32_t>(out->size()) * 0x1020u;
         const uint32_t b = 0x60a0c0u + static_cast<uint32_t>(out->size()) * 0x0810u;
         item.poster = NuvioPocScreen::makePoster(a, b, static_cast<float>(out->size()) + 1.0f);
@@ -142,8 +144,9 @@ int parse_simple_catalog(const std::string &json, std::vector<NuvioPocScreen::Ca
 
 std::vector<uint32_t> NuvioPocScreen::makePoster(uint32_t a, uint32_t b, float seed)
 {
-    const int w = 176;
-    const int h = 264;
+    /* Measured browser Home poster cell is ~221x339. */
+    const int w = 221;
+    const int h = 339;
     std::vector<uint32_t> px(static_cast<std::size_t>(w * h));
     auto ch = [](uint32_t c, int s) { return static_cast<float>((c >> s) & 0xff); };
     for (int y = 0; y < h; ++y)
@@ -170,10 +173,8 @@ std::vector<uint32_t> NuvioPocScreen::makePoster(uint32_t a, uint32_t b, float s
 NuvioPocScreen::NuvioPocScreen() : StatefulScreen("NuvioPocScreen")
 {
     theme_ = nuvio_poc_default_theme();
-    hero_w_ = 960;
-    hero_h_ = 540;
-    hero_art_ = makePoster(0x101820, 0x7b62ff, 0.2f);
-    /* Widen the hero gradient canvas. */
+    hero_w_ = 1280;
+    hero_h_ = 720;
     hero_art_.assign(static_cast<std::size_t>(hero_w_ * hero_h_), 0);
     {
         auto full = makePoster(0x101820, 0x7b62ff, 0.2f);
@@ -181,10 +182,10 @@ NuvioPocScreen::NuvioPocScreen() : StatefulScreen("NuvioPocScreen")
         {
             for (int x = 0; x < hero_w_; ++x)
             {
-                const int sx = x * 176 / hero_w_;
-                const int sy = y * 264 / hero_h_;
+                const int sx = x * 221 / hero_w_;
+                const int sy = y * 339 / hero_h_;
                 hero_art_[static_cast<std::size_t>(y * hero_w_ + x)] =
-                    full[static_cast<std::size_t>(sy * 176 + sx)];
+                    full[static_cast<std::size_t>(sy * 221 + sx)];
             }
         }
     }
@@ -366,8 +367,8 @@ void NuvioPocScreen::fillParams(nuvio_poc_params_t *params) const
 {
     std::memset(params, 0, sizeof(*params));
     params->theme = theme_;
-    params->brand = "Nuvio Native PoC";
-    params->shelf_title = "Featured";
+    params->brand = "Nuvio";
+    params->shelf_title = "Popular - Movie";
     params->status = status_.c_str();
     params->status_is_error = status_is_error_;
     params->focus_index = focus_index_;
@@ -382,11 +383,13 @@ void NuvioPocScreen::fillParams(nuvio_poc_params_t *params) const
         const CatalogItem &hero = items_[static_cast<std::size_t>(focus_index_)];
         params->hero_title = hero.title.c_str();
         params->hero_detail = hero.subtitle.c_str();
+        params->hero_overview = hero.overview.c_str();
     }
     else
     {
-        params->hero_title = "Nuvio shelf proof";
+        params->hero_title = "Nuvio";
         params->hero_detail = status_.c_str();
+        params->hero_overview = "";
     }
     params->item_count = std::min(static_cast<int>(items_.size()), NUVIO_POC_MAX_ITEMS);
     for (int i = 0; i < params->item_count; ++i)

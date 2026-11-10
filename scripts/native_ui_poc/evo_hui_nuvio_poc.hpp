@@ -1,6 +1,6 @@
 /*
  * Nuvio native UI proof screen on ps5-homebrew-ui DrawList / sceAgc.
- * GPL-3.0-or-later. One hero, one virtualized poster row, one detail card.
+ * GPL-3.0-or-later. One Home-like shelf: sidebar, hero, one poster row, detail.
  */
 #ifndef EVO_HUI_NUVIO_POC_HPP
 #define EVO_HUI_NUVIO_POC_HPP
@@ -37,8 +37,11 @@ class NuvioPocScreen
         int poster_h = 0;
     };
 
+    float content_x() const;
+    float card_gap() const;
     hui::gfx::Rect poster_rect(int absolute_index) const;
     hui::gfx::Rect focus_rect() const;
+    void draw_sidebar(hui::gfx::DrawList &list, const Context &ctx) const;
     void draw_hero(hui::gfx::DrawList &list, const Context &ctx) const;
     void draw_row(hui::gfx::DrawList &list, const Context &ctx) const;
     void draw_detail(hui::gfx::DrawList &list, const Context &ctx) const;
@@ -49,6 +52,7 @@ class NuvioPocScreen
     std::string brand_;
     std::string hero_title_;
     std::string hero_detail_;
+    std::string hero_overview_;
     std::string shelf_title_;
     std::string status_;
     int status_is_error_ = 0;
