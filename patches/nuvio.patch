@@ -75,10 +75,429 @@
  .legacy-tizen .series-primary-btn.focused,
 --- a/js/app.js
 +++ b/js/app.js
-@@ -55,6 +55,129 @@
+@@ -5,6 +5,16 @@
+ import { Router } from "./ui/navigation/router.js";
+ import { FocusEngine } from "./ui/navigation/focusEngine.js";
+ import { PlayerController } from "./core/player/playerController.js";
++import { StreamPreferencesStore } from "./data/local/streamPreferencesStore.js";
++import { parentalGuideRepository } from "./data/repository/parentalGuideRepository.js";
++import { buildLocalizedParentalWarnings } from "./ui/screens/player/playerScreenHelpers-11-flatten-stream-groups.js";
++import { normalizePlayerEpisodeMetadata } from "./core/player/playerEpisodeMetadata.js";
++import { PostPlayRecommendationController, shouldUsePostPlayRecommendation } from "./ui/screens/player/postPlayRecommendationController.js";
++import { PlayerSettingsStore } from "./data/local/playerSettingsStore.js";
++import { skipIntroRepository } from "./data/repository/skipIntroRepository.js";
++import { getSkipIntervalTargetSeconds } from "./core/player/skipIntervalRules.js";
++import { normalizeNextEpisodeThresholdMode, normalizeThresholdMinutesBeforeEnd,
++  normalizeThresholdPercent, shouldEnterStillWatchingPrompt } from "./ui/screens/player/playerNextEpisodeRules.js";
+ import { AuthManager } from "./core/auth/authManager.js";
+ import { AuthState } from "./core/auth/authState.js";
+ import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
+@@ -55,6 +65,678 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
++// Ephemeral candidates only. Never put signed addon URLs in return storage.
++// Resolve settings through the active player's authoritative helpers, not
++// setting-name guesses or browser media-track indices. No storage or logging.
++function ps5CaptureNativePreferences(screen) {
++  const profile = ProfileManager.getActiveProfileId();
++  if (profile == null || String(profile) === "") return null;
++  const mode = screen.getStartupSubtitlePreferenceMode?.();
++  if (!["off", "language", "audio-forced"].includes(mode) ||
++      typeof screen.getStartupPreferredAudioLanguageTargets !== "function" ||
++      typeof screen.getStartupAutoSelectSubtitleLanguageTargets !== "function") return null;
++  const targets = values => {
++    if (!Array.isArray(values) || values.length > 2) return null;
++    // Unresolvable labels are not a license to fall back to native English.
++    // Keep an unmatchable empty slot so secondary does not become the primary
++    // forced-language condition. Never transport arbitrary preference text.
++    return values.map(value => typeof value === "string" &&
++      /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(value) && value.length < 16 ? value : "");
++  };
++  const audio = targets(screen.getStartupPreferredAudioLanguageTargets());
++  const subtitle = targets(screen.getStartupAutoSelectSubtitleLanguageTargets());
++  return audio && subtitle ? { mode, audio, subtitle } : null;
++}
++
++function ps5NativeSubtitleForced(screen, item) {
++  // Use the frontend's isForcedAddonSubtitle classification as exposed by its
++  // actual option collector, rather than inventing a separate forced heuristic.
++  const options = screen.collectSubtitleOptionItems?.() || [];
++  return options.some(option => option.sourceType === "addon" && option.isForced &&
++    (option.entry?.track?.url || option.entry?.url) === item.url);
++}
++
++let ps5NativeSubtitles = null;
++let ps5SubtitleGeneration = 0;
++
++globalThis.__nuvioPrepareSubtitles = async function () {
++  ps5NativeSubtitles = null;
++  const generation = ++ps5SubtitleGeneration;
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return null;
++  const screen = Router.getCurrentScreen();
++  if (!screen) return null;
++  const params = Router.currentParams;
++  const mount = screen.playerMountToken;
++  const profile = String(ProfileManager.getActiveProfileId());
++  const identity = () => JSON.stringify([params?.itemId, params?.contentId, params?.videoId,
++    params?.itemType, params?.season, params?.episode]);
++  const initialIdentity = identity();
++  let preferences = null, preferenceIdentity = null;
++  const selection = () => String(screen.activePlaybackUrl || "") + "|" +
++    String(screen.getCurrentStreamCandidate?.()?.id || "");
++  const selected = selection();
++  const current = () => generation === ps5SubtitleGeneration && Router.current === "player" &&
++    Router.currentParams === params && Router.getCurrentScreen() === screen && screen.playerMountToken === mount &&
++    String(ProfileManager.getActiveProfileId()) === profile && selection() === selected && identity() === initialIdentity &&
++    (preferenceIdentity === null ||
++      JSON.stringify(ps5CaptureNativePreferences(screen)) === preferenceIdentity);
++  let timer;
++  try {
++    // The loader shares a matching in-flight request across initial mount,
++    // stream changes and this hook. URL equality alone is not a request:
++    // before initial discovery both URL fields can still be undefined.
++    const lookup = typeof screen.loadSubtitles === "function" ? screen.loadSubtitles() :
++      (screen.ps5SubtitleLoadUrl === screen.activePlaybackUrl ? screen.ps5SubtitleLoadPromise : null);
++    await Promise.race([lookup,
++      new Promise(resolve => { timer = setTimeout(resolve, 4000); })]);
++  } catch (_) { /* Subtitle discovery must not prevent playback. */ }
++  finally { clearTimeout(timer); }
++  if (!current()) return null;
++  // Resolve after bounded discovery: original-language metadata may
++  // arrive while discovery is pending. Profile/source guards still
++  // cover that wait; the resolved policy is frozen for prepare/send.
++  preferences = ps5CaptureNativePreferences(screen);
++  preferenceIdentity = JSON.stringify(preferences);
++  const entries = [];
++  const seen = new Set();
++  for (const item of Array.isArray(screen.subtitles) ? screen.subtitles : []) {
++    // Do not silently drop required request headers. Such candidates need a
++    // header-aware native downloader before they can be offered safely.
++    if (item?.headers && Object.keys(item.headers).length) continue;
++    const raw = String(item?.url || "");
++    if (!/^https?:\/\//.test(raw) || /[\u0000-\u0020\u007f]/.test(raw) ||
++        ps5GeneralBytes(raw) >= 1024) continue;
++    let url;
++    try {
++      url = new URL(raw);
++      if (url.username || url.password) continue;
++    } catch (_) { continue; }
++    if (seen.has(raw)) continue;
++    seen.add(raw);
++    entries.push({ url: raw, lang: ps5GeneralText(item.lang, 15),
++      source: ps5GeneralText(item.addonName || "Addon", 63),
++      forced: ps5NativeSubtitleForced(screen, item) });
++    if (entries.length === 32) break;
++  }
++  ps5NativeSubtitles = { current, entries, preferences };
++  return true;
++};
++
++globalThis.__nuvioSendSubtitles = async function (session) {
++  const prepared = ps5NativeSubtitles;
++  if (!prepared?.current() || !/^[a-z0-9-]{1,63}$/i.test(String(session || ""))) return false;
++  const body = JSON.stringify({ session, subtitles: prepared.entries,
++    ...(prepared.preferences ? { preferences: prepared.preferences } : {}) });
++  if (ps5GeneralBytes(body) > 49152) return false;
++  const abort = typeof AbortController === "function" ? new AbortController() : null;
++  const timer = setTimeout(() => abort?.abort(), 4000);
++  try {
++    const response = await fetch("/evo/subtitles", { method: "POST",
++      headers: { "Content-Type": "application/json" }, body, signal: abort?.signal });
++    return response.ok && prepared.current();
++  } catch (_) { return false; }
++  finally { clearTimeout(timer); }
++};
++
++// Browser-owned General settings and metadata. Only the explicit DTO below
++// crosses the native boundary; routes and source preferences stay in Nuvio.
++let ps5Presentation = null;
++let ps5PresentationGeneration = 0;
++let ps5PresentationRoute = null;
++
++function ps5GeneralBytes(value) {
++  return unescape(encodeURIComponent(value)).length;
++}
++
++function ps5GeneralText(value, limit) {
++  const text = String(value ?? "").replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
++    .replace(/(?:https?:\/\/|magnet:|www\.)\S+/gi, "").trim();
++  let result = "";
++  let bytes = 0;
++  for (const character of text) {
++    // Ignore unpaired surrogates rather than throwing during UTF-8 encoding.
++    if (character.length === 1 && /[\ud800-\udfff]/.test(character)) continue;
++    const size = ps5GeneralBytes(character);
++    if (bytes + size > limit) break;
++    result += character;
++    bytes += size;
++  }
++  return result;
++}
++
++// Preference identities may otherwise embed a signed URL (the upstream url:
++// fallback). Keep only bounded non-URL identities; never cache the stream URL.
++function ps5GeneralPreferenceText(value, limit) {
++  const text = String(value ?? "").trim();
++  if (/(?:[a-z][a-z0-9+.-]*:\/\/|magnet:|[?&](?:token|key|signature)=)/i.test(text) ||
++      /^(?:url|magnet):/i.test(text) || ps5GeneralText(text, limit) !== text) return "";
++  return text;
++}
++
++globalThis.__nuvioDeferStreamPreference = function (screen, contentId, videoId, streamId, metadata) {
++  if (!globalThis.__NUVIO_PS5__) return;
++  screen.ps5PendingStreamParams = screen.params;
++  screen.ps5PendingStreamPreference = {
++    profileId: String(ProfileManager.getActiveProfileId()),
++    contentId: ps5GeneralPreferenceText(contentId, 256),
++    videoId: ps5GeneralPreferenceText(videoId, 256),
++    streamId: ps5GeneralPreferenceText(streamId, 512),
++    metadata: {
++      bingeGroup: ps5GeneralPreferenceText(metadata?.bingeGroup, 512),
++      resumeIdentity: ps5GeneralPreferenceText(metadata?.resumeIdentity, 2048)
++    }
++  };
++};
++
++function ps5GeneralSynopsis(screen, meta) {
++  const info = screen.buildPauseOverlayMeta?.(meta) || screen.pauseOverlayMeta || {};
++  const cast = (Array.isArray(info.cast) ? info.cast : []).slice(0, 6)
++    .map(person => typeof person === "string" ? person : person?.name).filter(Boolean).join(", ");
++  return ps5GeneralText([
++    info.title, [info.episodeCode, info.episodeTitle].filter(Boolean).join(" · "),
++    info.description, cast
++  ].filter(Boolean).join("\n"), 800);
++}
++
++function ps5GeneralDetailParams(recommendation, screen) {
++  // Same details navigation shape as navigateToPostPlayRecommendation, but
++  // deliberately no play-on-load or automatic recommendation playback.
++  return {
++    itemId: recommendation.id,
++    itemType: recommendation.contentType === "series" ? "series" : "movie",
++    fallbackTitle: recommendation.title || recommendation.name || recommendation.id,
++    fallbackPoster: recommendation.poster || "",
++    fallbackBackground: recommendation.backdrop || recommendation.background || recommendation.poster || "",
++    addonBaseUrl: recommendation.sourceAddonBaseUrl || "",
++    imdbId: recommendation.imdbId || null,
++    tmdbId: recommendation.tmdbId || null,
++    traktId: recommendation.traktId || null,
++    contentLanguage: recommendation.contentLanguage || screen.contentLanguage || "",
++    returnHomeOnBack: Boolean(screen.params?.returnHomeOnBack || screen.params?.returnToHomeOnBack),
++    returnToHomeOnBack: Boolean(screen.params?.returnHomeOnBack || screen.params?.returnToHomeOnBack),
++    returnToSearchOnBack: Boolean(screen.params?.returnToSearchOnBack),
++    playOnLoad: false,
++    manualSelection: true,
++    heroBackdropUrl: recommendation.backdrop || recommendation.background || ""
++  };
++}
++
++function ps5GeneralThresholds(settings, movie) {
++  const episodeThresholdMinutes = normalizeNextEpisodeThresholdMode(settings.nextEpisodeThresholdMode) === "MINUTES_BEFORE_END";
++  const episodeThreshold = episodeThresholdMinutes
++    ? normalizeThresholdMinutesBeforeEnd(settings.nextEpisodeThresholdMinutesBeforeEnd) * 60
++    : normalizeThresholdPercent(settings.nextEpisodeThresholdPercent) / 100;
++  const selected = Number(settings.postPlayMovieThresholdPercent);
++  const movieThreshold = Number.isFinite(selected) ? Math.max(80, Math.min(100, selected)) / 100 : 0.9;
++  return {
++    movie, thresholdMinutes: !movie && episodeThresholdMinutes,
++    threshold: movie ? movieThreshold : episodeThreshold,
++    episodeThresholdMinutes, episodeThreshold
++  };
++}
++
++globalThis.__nuvioPreparePresentation = async function () {
++  ps5Presentation = null;
++  ps5PresentationRoute = null;
++  const generation = ++ps5PresentationGeneration;
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return null;
++  const params = Router.currentParams;
++  const screen = Router.getCurrentScreen();
++  const profileId = String(ProfileManager.getActiveProfileId());
++  const routeIdentity = () => JSON.stringify([params?.itemId, params?.contentId, params?.videoId,
++    params?.itemType, params?.season, params?.episode]);
++  const originalIdentity = routeIdentity();
++  const selection = () => String(screen?.getCurrentStreamCandidate?.()?.id || "") + "|" + String(screen?.activePlaybackUrl || "");
++  const selected = selection();
++  const current = () => generation === ps5PresentationGeneration && Router.current === "player" &&
++    Router.currentParams === params && Router.getCurrentScreen() === screen &&
++    String(ProfileManager.getActiveProfileId()) === profileId && routeIdentity() === originalIdentity && selection() === selected;
++  if (!screen) return null;
++  let open = true;
++  const active = () => open && current();
++  const settings = PlayerSettingsStore.get();
++  const identity = screen.buildPlaybackIdentityContext?.() || {};
++  const snapshot = screen.buildPostPlayRecommendationSnapshot?.() || {};
++  const movie = snapshot.contentType === "movie" || (!snapshot.contentType && identity.itemType === "movie");
++  const prepared = {
++    profileId,
++    identity: { itemId: params?.itemId || params?.contentId || "", videoId: params?.videoId || "", itemType: params?.itemType || "" },
++    pending: null,
++    routes: [],
++    dto: { description: ps5GeneralSynopsis(screen), parental: "", recommendations: [],
++      ...ps5GeneralThresholds(settings, movie), creditsStart: 0, creditsEnd: 0, postCreditsEnd: 0 }
++  };
++  // A separate controller reuses the actual addon/TMDB/Trakt and watched/filter
++  // policy. Do NOT call update/loadRecommendation: those evaluate playback and
++  // can schedule trailers. The live screen/controller remains untouched.
++  const controller = new PostPlayRecommendationController();
++  controller.snapshot = { ...snapshot };
++  const tasks = [];
++  if (settings.parentalGuideEnabled !== false && identity.imdbId) {
++    tasks.push((async () => {
++      const series = ["series", "tv", "show", "tvshow"].includes(identity.itemType);
++      const response = series && identity.season && identity.episode
++        ? await parentalGuideRepository.getTvGuide(identity.imdbId, identity.season, identity.episode)
++        : await parentalGuideRepository.getMovieGuide(identity.imdbId);
++      if (active()) prepared.dto.parental = ps5GeneralText(buildLocalizedParentalWarnings(response?.parentalGuide || {})
++        .map(warning => `${warning.label}: ${warning.severity}`).join("\n"), 800);
++    })());
++  }
++  tasks.push((async () => {
++    const meta = await controller.loadCurrentMeta();
++    if (!active() || !meta) return;
++    prepared.dto.description = ps5GeneralSynopsis(screen, meta);
++    let resolved = movie;
++    let next = null;
++    if (!movie && ["series", "tv", "show", "tvshow"].includes(snapshot.contentType)) {
++      const episodes = normalizePlayerEpisodeMetadata(meta.videos, { fallbackSeason: params?.season });
++      // Resolve the canonical sequence using the screen's pure existing rules,
++      // against a detached view, without updating its episodes or trailer state.
++      const view = Object.assign(Object.create(screen), { episodes, params: { ...screen.params } });
++      resolved = episodes.length > 0 && Boolean(view.resolveCurrentEpisodeEntry?.());
++      next = resolved ? view.resolveNextEpisodeInfo?.() : null;
++    }
++    if (!shouldUsePostPlayRecommendation({ enabled: settings.postPlayRecommendationsEnabled !== false,
++      contentType: snapshot.contentType, nextEpisodeMetadataResolved: resolved, nextEpisodeHasAired: next?.hasAired ?? null })) return;
++    const seeds = await controller.loadCandidateSeeds(meta);
++    if (!active()) return;
++    const results = [];
++    await Promise.all((Array.isArray(seeds) ? seeds : []).slice(0, 3).map(async (seed, index) => {
++      const item = await controller.resolveCandidate(seed, meta);
++      if (!active() || !item?.id) return;
++      const title = ps5GeneralText(item.title || item.name, 160);
++      if (!title) return;
++      results[index] = { title, description: ps5GeneralText(item.description, 400), route: ps5GeneralDetailParams(item, screen) };
++      const available = results.filter(Boolean);
++      prepared.dto.recommendations = available.map(({ title, description }) => ({ title, description }));
++      prepared.routes = available.map(item => item.route);
++    }));
++  })());
++  if (movie && settings.skipIntroEnabled) {
++    tasks.push((async () => {
++      const intervals = await skipIntroRepository.getMovieSkipIntervals({ imdbId: identity.imdbId,
++        tmdbId: identity.tmdbId, contentId: params?.itemId || params?.contentId, videoId: params?.videoId });
++      if (!active() || !Array.isArray(intervals)) return;
++      const valid = intervals.filter(item => Number.isFinite(Number(item?.startTime)) && Number.isFinite(Number(item?.endTime)) &&
++        Number(item.startTime) >= 0 && Number(item.endTime) > Number(item.startTime) && Number(item.endTime) <= 604800);
++      const credits = valid.filter(item => item.type === "movie-credits");
++      prepared.dto.creditsStart = credits.length ? Math.min(...credits.map(item => Number(item.startTime))) : 0;
++      prepared.dto.creditsEnd = credits.length ? Math.max(...credits.map(item => Number(item.endTime))) : 0;
++      const scenes = valid.filter(item => item.type === "post-credits" && Number(item.startTime) >= prepared.dto.creditsStart);
++      prepared.dto.postCreditsEnd = scenes.length ? Math.max(...scenes.map(item => Number(item.endTime))) : 0;
++    })());
++  }
++  let timer;
++  try {
++    await Promise.race([Promise.all(tasks.map(task => task.catch(() => {}))),
++      new Promise(resolve => { timer = setTimeout(resolve, 4000); })]);
++  } finally {
++    clearTimeout(timer);
++    open = false;
++    controller.pipelineToken += 1; // invalidate any late candidate resolution
++  }
++  if (!current()) return null;
++  const latest = PlayerSettingsStore.get();
++  Object.assign(prepared.dto, ps5GeneralThresholds(latest, movie), {
++    loading: latest.loadingOverlayEnabled !== false,
++    loadingDetail: latest.showPlayerLoadingStatus !== false,
++    pause: latest.pauseOverlayEnabled !== false,
++    clock: Boolean(latest.osdClockEnabled),
++    pauseDelayMs: Number.isFinite(Number(screen.pauseOverlayDelayMs))
++      ? Math.max(0, Math.min(60000, Number(screen.pauseOverlayDelayMs))) : 3000,
++    utcOffsetMinutes: Math.max(-840, Math.min(840, -new Date().getTimezoneOffset())),
++    recommendationEnabled: latest.postPlayRecommendationsEnabled !== false
++  });
++  if (latest.parentalGuideEnabled === false) prepared.dto.parental = "";
++  if (!latest.skipIntroEnabled) Object.assign(prepared.dto, { creditsStart: 0, creditsEnd: 0, postCreditsEnd: 0 });
++  if (!prepared.dto.recommendationEnabled) { prepared.dto.recommendations = []; prepared.routes = []; }
++  const pending = screen.ps5PendingStreamPreference;
++  prepared.pending = pending?.profileId === profileId && screen.ps5PendingStreamParams === screen.params &&
++    pending.streamId === String(screen.getCurrentStreamCandidate?.()?.id || "") ? pending : null;
++  ps5Presentation = { prepared, current };
++  return true;
++};
++
++globalThis.__nuvioCapturePresentation = function () {
++  if (!ps5Presentation?.current()) return null;
++  // Freeze a serializable per-session copy, not the live screen or controller.
++  return JSON.parse(JSON.stringify(ps5Presentation.prepared));
++};
++
++globalThis.__nuvioSendPresentation = async function (session) {
++  if (!globalThis.__NUVIO_PS5__ || !/^[a-z0-9-]{1,63}$/i.test(String(session || ""))) return false;
++  const saved = LocalStore.get(PS5_PROGRESS_KEY, null);
++  if (saved?.session !== session || saved.profileId !== String(ProfileManager.getActiveProfileId()) ||
++      saved.general?.profileId !== saved.profileId) return false;
++  const source = saved.general.dto;
++  if (!source) return false;
++  // Never spread saved.general here: it contains browser-only route/identity
++  // data. Reconstruct the allowlisted wire format even for restored storage.
++  const dto = { session, loading: source.loading === true, loadingDetail: source.loadingDetail === true,
++    pause: source.pause === true, clock: source.clock === true,
++    description: ps5GeneralText(source.description, 800), parental: ps5GeneralText(source.parental, 800),
++    recommendations: (Array.isArray(source.recommendations) ? source.recommendations : []).slice(0, 3)
++      .map(item => ({ title: ps5GeneralText(item?.title, 160), description: ps5GeneralText(item?.description, 400) })),
++    movie: source.movie === true, recommendationEnabled: source.recommendationEnabled === true,
++    thresholdMinutes: source.thresholdMinutes === true, threshold: Number(source.threshold),
++    episodeThresholdMinutes: source.episodeThresholdMinutes === true, episodeThreshold: Number(source.episodeThreshold),
++    creditsStart: Number(source.creditsStart) || 0, creditsEnd: Number(source.creditsEnd) || 0,
++    postCreditsEnd: Number(source.postCreditsEnd) || 0,
++    pauseDelayMs: Number.isFinite(Number(source.pauseDelayMs)) ? Math.max(0, Math.min(60000, Number(source.pauseDelayMs))) : 3000,
++    utcOffsetMinutes: Math.max(-840, Math.min(840, Number(source.utcOffsetMinutes) || 0)) };
++  const body = JSON.stringify(dto);
++  if (ps5GeneralBytes(body) > 8192) return false;
++  const abort = typeof AbortController === "function" ? new AbortController() : null;
++  const timer = setTimeout(() => abort?.abort(), 4000);
++  try {
++    const response = await fetch("/evo/presentation", { method: "POST", headers: { "Content-Type": "application/json" },
++      body, signal: abort?.signal });
++    return response.ok && saved.profileId === String(ProfileManager.getActiveProfileId()) &&
++      LocalStore.get(PS5_PROGRESS_KEY, null)?.session === session && Boolean(ps5Presentation?.current());
++  } catch (_) { return false; }
++  finally { clearTimeout(timer); }
++};
++
++globalThis.__nuvioAcceptPresentation = function (saved, report) {
++  ps5PresentationRoute = null;
++  // Caller has already verified the session-bound progress endpoint/context.
++  // Some report versions echo session; reject a mismatch when it is present.
++  if (!globalThis.__NUVIO_PS5__ || !saved?.session || !report || (report.session != null && saved.session !== report.session) ||
++      saved.profileId !== String(ProfileManager.getActiveProfileId()) || saved.general?.profileId !== saved.profileId) return;
++  const general = saved.general;
++  const pending = general.pending;
++  if (report.played === true && pending?.profileId === saved.profileId && pending.contentId && pending.streamId &&
++      pending.contentId === general.identity?.itemId && pending.videoId === (general.identity?.videoId || general.identity?.itemId)) {
++    StreamPreferencesStore.set(pending.contentId, pending.videoId, pending.streamId, pending.metadata, saved.profileId);
++    general.pending = null;
++    // Make repeat imports idempotent if the following progress/storage flush
++    // fails and startup retries the same successful native report.
++    if (LocalStore.get(PS5_PROGRESS_KEY, null)?.session === saved.session) LocalStore.set(PS5_PROGRESS_KEY, saved);
++  }
++  const index = report.recommendation;
++  if (!Number.isInteger(index) || index < 1 || index > 3 || !canResumePs5Playback() ||
++      PlayerSettingsStore.get().postPlayRecommendationsEnabled === false || !general.dto?.recommendationEnabled) return;
++  const params = general.routes?.[index - 1];
++  if (params?.itemId) ps5PresentationRoute = { profileId: saved.profileId, params: { ...params, playOnLoad: false, manualSelection: true } };
++};
++
++globalThis.__nuvioTakePresentationRoute = function () {
++  const pending = ps5PresentationRoute;
++  ps5PresentationRoute = null;
++  if (!pending || pending.profileId !== String(ProfileManager.getActiveProfileId()) || !canResumePs5Playback()) return null;
++  return pending.params;
++};
++
 +// EVO recreates the browser after playback. Resume the profile that opened Player
 +// once, rather than treating that browser as a new app launch.
 +const PS5_PLAYBACK_RETURN_KEY = "ps5_playback_return";
@@ -144,6 +563,23 @@
 +  return true;
 +}
 +
++// Only an explicit live return can replace the browsing route with this title.
++// A recovered checkpoint must never reopen an episode or bypass profile gates.
++let ps5PlaybackDetail = null;
++globalThis.__nuvioAcceptPlaybackDetail = function (saved) {
++  if (!saved.detail?.itemId || !canResumePs5Playback()) return;
++  const params = { ...saved.detail };
++  delete params.playOnLoad;
++  delete params.autoOpenContinueWatching;
++  ps5PlaybackDetail = { profileId: saved.profileId, params };
++};
++
++globalThis.__nuvioTakePlaybackDetailRoute = function () {
++  const pending = ps5PlaybackDetail;
++  ps5PlaybackDetail = null;
++  return pending?.profileId === String(ProfileManager.getActiveProfileId()) ? pending.params : null;
++};
++
 +// The browser is absent during EVO playback. Keep the frontend's exact progress
 +// context, not a guessed identity derived from the URL or display title.
 +const PS5_PROGRESS_KEY = "ps5_native_progress";
@@ -151,11 +587,15 @@
 +  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return "";
 +  const context = PlayerController.createProgressContext();
 +  if (!context.itemId) return "";
++  const detail = Router.getCurrentScreen()?.buildDetailRouteParamsFromPlayer?.() || null;
 +  const session = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
 +  LocalStore.set(PS5_PROGRESS_KEY, {
 +    session,
 +    profileId: String(ProfileManager.getActiveProfileId()),
-+    context
++    context,
++    detail: detail ? { ...detail, ps5ReturnEpisodeVideoId: context.season != null ? context.videoId : null } : null,
++    next: globalThis.__nuvioCaptureNextEpisode?.() || null,
++    general: globalThis.__nuvioCapturePresentation?.() || null
 +  });
 +  return session;
 +};
@@ -164,11 +604,17 @@
 +function restorePs5PlaybackProgress() {
 +  if (ps5ProgressImport) return ps5ProgressImport;
 +  ps5ProgressImport = (async () => {
-+    if (!canResumePs5Playback()) return;
++    if (!globalThis.__NUVIO_PS5__) return;
 +    const saved = LocalStore.get(PS5_PROGRESS_KEY, null);
++    const origin = LocalStore.get(PS5_PLAYBACK_RETURN_KEY, null);
++    const profileId = String(ProfileManager.getActiveProfileId());
++    const profiles = LocalStore.get("profiles", []);
++    // A cold launch keeps ordinary profile/PIN selection and route behavior.
++    // Recover only after the originating profile is active, without a return TTL.
 +    if (!saved?.session || !saved.context?.itemId ||
-+        saved.profileId !== ps5PlaybackReturn.profileId ||
-+        saved.session !== ps5PlaybackReturn.progressSession) return;
++        saved.profileId !== profileId || saved.profileId !== origin?.profileId ||
++        saved.session !== origin?.progressSession || !Array.isArray(profiles) ||
++        !profiles.some(profile => String(profile.id) === profileId)) return;
 +    const controller = new AbortController();
 +    const timeout = setTimeout(() => controller.abort(), 5000);
 +    try {
@@ -182,14 +628,21 @@
 +        return;
 +      }
 +      if (!response.ok) throw new Error("Native progress unavailable");
-+      const { positionMs, durationMs } = await response.json();
-+      if (!Number.isFinite(positionMs) || positionMs <= 0 ||
++      const report = await response.json();
++      const { positionMs, durationMs } = report;
++      if (!Number.isFinite(positionMs) || positionMs < 0 ||
 +          !Number.isFinite(durationMs) || durationMs < 0) return;
 +      // Never switch profiles to apply an old report, even if fetching yielded.
 +      if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
-+      await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
-+        allowCloudSync: false, syncRemote: true
-+      });
++      if (positionMs > 0) {
++        await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
++          allowCloudSync: false, syncRemote: true
++        });
++      }
++      if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
++      globalThis.__nuvioAcceptPresentation?.(saved, report);
++      if (report.returnToDetail === true) globalThis.__nuvioAcceptPlaybackDetail?.(saved);
++      else globalThis.__nuvioAcceptNextEpisode?.(saved, report.nextEpisode);
 +      LocalStore.remove(PS5_PROGRESS_KEY);
 +      LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
 +      globalThis.__nuvioPrepareKeyboard?.(); // Flush the existing console storage bridge.
@@ -201,11 +654,124 @@
 +  })().finally(() => { ps5ProgressImport = null; });
 +  return ps5ProgressImport;
 +}
++globalThis.__nuvioRestorePlaybackProgress = restorePs5PlaybackProgress;
++
++// Resolve before EVO closes the browser. Only timestamps travel to native code;
++// the native player never needs an account, addon URL or metadata service.
++globalThis.__nuvioPlaybackSkipSegments = async function () {
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return "";
++  const params = Router.currentParams;
++  const profile = String(ProfileManager.getActiveProfileId());
++  const screen = Router.getCurrentScreen();
++  const identity = screen?.buildPlaybackIdentityContext?.();
++  if (!identity || !PlayerSettingsStore.get().skipIntroEnabled) return "";
++  let timer;
++  let intervals = [];
++  try {
++    const request = ["series", "tv", "show", "tvshow"].includes(identity.itemType)
++      ? skipIntroRepository.getSkipIntervals(identity.imdbId, identity.season, identity.episode)
++      : skipIntroRepository.getMovieSkipIntervals({
++          imdbId: identity.imdbId, tmdbId: identity.tmdbId,
++          contentId: params?.itemId || params?.contentId, videoId: params?.videoId
++        });
++    intervals = await Promise.race([
++      request,
++      new Promise(resolve => { timer = setTimeout(() => resolve([]), 4000); })
++    ]);
++  } catch (_) {
++    // Metadata failure must not prevent playback.
++  } finally {
++    clearTimeout(timer);
++  }
++  // Never start an old selection after the user navigates or changes profile.
++  if (Router.current !== "player" || Router.currentParams !== params ||
++      String(ProfileManager.getActiveProfileId()) !== profile) return null;
++  const settings = PlayerSettingsStore.get();
++  if (!settings.skipIntroEnabled || !Array.isArray(intervals)) return "";
++  return intervals.filter(interval => ["intro", "recap", "outro", "ed", "mixed-ed", "movie-credits"].includes(interval?.type))
++    .map(interval => {
++      const setting = ["outro", "ed", "mixed-ed"].includes(interval.type) ? "outro" : interval.type;
++      const type = setting === "intro" ? "i" : setting === "recap" ? "r" : "c";
++      return {
++        type: settings.autoSkipSegmentTypes?.includes(setting) ? type.toUpperCase() : type,
++        start: Number(interval.startTime),
++        end: getSkipIntervalTargetSeconds(interval, intervals)
++      };
++    })
++    .filter(({ start, end }) => Number.isFinite(start) && Number.isFinite(end) &&
++      start >= 0 && end > start && end <= Number.MAX_SAFE_INTEGER / 1000)
++    .slice(0, 4)
++    .map(({ type, start, end }) => `${type},${start.toFixed(3)},${end.toFixed(3)};`).join("");
++};
++
++// Save episode identity before the browser closes. Resolve a fresh stream only
++// after the native countdown/action returns through the normal profile gate.
++globalThis.__nuvioCaptureNextEpisode = function () {
++  if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return null;
++  const screen = Router.getCurrentScreen();
++  const next = screen?.resolveNextEpisodeInfo?.();
++  if (!next?.videoId || !next.hasAired) return null;
++  const settings = PlayerSettingsStore.get();
++  const count = Number(screen.consecutiveAutoPlayCount || 0);
++  const stillWatching = shouldEnterStillWatchingPrompt({
++    stillWatchingEnabled: settings.stillWatchingEnabled,
++    autoPlayNextEpisodeEnabled: settings.autoplayNextEpisode,
++    nextEpisodeHasAired: true,
++    consecutiveAutoPlayCount: count,
++    threshold: settings.stillWatchingEpisodeThreshold
++  });
++  const minutes = normalizeNextEpisodeThresholdMode(settings.nextEpisodeThresholdMode) === "MINUTES_BEFORE_END";
++  const threshold = minutes ? normalizeThresholdMinutesBeforeEnd(settings.nextEpisodeThresholdMinutesBeforeEnd) * 60
++    : normalizeThresholdPercent(settings.nextEpisodeThresholdPercent) / 100;
++  return {
++    policy: `${settings.autoplayNextEpisode ? stillWatching ? 2 : 1 : 0},${settings.nextEpisodeCountdownEnabled === false ? 0 : 3},${minutes ? "s" : "p"},${threshold}`,
++    params: {
++      ...screen.buildStreamRouteParamsFromPlayer(),
++      playerTitle: screen.params?.playerTitle || screen.params?.itemTitle || screen.params?.itemId,
++      playerBackdropUrl: screen.params?.playerBackdropUrl || null,
++      playerLogoUrl: screen.params?.playerLogoUrl || null,
++      consecutiveAutoPlayCount: count,
++      ps5NativeBingeGroup: screen.getCurrentStreamBingeGroup(),
++      resumePositionMs: 0
++    }
++  };
++};
++
++globalThis.__nuvioPlaybackNextPolicy = function (session) {
++  const saved = LocalStore.get(PS5_PROGRESS_KEY, null);
++  return session && saved?.session === session ? saved.next?.policy || "" : "";
++};
++
++let ps5NextReturn = null;
++let ps5NextAuthorization = "";
++globalThis.__nuvioAcceptNextEpisode = function (saved, mode) {
++  if ((mode !== 1 && mode !== 2) || !saved.next?.params || !canResumePs5Playback()) return;
++  if (mode === 2 && !PlayerSettingsStore.get().autoplayNextEpisode) return;
++  ps5NextReturn = {
++    profileId: saved.profileId,
++    params: { ...saved.next.params, ps5NextEpisodeSession: saved.session, ps5NextEpisodeUserInitiated: mode === 1 }
++  };
++};
++
++globalThis.__nuvioTakeNextEpisodeRoute = function () {
++  const pending = ps5NextReturn;
++  ps5NextReturn = null;
++  if (!pending || pending.profileId !== String(ProfileManager.getActiveProfileId())) return null;
++  ps5NextAuthorization = pending.params.ps5NextEpisodeSession;
++  return pending.params;
++};
++
++globalThis.__nuvioConsumeNextEpisode = function (params) {
++  if (!ps5NextAuthorization || params.ps5NextEpisodeSession !== ps5NextAuthorization) return false;
++  ps5NextAuthorization = "";
++  delete params.ps5NextEpisodeSession;
++  return true;
++};
 +
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -209,6 +332,11 @@
+@@ -209,6 +891,11 @@
  }
  
  async function shouldShowProfileSelection() {
@@ -217,7 +783,7 @@
    const [profiles, pinStates] = await Promise.all([
      ProfileManager.getProfiles(),
      ProfileSyncService.pullProfileLockStates()
-@@ -218,7 +346,7 @@
+@@ -218,7 +905,7 @@
      pinStates?.[String(activeProfileId)] || pinStates?.[Number(activeProfileId)]
    );
  
@@ -226,7 +792,7 @@
      return { show: false, pinStates };
    }
  
-@@ -237,6 +365,7 @@
+@@ -237,6 +924,7 @@
  }
  
  async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
@@ -234,7 +800,29 @@
    hasSelectedProfileThisSession = true;
    const profiles = await ProfileManager.getProfiles();
    const activeProfileId = ProfileManager.getActiveProfileId();
-@@ -584,8 +713,10 @@
+@@ -265,6 +953,21 @@
+   }).catch((error) => {
+     console.warn("Profile background sync failed", error);
+   });
++  const recommendation = experienceRoute === "home" && globalThis.__nuvioTakePresentationRoute?.();
++  if (recommendation) {
++    await Router.navigate("detail", recommendation, { replaceHistory: true, skipStackPush: true });
++    return;
++  }
++  const nativeDetail = experienceRoute === "home" && globalThis.__nuvioTakePlaybackDetailRoute?.();
++  if (nativeDetail) {
++    await Router.navigate("detail", nativeDetail, { replaceHistory: true, skipStackPush: true });
++    return;
++  }
++  const nativeNext = experienceRoute === "home" && globalThis.__nuvioTakeNextEpisodeRoute?.();
++  if (nativeNext) {
++    await Router.navigate("player", nativeNext, { replaceHistory: true, skipStackPush: true });
++    return;
++  }
+   const resumeRoute =
+     restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
+       ? Router.consumeWebOsResumeRoute()
+@@ -584,8 +1287,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (
@@ -291,6 +879,16 @@
        const renderedPinState = this.getRenderedPinOverlayState();
        const isPinActive = Boolean(renderedPinState);
        const pinScreenPhaseClass = isPinActive ? ` is-pin-${escapeHtml(this.pinOverlayPhase || "open")}` : "";
+--- a/js/core/profile/profileSelectionScreenMethods-07-activate-focused-node.js
++++ b/js/core/profile/profileSelectionScreenMethods-07-activate-focused-node.js
+@@ -164,6 +164,7 @@
+         // results into the newly selected profile's stream screen.
+         PluginRuntime.cancelAll();
+         await ProfileManager.setActiveProfile(profileId);
++        await globalThis.__nuvioRestorePlaybackProgress?.();
+         StartupSyncService.enableProfileScopedSync();
+         detailWatchedEnrichmentService.invalidateAllCache();
+         await I18n.init();
 --- a/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
 +++ b/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
 @@ -77,9 +77,14 @@
@@ -326,6 +924,100 @@
        ? Math.trunc(Number(raw.voteCountGte))
        : null,
      withOriginalLanguage: stringOrNull(raw.withOriginalLanguage),
+--- a/js/data/local/playerSettingsStore.js
++++ b/js/data/local/playerSettingsStore.js
+@@ -124,6 +124,7 @@
+   const normalized = String(value || "")
+     .trim()
+     .toUpperCase();
++  if (globalThis.__NUVIO_PS5__ && normalized === "ENABLED_PLUGINS_ONLY") return "INSTALLED_ADDONS_ONLY";
+   return STREAM_AUTO_PLAY_SOURCES.includes(normalized) ? normalized : "ALL_SOURCES";
+ }
+ 
+--- a/js/data/local/streamPreferencesStore.js
++++ b/js/data/local/streamPreferencesStore.js
+@@ -42,6 +42,13 @@
+ }
+ 
+ export const StreamPreferencesStore = {
++  getBingeGroupEntry(contentId, profileId = activeProfileId()) {
++    const key = buildContentKey(contentId, contentId);
++    if (!key) return null;
++    const entry = readEntries(profileId).find(item =>
++      (item.key === key || item.key.startsWith(key + "::")) && item.bingeGroup);
++    return entry ? { ...entry } : null;
++  },
+   getEntry(contentId, videoId, profileId = activeProfileId()) {
+     const key = buildContentKey(contentId, videoId);
+     if (!key) {
+--- a/js/data/repository/skipIntroRepository.js
++++ b/js/data/repository/skipIntroRepository.js
+@@ -81,7 +81,12 @@
+   const controller = typeof AbortController === "function" ? new AbortController() : null;
+   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+   try {
+-    const response = await fetch(url, {
++    // IntroDB does not allow the console's loopback browser origin.
++    // Keep its existing mapping/cache and fetch only this service natively.
++    const endpoint = new URL(url);
++    const target = globalThis.__NUVIO_PS5__ && endpoint.origin === "https://api.introdb.app" && endpoint.pathname === "/segments"
++      ? "/evo/skip-metadata" + endpoint.search : url;
++    const response = await fetch(target, {
+       method: "GET",
+       mode: "cors",
+       cache: "no-store",
+@@ -157,8 +162,10 @@
+     const url = new URL("segments", baseUrl);
+     url.searchParams.set("imdb_id", normalizedImdbId);
+     url.searchParams.set("is_movie", "true");
+-    const data = await fetchJson(url.toString());
+-    const intervals = mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true });
++    const pending = fetchJson(url.toString())
++      .then(data => mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true }));
++    CACHE.set(cacheKey, pending);
++    const intervals = await pending;
+     CACHE.set(cacheKey, intervals);
+     return intervals;
+   }
+--- a/js/data/repository/subtitleRepository.js
++++ b/js/data/repository/subtitleRepository.js
+@@ -116,7 +116,11 @@
+         if (!this.isSubtitleResource(resource?.name)) {
+           return false;
+         }
+-        return this.supportsType(resource, normalizedType, normalizedId);
++        if (!globalThis.__NUVIO_PS5__)
++          return this.supportsType(resource, normalizedType, normalizedId);
++        return this.buildActualIdCandidates(normalizedType, idCandidates, videoId, {
++          ...options, idPrefixes: addon?.idPrefixes
++        }).some((candidate) => this.supportsType(resource, normalizedType, candidate));
+       })
+     );
+ 
+@@ -172,6 +176,7 @@
+         })
+         .filter((subtitle) => Boolean(subtitle.url));
+ 
++      const chunk = [];
+       subtitles.forEach((subtitle) => {
+         const key = `${subtitle.url}::${String(subtitle.lang || "").toLowerCase()}`;
+         if (seen.has(key)) {
+@@ -179,7 +184,15 @@
+         }
+         seen.add(key);
+         merged.push(subtitle);
++        chunk.push(subtitle);
+       });
++      if (globalThis.__NUVIO_PS5__ && chunk.length && typeof options?.onChunk === "function") {
++        try {
++          options.onChunk({ status: "success", data: chunk });
++        } catch (_) {
++          console.warn("Subtitle chunk callback failed");
++        }
++      }
+     }
+ 
+     return merged;
 --- a/js/platform/adapters/browserAdapter.js
 +++ b/js/platform/adapters/browserAdapter.js
 @@ -22,7 +22,7 @@
@@ -337,6 +1029,16 @@
    },
  
    getCapabilities() {
+--- a/js/platform/tizen/tizenCapabilities.js
++++ b/js/platform/tizen/tizenCapabilities.js
+@@ -196,6 +196,7 @@
+   },
+ 
+   canUsePlugins(runtime = globalThis) {
++    if (runtime.__NUVIO_PS5__) return false;
+     const capabilities = getTizenCapabilities(runtime);
+     return !capabilities.isTizen || capabilities.tizenPluginVersionSupported;
+   },
 --- a/js/ui/navigation/focusEngine.js
 +++ b/js/ui/navigation/focusEngine.js
 @@ -1,4 +1,5 @@
@@ -405,6 +1107,18 @@
    url.searchParams.set("page", String(page));
    url.searchParams.set("limit", String(TRAKT_PAGE_SIZE));
    url.searchParams.set("sort_by", String(source.sortBy || "rank"));
+--- a/js/ui/screens/detail/metaDetailsScreenMethods-03-load-detail.js
++++ b/js/ui/screens/detail/metaDetailsScreenMethods-03-load-detail.js
+@@ -173,7 +173,8 @@
+       } else {
+         this.seriesRatingsBySeason = {};
+       }
+-      this.render(meta);
++      this.render(meta, globalThis.__NUVIO_PS5__ && this.params?.ps5ReturnEpisodeVideoId
++        ? this.getEpisodeFocusDescriptor(this.params.ps5ReturnEpisodeVideoId) : undefined);
+       this.isLoadingDetail = false;
+       void this.refreshLibraryMembership(token);
+       this.maybeAutoOpenContinueWatchingStream();
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
 @@ -261,6 +261,7 @@
@@ -458,6 +1172,22 @@
          return;
        }
  
+--- a/js/ui/screens/home/homeDomUpdate.js
++++ b/js/ui/screens/home/homeDomUpdate.js
+@@ -177,6 +177,13 @@
+   source.innerHTML = markup;
+   const canUpdate = incremental && hasMountedHomeDom(container);
+   if (canUpdate) {
++    // Focus changes and measured truncation replace these children outside
++    // the renderer. Adopt them before diffing, rather than preserving them
++    // as runtime-owned media and appending a second title/metadata block.
++    // Leave logos, transition ghosts and trailer layers with their owners.
++    registerHomeDomNodes(container.querySelectorAll(
++      ".home-hero-title-text, .home-hero-copy > :not(.home-hero-brand), .home-hero-indicators"
++    ));
+     updateChildren(container, source, focusedNode);
+   } else {
+     container.innerHTML = markup;
 --- a/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
 +++ b/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
 @@ -78,7 +78,7 @@
@@ -469,6 +1199,236 @@
          options.push({ action: "playManually", label: t("play_manually", {}, "Play manually") });
        }
        if (!item.isNextUp) {
+--- a/js/ui/screens/player/playerScreenMethods-01-mount.js
++++ b/js/ui/screens/player/playerScreenMethods-01-mount.js
+@@ -5,6 +5,7 @@
+ export function createPlayerScreenMethods01() {
+   const {
+     PlayerController,
++    Router,
+     shouldAllowNativePlaybackDuringStartupAudioGate,
+     ASPECT_MODE_DEFINITIONS,
+     ensureWebOsImageProxyReady,
+@@ -70,6 +71,7 @@
+           this.webOsClockSettingsSubscription = null;
+         }
+       }
++      this.ps5NativeNextEpisode = false;
+       this.params = params;
+       this.trackPreferenceContentId = this.getTrackPreferenceContentId();
+       this.subtitleDelayPreferenceVideoId = this.getSubtitleDelayPreferenceVideoId();
+@@ -171,6 +173,15 @@
+ 
+       this.renderPlayerUi();
+       this.bindPlayerExitCleanup();
++      if (globalThis.__NUVIO_PS5__ && params.ps5NextEpisodeSession) {
++        if (!globalThis.__nuvioConsumeNextEpisode?.(params)) {
++          await Router.navigate("stream", { ...this.buildStreamRouteParamsFromPlayer(), manualSelection: true });
++          return;
++        }
++        this.ps5NativeNextEpisode = true;
++        await this.playNextEpisode({ userInitiated: Boolean(params.ps5NextEpisodeUserInitiated) });
++        return;
++      }
+       this.pauseOverlayMeta = this.buildPauseOverlayMeta();
+       if (!this.isExternalFrameMode()) {
+         this.bindVideoEvents();
+--- a/js/ui/screens/player/playerScreenMethods-06-handle-post-play-key.js
++++ b/js/ui/screens/player/playerScreenMethods-06-handle-post-play-key.js
+@@ -289,10 +289,15 @@
+       if (!streamCandidate?.id || !prefContentId) {
+         return;
+       }
+-      StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
++      const metadata = {
+         bingeGroup: streamCandidate?.behaviorHints?.bingeGroup || streamCandidate?.raw?.behaviorHints?.bingeGroup || "",
+         resumeIdentity: buildStreamResumeIdentity(streamCandidate)
+-      });
++      };
++      if (globalThis.__NUVIO_PS5__) {
++        globalThis.__nuvioDeferStreamPreference?.(this, prefContentId, prefVideoId, streamCandidate.id, metadata);
++        return;
++      }
++      StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, metadata);
+     }
+   };
+ }
+--- a/js/ui/screens/player/playerScreenMethods-22-should-show-next-episode-card.js
++++ b/js/ui/screens/player/playerScreenMethods-22-should-show-next-episode-card.js
+@@ -260,6 +260,7 @@
+       return this.nextEpisodeLaunching && Number(token) === Number(this.nextEpisodeLaunchToken) && Router.getCurrent() === "player";
+     },
+     async runNextEpisodeCountdown(token, selectedStream) {
++      if (this.ps5NativeNextEpisode) return this.isNextEpisodeLaunchActive(token);
+       const sourceName = String(selectedStream?.name || selectedStream?.addonName || "").trim();
+       const countdownEnabled = PlayerSettingsStore.get().nextEpisodeCountdownEnabled !== false;
+       this.nextEpisodeCardSearching = false;
+--- a/js/ui/screens/player/playerScreenMethods-23-maybe-autoplay-next-episode.js
++++ b/js/ui/screens/player/playerScreenMethods-23-maybe-autoplay-next-episode.js
+@@ -169,6 +169,7 @@
+       return streamItems;
+     },
+     getCurrentStreamBingeGroup() {
++      if (this.ps5NativeNextEpisode) return String(this.params?.ps5NativeBingeGroup || "");
+       const currentStream = this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();
+       return String(currentStream?.behaviorHints?.bingeGroup || currentStream?.raw?.behaviorHints?.bingeGroup || "").trim();
+     },
+--- a/js/ui/screens/player/playerScreenMethods-68-load-subtitles.js
++++ b/js/ui/screens/player/playerScreenMethods-68-load-subtitles.js
+@@ -1,5 +1,7 @@
+ /* eslint-disable no-unused-vars */
+ import * as internals from "./playerScreenContext.js";
++import { ProfileManager } from "../../../core/profile/profileManager.js";
++import { Router } from "../../navigation/router.js";
+ 
+ export function createPlayerScreenMethods68() {
+   const {
+@@ -13,44 +15,59 @@
+   } = internals;
+ 
+   return {
+-    async loadSubtitles() {
+-      const requestToken = (this.subtitleLoadToken || 0) + 1;
++    loadSubtitles() {
++      if (!globalThis.__NUVIO_PS5__) return this.ps5LoadSubtitles();
++      // Initial mount starts playback BEFORE its own discovery call. The
++      // native hook can already be awaiting discovery by then. Reuse that
++      // request instead of invalidating its subtitleLoadToken with a second.
++      const url = this.activePlaybackUrl;
++      const params = this.params;
++      const identity = JSON.stringify([params?.itemId, params?.contentId, params?.videoId,
++        params?.itemType, params?.season, params?.episode, this.playerMountToken,
++        ProfileManager.getActiveProfileId(), this.getCurrentStreamCandidate?.()?.id]);
++      if (this.ps5SubtitleLoadPromise && this.ps5SubtitleLoadUrl === url &&
++          this.ps5SubtitleLoadParams === params && this.ps5SubtitleLoadIdentity === identity) {
++        return this.ps5SubtitleLoadPromise;
++      }
++      this.ps5SubtitleLoadUrl = url;
++      this.ps5SubtitleLoadParams = params;
++      this.ps5SubtitleLoadIdentity = identity;
++      const promise = this.ps5LoadSubtitles();
++      this.ps5SubtitleLoadPromise = promise;
++      const clear = () => {
++        if (this.ps5SubtitleLoadPromise === promise) this.ps5SubtitleLoadPromise = null;
++      };
++      promise.then(clear, clear);
++      return promise;
++    },
++    async ps5LoadSubtitles() {
++      // Mount initialization resets subtitleLoadToken. Keep PS5 requests
++      // monotonic so a previous mount cannot complete into this one's list.
++      const requestToken = globalThis.__NUVIO_PS5__
++        ? (this.ps5SubtitleRequestToken || 0) + 1 : (this.subtitleLoadToken || 0) + 1;
++      if (globalThis.__NUVIO_PS5__) this.ps5SubtitleRequestToken = requestToken;
+       this.subtitleLoadToken = requestToken;
+       this.subtitleLoading = true;
+ 
+       const sidecarSubtitles = this.collectStreamSidecarSubtitles();
+       const subtitleLookup = this.buildSubtitleLookupContext();
+-      try {
+-        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+-        this.refreshTrackDialogs();
+-
+-        let repositorySubtitles = [];
+-
+-        try {
+-          if (subtitleLookup.id && subtitleLookup.type) {
+-            repositorySubtitles = await subtitleRepository.getSubtitles(
+-              subtitleLookup.type,
+-              subtitleLookup.id,
+-              subtitleLookup.videoId || null,
+-              {
+-                season: subtitleLookup.season,
+-                episode: subtitleLookup.episode,
+-                title: subtitleLookup.title,
+-                year: subtitleLookup.year,
+-                videoHash: subtitleLookup.videoHash || null,
+-                videoSize: subtitleLookup.videoSize || null,
+-                filename: subtitleLookup.filename || null
+-              }
+-            );
+-          }
+-        } catch (error) {
+-          console.error("Subtitle fetch failed", error);
+-        }
+-
+-        if (requestToken !== this.subtitleLoadToken) {
+-          return;
+-        }
+-
++      const ps5 = globalThis.__NUVIO_PS5__;
++      const params = this.params, mount = this.playerMountToken;
++      const routeParams = ps5 ? Router.currentParams : null;
++      const profile = ps5 ? ProfileManager.getActiveProfileId() : null;
++      const identity = () => JSON.stringify([params?.itemId, params?.contentId, params?.videoId,
++        params?.itemType, params?.season, params?.episode]);
++      const initialIdentity = identity();
++      const selection = () => String(this.activePlaybackUrl || "") + "|" +
++        String(this.getCurrentStreamCandidate?.()?.id || "");
++      const selected = selection();
++      const current = () => requestToken === this.subtitleLoadToken && (!ps5 ||
++        (this.params === params && this.playerMountToken === mount && identity() === initialIdentity &&
++         ProfileManager.getActiveProfileId() === profile && selection() === selected &&
++         Router.current === "player" && Router.currentParams === routeParams && Router.getCurrentScreen() === this));
++      let partialSubtitles = [];
++      const publishSubtitles = (repositorySubtitles) => {
++        if (!current()) return;
+         const subtitleSettings = PlayerSettingsStore.get();
+         const preferredOnly =
+           subtitleSettings.addonSubtitleStartupMode === "PREFERRED_ONLY" ||
+@@ -76,12 +93,51 @@
+           }
+         }
+         this.refreshTrackDialogs();
++      };
++      try {
++        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
++        this.refreshTrackDialogs();
++
++        let repositorySubtitles = [];
++
++        try {
++          if (subtitleLookup.id && subtitleLookup.type) {
++            repositorySubtitles = await subtitleRepository.getSubtitles(
++              subtitleLookup.type,
++              subtitleLookup.id,
++              subtitleLookup.videoId || null,
++              {
++                ...(ps5 ? { onChunk: (result) => {
++                  if (!current() || result?.status !== "success" || !Array.isArray(result.data)) return;
++                  partialSubtitles = this.mergeSubtitleCandidates(partialSubtitles, result.data);
++                  publishSubtitles(partialSubtitles);
++                } } : {}),
++                season: subtitleLookup.season,
++                episode: subtitleLookup.episode,
++                title: subtitleLookup.title,
++                year: subtitleLookup.year,
++                videoHash: subtitleLookup.videoHash || null,
++                videoSize: subtitleLookup.videoSize || null,
++                filename: subtitleLookup.filename || null
++              }
++            );
++          }
++        } catch (error) {
++          console.error("Subtitle fetch failed", error);
++        }
++
++        if (!current()) {
++          return;
++        }
++
++        publishSubtitles(repositorySubtitles);
+       } catch (error) {
++        if (!current()) return;
+         console.error("Subtitle attach failed", error);
+         this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+         this.refreshTrackDialogs();
+       } finally {
+-        if (requestToken === this.subtitleLoadToken) {
++        if (current()) {
+           this.subtitleLoading = false;
+           this.refreshTrackDialogs();
+           this.reapplyPendingWebOsAddonSubtitle?.();
 --- a/js/ui/screens/plugin/catalogOrderScreen.js
 +++ b/js/ui/screens/plugin/catalogOrderScreen.js
 @@ -181,14 +181,16 @@
@@ -597,14 +1557,33 @@
      },
      cleanup() {
        this.loadToken = (this.loadToken || 0) + 1;
+--- a/js/ui/screens/settings/settingsScreenHelpers-04-row-icons.js
++++ b/js/ui/screens/settings/settingsScreenHelpers-04-row-icons.js
+@@ -170,7 +170,9 @@
+ }
+ 
+ export function arePluginsSupported() {
+-  return TizenCapabilities.canUsePlugins();
++  return !globalThis.__NUVIO_PS5__ &&
++    (!Platform.isBrowser() || globalThis.__NUVIO_ALLOW_BROWSER_PLUGIN_RUNTIME__ === true) &&
++    TizenCapabilities.canUsePlugins();
+ }
+ 
+ export function escapeHtml(value) {
 --- a/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
 +++ b/js/ui/screens/settings/settingsScreenMethods-10-render-playback-section.js
-@@ -8,6 +8,9 @@
+@@ -1,3 +1,4 @@
++import { showPs5Speedtest } from "../../navigation/ps5-speedtest.js";
+ import { registerPlaybackActionsPart01 } from "./settingsScreenPlaybackActions-01.js";
+ import { registerPlaybackActionsPart02 } from "./settingsScreenPlaybackActions-02.js";
+ import { renderPlaybackSectionMarkup } from "./settingsScreenPlaybackMarkup-06-section.js";
+@@ -8,6 +9,10 @@
        this.ensureExpandedState("playback");
        registerPlaybackActionsPart01.call(this, model);
        registerPlaybackActionsPart02.call(this, model);
 +      if (globalThis.__NUVIO_PS5__) {
 +        this.actionMap.set("playback:ps5-native", () => document.getElementById("__evoClose")?.click());
++        this.actionMap.set("playback:ps5-speedtest", () => showPs5Speedtest());
 +      }
        return renderPlaybackSectionMarkup.call(this, model);
      }
@@ -620,16 +1599,43 @@
            event?.preventDefault?.();
            const delta = code === 38 ? -1 : 1;
            this.dialogFocusIndex = clamp(this.dialogFocusIndex + delta, 0, this.getTextDialogMaxFocusIndex());
+--- a/js/ui/screens/settings/settingsScreenPlaybackActions-01.js
++++ b/js/ui/screens/settings/settingsScreenPlaybackActions-01.js
+@@ -221,7 +221,8 @@
+   this.actionMap.set("playback:autoStreamSource", () => {
+     this.openOptionDialog({
+       title: t("autoplay_scope", {}, "Auto-play Source Scope"),
+-      options: STREAM_AUTOPLAY_SOURCE_OPTIONS,
++      options: STREAM_AUTOPLAY_SOURCE_OPTIONS.filter(option =>
++        option.id !== "ENABLED_PLUGINS_ONLY" || arePluginsSupported()),
+       selectedId: PlayerSettingsStore.get().streamAutoPlaySource,
+       returnFocusKey: "playback:autoStreamSource",
+       onSelect: (option) => {
 --- a/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
 +++ b/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
-@@ -25,6 +25,7 @@
+@@ -25,6 +25,8 @@
    });
    return `
            ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
 +          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-native", title: "Player settings", subtitle: "Open the native PS5 player settings" }) : ""}
++          ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-speedtest", title: "Speed test", subtitle: "Test native download speed to TorBox" }) : ""}
            <div class="settings-group-card settings-group-card-fill">
              <div class="settings-stack">
                ${this.renderCollapsibleRow({
+--- a/js/ui/screens/stream/streamScreenMethods-04-load-streams.js
++++ b/js/ui/screens/stream/streamScreenMethods-04-load-streams.js
+@@ -264,9 +264,9 @@
+         if (this.streams.length) {
+           const visibleStreams = this.getFilteredStreams();
+           const maxCardIndex = Math.max(0, visibleStreams.length - 1);
+-          let initialIndex = clamp(Number(this.focusState?.index || 0), 0, maxCardIndex);
++          let initialIndex = clamp(Number(this.focusState?.row ?? this.focusState?.index ?? 0), 0, maxCardIndex);
+           const preferred = String(this.params?.preferredStreamId || "").trim();
+-          if (preferred) {
++          if (preferred && this.focusState?.zone !== "card") {
+             const prefIdx = visibleStreams.findIndex((s) => String(s?.id || "") === preferred);
+             if (prefIdx >= 0) {
+               initialIndex = prefIdx;
 --- a/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
 +++ b/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
 @@ -24,6 +24,12 @@
@@ -645,3 +1651,45 @@
        const settings = PlayerSettingsStore.get();
        const reusableStream = settings.streamReuseLastLinkEnabled
          ? StreamPreferencesStore.getValid(
+@@ -101,7 +107,9 @@
+       }
+       const savedPreference =
+         settings.streamAutoPlayPreferBingeGroupForNextEpisode && settings.streamAutoPlayReuseBingeGroup
+-          ? StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId)
++          ? (globalThis.__NUVIO_PS5__
++            ? StreamPreferencesStore.getBingeGroupEntry(this.params?.itemId)
++            : StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId))
+           : null;
+       const preferredBingeGroup = String(savedPreference?.bingeGroup || "").trim();
+       const installedAddonNames = new Set(
+--- a/js/ui/screens/stream/streamScreenMethods-09-render.js
++++ b/js/ui/screens/stream/streamScreenMethods-09-render.js
+@@ -23,12 +23,16 @@
+       this.cancelScheduledRender();
+       const previousVirtualModel = this.streamVirtualized ? this.streamVirtualModel : null;
+       const previousFocusedIndex = Number(this.focusState?.row);
++      const previousStreams = this.renderedStreamListStreams || [];
++      const previousKeys = previousVirtualModel?.keys || this.getStreamVirtualKeys(
++        this.addonFilter === "all" ? previousStreams : previousStreams.filter((s) => s.addonName === this.addonFilter)
++      );
+       const previousFocusedKey =
+-        previousVirtualModel &&
++        this.focusState?.zone === "card" &&
+         Number.isInteger(previousFocusedIndex) &&
+         previousFocusedIndex >= 0 &&
+-        previousFocusedIndex < previousVirtualModel.keys.length
+-          ? previousVirtualModel.keys[previousFocusedIndex]
++        previousFocusedIndex < previousKeys.length
++          ? previousKeys[previousFocusedIndex]
+           : "";
+       if (previousVirtualModel && !this.streamVirtualFocusReset && Number(this.listScrollTop || 0) > 0) {
+         const previousAnchorIndex = findStreamVirtualIndex(previousVirtualModel.offsets, Number(this.listScrollTop || 0));
+@@ -63,7 +67,7 @@
+       // cards interactive while their images warm in the background; the card
+       // renderer already has a text fallback for a missing logo.
+       const virtualizedStreamList = Boolean(this.shouldUseStreamVirtualization(allStreams) && filtered.length);
+-      if (virtualizedStreamList && previousFocusedKey && !this.streamVirtualFocusReset) {
++      if (previousFocusedKey && !this.streamVirtualFocusReset) {
+         const nextKeys = this.getStreamVirtualKeys(filtered);
+         const nextFocusedIndex = nextKeys.indexOf(previousFocusedKey);
+         if (nextFocusedIndex >= 0) {

@@ -1,0 +1,35 @@
+
+/* Nuvio General overlays remain independent of fading controls. */
+.nuvio-general-card {
+    display: none;
+    position: absolute;
+    padding: 24dp 30dp;
+    background-color: #0b0d16f5;
+    border: 2dp #4f8cff;
+    border-radius: 16dp;
+    font-size: 24dp;
+    line-height: 34dp;
+    color: white;
+    overflow: hidden;
+}
+.nuvio-general-heading { display: block; color: #4f8cff; font-size: 26dp; font-weight: bold; margin-bottom: 16dp; }
+.nuvio-general-body { display: block; overflow: hidden; }
+.nuvio-general-actions { display: block; font-size: 20dp; margin-top: 24dp; }
+#nuvio-parental {
+    display: none;
+    position: absolute;
+    right: 96dp;
+    top: 210dp;
+    width: 1000dp;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 10dp;
+}
+.nuvio-parental-tag { display: block; flex-shrink: 0; max-width: 976dp; line-height: 20dp; }
+#nuvio-pause { left: 96dp; top: 280dp; width: 1040dp; max-height: 360dp; }
+#nuvio-pause .nuvio-general-body { max-height: 238dp; }
+#nuvio-recommendation { right: 96dp; top: 430dp; width: 680dp; max-height: 280dp; }
+#nuvio-recommendation .nuvio-general-body { max-height: 102dp; }
+#nuvio-still { left: 560dp; top: 350dp; width: 740dp; height: 230dp; }
+#nuvio-clock { display: none; position: absolute; right: 96dp; top: 150dp; font-size: 23dp; }

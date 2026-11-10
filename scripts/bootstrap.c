@@ -73,7 +73,7 @@ int nuvio_bootstrap(void) {
     address.sin_port=htons(NUVIO_BOOTSTRAP_PORT);
     address.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
     stage="connect";
-    if (connect(fd,(struct sockaddr *)&address,sizeof(address))<0) {
+    if (connect(fd,(struct sockaddr *)&address,sizeof(address))<0) { /* connect-ok: nonblocking loopback, bounded poll below */
         if (errno!=EINPROGRESS) goto done;
         stage="connect-wait";
         int64_t now=now_ms();

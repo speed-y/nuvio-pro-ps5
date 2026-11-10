@@ -662,6 +662,57 @@ ctx.__NUVIO_PS5__=false;router.persistWebOsResumeRoute('home',{});assert.equal(s
             subprocess.run([node,'-e',script,str(target)],check=True,timeout=10)
 
 
+class StreamSelectionTests(unittest.TestCase):
+    def test_incremental_results_preserve_selection_and_completion(self):
+        import polish
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:self.skipTest('Node unavailable')
+        source = (APP.parent/'tests/fixtures/stream_selection.js.txt').read_text()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            stream = root/'js/ui/screens/stream'
+            stream.mkdir(parents=True)
+            render = stream/'streamScreenMethods-09-render.js'
+            load = stream/'streamScreenMethods-04-load-streams.js'
+            render.write_text(source.split('function completeSelection()')[0])
+            load.write_text('function completeSelection()'+source.split('function completeSelection()')[1])
+            polish.patch_stream_selection(root)
+            script = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const ctx={clamp:(n,l,h)=>Math.min(h,Math.max(l,n))};vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+fs.readFileSync(process.argv[2],'utf8'),ctx);
+for(const total of [50,100,101,130]) {
+ const b=Array.from({length:total-10},(_,i)=>({id:'B-'+i,addonName:'B'}));
+ const a=Array.from({length:10},(_,i)=>({id:'A-'+i,addonName:'A'}));
+ const s={streams:b,renderedStreamListStreams:b,addonFilter:'all',params:{},
+  focusState:{zone:'card',row:8,action:'native'},streamVirtualized:b.length>100,
+  streamVirtualModel:{keys:b.map(x=>x.id)},getStreamVirtualKeys:xs=>xs.map(x=>x.id),
+  getFilteredStreams(filter=this.addonFilter){return filter==='all'?this.streams:this.streams.filter(x=>x.addonName===filter);},
+  shouldUseStreamVirtualization:xs=>xs.length>100};
+ s.streams=[...a,...b];ctx.renderSelection.call(s);
+ assert.equal(s.getFilteredStreams()[s.focusState.row].id,'B-8');
+ s.renderedStreamListStreams=s.streams;s.streamVirtualized=total>100;
+ s.streamVirtualModel={keys:s.streams.map(x=>x.id)};
+ // Navigation uses row, not index. Completion must retain the current row.
+ s.focusState={zone:'card',row:18,action:'native'};s.params.preferredStreamId='A-2';
+ ctx.completeSelection.call(s);ctx.renderSelection.call(s);
+ assert.equal(s.getFilteredStreams()[s.focusState.row].id,'B-8');assert.equal(s.focusState.action,'native');
+ // Aggregate completion still honors the initial preferred source.
+ s.focusState={zone:'filter',index:0};ctx.completeSelection.call(s);
+ assert.equal(s.streams[s.focusState.row].id,'A-2');
+ // Intentional filter changes must not restore a different list's old key.
+ s.addonFilter='A';s.streamVirtualFocusReset=true;s.focusState={zone:'card',row:0};
+ ctx.renderSelection.call(s);assert.equal(s.getFilteredStreams()[s.focusState.row].id,'A-0');
+ s.streamVirtualFocusReset=false;s.renderedStreamListStreams=s.streams;
+ s.focusState={zone:'filter',index:1};ctx.renderSelection.call(s);
+ assert.equal(s.focusState.zone,'filter');assert.equal(s.focusState.index,1);
+}
+"""
+            subprocess.run([node,'-e',script,str(render),str(load)],check=True,timeout=10)
+
+
 class CollectionSourceTests(unittest.TestCase):
     def test_nullable_rating_filters_survive_repeated_normalization(self):
         import polish
@@ -1025,6 +1076,7 @@ const boot=(search='',ps5=true)=>{
         hook = ''.join(json.loads(line) for line in fixed.splitlines())
         script = r"""
 const vm=require('vm'),assert=require('assert');
+(async()=>{
 for(const nuvio of [true,false]){
  const order=[];let request;
  const ctx={NUVIO:nuvio,done:0,good:'http://127.0.0.1:8686/?existing=1#page',
@@ -1032,10 +1084,13 @@ for(const nuvio of [true,false]){
  window:{__nuvioSavePlaybackReturn:()=>{order.push('profile');return 'session-73';},__nuvioPlaybackStartSeconds:()=>371.664},URL,encodeURIComponent,
  saveNow:kind=>{assert.equal(kind,1);order.push('storage');},
  fetch:url=>{order.push('play');request=url}};
+ ctx.window.__nuvioPlaybackNextPolicy=session=>{assert.equal(session,'session-73');return '1,3,p,0.99';};
  vm.createContext(ctx);vm.runInContext(process.argv[1],ctx);ctx.go('Title');
+ await new Promise(resolve=>setImmediate(resolve));
  const query=new URL(request,ctx.location.href).searchParams;
  const back=new URL(query.get('return'));
  assert.equal(query.get('start'),nuvio?'371.664':'0');
+ assert.equal(query.get('next'),nuvio?'1,3,p,0.99':'');
  assert.equal(query.get('session'),nuvio?'session-73':'');
  assert.equal(back.searchParams.get('nuvioPlaybackReturn'),nuvio?'1':null);
  assert.equal(back.searchParams.get('existing'),'1');assert.equal(back.hash,'#page');
@@ -1063,6 +1118,25 @@ ctx.Router.currentParams={resumePositionMs:371664};ctx.Router.current='stream';
 assert.equal(ctx.__nuvioPlaybackStartSeconds(),0);
 ctx.Router.current='player';ctx.__NUVIO_PS5__=false;
 assert.equal(ctx.__nuvioPlaybackStartSeconds(),0);
+// Native playback waits for the session-scoped presentation POST, and never
+// launches after either stale preparation or a failed POST.
+for(const outcome of ['ok','post-failed','stale']) {
+ const events=[];let release;
+ const context={NUVIO:true,done:0,good:'http://fixture.invalid/',
+  location:{href:'http://fixture.invalid/'},abs:'https://fixture.invalid/video',URL,encodeURIComponent,
+  window:{__nuvioPreparePresentation:async()=>outcome==='stale'?null:true,
+   __nuvioSavePlaybackReturn:()=>{events.push('save');return 'session-42';},
+   __nuvioSendPresentation:session=>{assert.equal(session,'session-42');events.push('post');
+    return new Promise(resolve=>release=resolve);}},
+  saveNow:()=>events.push('storage'),fetch:()=>events.push('play')};
+ vm.createContext(context);vm.runInContext(process.argv[1],context);context.go('Title');
+ await new Promise(setImmediate);
+ if(outcome==='stale') {assert.deepEqual(events,[]);continue;}
+ assert.deepEqual(events,['save','storage','post']);
+ release(outcome==='ok');await new Promise(setImmediate);
+ assert.deepEqual(events,outcome==='ok'?['save','storage','post','play']:['save','storage','post']);
+}
+})().catch(e=>{console.error(e);process.exit(1)});
 """
         subprocess.run(['node', '-e', script, hook, str(APP/'ps5-resume.js')], check=True, timeout=10)
         with self.assertRaises(RuntimeError):
@@ -1074,18 +1148,24 @@ assert.equal(ctx.__nuvioPlaybackStartSeconds(),0);
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const resume=fs.readFileSync(process.argv[1],'utf8');
 const progress=fs.readFileSync(process.argv[2],'utf8');
+const next=fs.readFileSync(process.argv[3],'utf8');
 const store=new Map([['profiles',[{id:'2'},{id:'7'}]]]),records=new Map();
 let active='7',report={positionMs:2173500,durationMs:3600000},status=200;
 const episode={itemId:'tt102938',itemType:'series',videoId:'tt102938:2:5',season:2,episode:5,
  title:'Series',episodeTitle:'Episode five',streamIdentity:{source:'selected-addon'}};
+let playbackContext=episode;
 const boot=(search='?nuvioPlaybackReturn=1')=>{
  const ctx={__NUVIO_PS5__:true,URLSearchParams,AbortController,setTimeout,clearTimeout,encodeURIComponent,
  window:{location:{search}},console,
  LocalStore:{get:(k,d)=>store.has(k)?structuredClone(store.get(k)):d,
  set:(k,v)=>store.set(k,structuredClone(v)),remove:k=>store.delete(k)},
  ProfileManager:{getActiveProfileId:()=>active},
- Router:{current:'player',isWebOsResumeRouteRestorable:()=>false},
- PlayerController:{createProgressContext:()=>structuredClone(episode),
+ Router:{current:'player',getCurrentScreen:()=>({buildDetailRouteParamsFromPlayer:()=>({
+  itemId:playbackContext.itemId,itemType:playbackContext.itemType,preferredSeason:playbackContext.season,
+  playOnLoad:true,autoOpenContinueWatching:true
+ })}),isWebOsResumeRouteRestorable:()=>false},
+ PlayerSettingsStore:{get:()=>({autoplayNextEpisode:true})},
+ PlayerController:{createProgressContext:()=>structuredClone(playbackContext),
  flushProgress:async(positionMs,durationMs,clear,context)=>{
  records.set(`${active}:${context.itemId}:${context.season}:${context.episode}`,
  {...context,positionMs,durationMs});
@@ -1093,7 +1173,7 @@ const boot=(search='?nuvioPlaybackReturn=1')=>{
   assert.equal(new URL(url,'http://fixture.invalid').searchParams.get('session'),store.get('ps5_native_progress').session);
   return {status,ok:status===200,json:async()=>report};
  }};
- vm.createContext(ctx);vm.runInContext(resume+'\n'+progress,ctx);return ctx;
+ vm.createContext(ctx);vm.runInContext(resume+'\n'+progress+'\n'+next,ctx);return ctx;
 };
 (async()=>{
  const ctx=boot();ctx.__nuvioSavePlaybackReturn();
@@ -1103,16 +1183,51 @@ const boot=(search='?nuvioPlaybackReturn=1')=>{
  assert.equal(saved.videoId,'tt102938:2:5');assert.equal(saved.episodeTitle,'Episode five');
  assert.equal(saved.streamIdentity.source,'selected-addon');assert.equal(records.size,1);
  assert(!store.has('ps5_native_progress'));
- // A later profile, cold launch, deleted profile or stale session must not inherit a report.
- for(const change of ['profile','cold','session','deleted','expired']){
+ // A live finished report authorizes the next route only after saving progress.
+ ctx.__nuvioSavePlaybackReturn();store.get('ps5_native_progress').next={params:episode};
+ report.nextEpisode=2;const live=boot();await live.restorePs5PlaybackProgress();
+ assert.equal(live.__nuvioTakeNextEpisodeRoute().videoId,'tt102938:2:5');
+ // Explicit Back wins over next episode, including movies with no next policy.
+ for(const context of [episode,{itemId:'movie-37',itemType:'movie',videoId:'movie-37'}]) {
+  playbackContext=context;ctx.__nuvioSavePlaybackReturn();
+  report={positionMs:0,durationMs:0,returnToDetail:true,nextEpisode:2};
+  const returned=boot();await returned.restorePs5PlaybackProgress();
+  const detail=returned.__nuvioTakePlaybackDetailRoute();
+  assert.equal(detail.itemId,context.itemId);assert.equal(detail.itemType,context.itemType);
+  assert.equal(detail.preferredSeason,context.season);
+  assert.equal(detail.ps5ReturnEpisodeVideoId,context.season!=null?context.videoId:null);
+  assert(!detail.playOnLoad);assert(!detail.autoOpenContinueWatching);
+  assert.equal(returned.__nuvioTakePlaybackDetailRoute(),null);
+  assert.equal(returned.__nuvioTakeNextEpisodeRoute(),null);
+  ctx.__nuvioSavePlaybackReturn();const cold=boot('');await cold.restorePs5PlaybackProgress();
+  assert.equal(cold.__nuvioTakePlaybackDetailRoute(),null);
+  ctx.__nuvioSavePlaybackReturn();const changed=boot();await changed.restorePs5PlaybackProgress();
+  active='2';assert.equal(changed.__nuvioTakePlaybackDetailRoute(),null);active='7';
+ }
+ playbackContext=episode;report={positionMs:2173500,durationMs:3600000};
+ // A later profile, deleted profile or stale session must not inherit a report.
+ for(const change of ['profile','session','deleted']){
   ctx.__nuvioSavePlaybackReturn();records.clear();
   if(change==='profile')active='2';
   if(change==='session')store.get('ps5_native_progress').session='previous-session';
   if(change==='deleted')store.set('profiles',[{id:'2'}]);
-  if(change==='expired')store.get('ps5_playback_return').savedAt-=25*60*60*1000;
-  await boot(change==='cold'?'':'?nuvioPlaybackReturn=1').restorePs5PlaybackProgress();
+  await boot().restorePs5PlaybackProgress();
   assert.equal(records.size,0,change);active='7';store.set('profiles',[{id:'2'},{id:'7'}]);
  }
+ // Cold recovery has no return-URL/route TTL and never bypasses profile selection.
+ ctx.__nuvioSavePlaybackReturn();
+ store.get('ps5_native_progress').next={params:episode};
+ store.get('ps5_playback_return').savedAt-=48*60*60*1000;
+ let cold=boot('');assert.equal(cold.canResumePs5Playback(),false);
+ await cold.__nuvioRestorePlaybackProgress();
+ assert.equal(cold.__nuvioTakeNextEpisodeRoute(),null);
+ assert.equal(records.get('7:tt102938:2:5').positionMs,2173500);records.clear();
+ // Selecting another profile leaves recovery pending until its owner is chosen.
+ ctx.__nuvioSavePlaybackReturn();active='2';cold=boot('');
+ await cold.__nuvioRestorePlaybackProgress();assert.equal(records.size,0);
+ assert(store.has('ps5_native_progress'));active='7';
+ await cold.__nuvioRestorePlaybackProgress();
+ assert.equal(records.get('7:tt102938:2:5').positionMs,2173500);records.clear();
  // A profile change while the native response is in flight is also rejected.
  ctx.__nuvioSavePlaybackReturn();let pending=boot();
  pending.fetch=async()=>{active='2';return {status:200,ok:true,json:async()=>report}};
@@ -1151,7 +1266,7 @@ const boot=(search='?nuvioPlaybackReturn=1')=>{
 })().catch(e=>{console.error(e);process.exit(1)});
 """
         subprocess.run(['node', '-e', script, str(APP/'ps5-resume.js'),
-                        str(APP/'ps5-playback-progress.js')], check=True, timeout=10)
+                        str(APP/'ps5-playback-progress.js'), str(APP/'ps5-next.js')], check=True, timeout=10)
 
     def test_native_progress_ignores_scrub_preview_before_stop(self):
         import polish
@@ -1171,6 +1286,11 @@ static void serve_evo(int fd, const char *path)
             s_play_start = s_h_start;
     *start = s_play_start;
     if (s_state != P_PLAYING) return;
+}
+static void *accept_thread(void *arg) {
+    while (!s_srv_stop) {
+        int c = accept(s_listen_fd, NULL, NULL);
+    }
 }
 ''')
             (root/'include/evo_webui.h').write_text('''
@@ -1200,9 +1320,16 @@ void PlaybackController::stopPlayback() {
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
 #include <pthread.h>
 using std::isfinite;
 static pthread_mutex_t s_mx=PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t s_store_mx=PTHREAD_MUTEX_INITIALIZER;
+static char s_store_path[512];
 static char body[256],status[32];
 static int query_param(const char *,const char *,char *out,size_t cap) {
  snprintf(out,cap,"session-37");return 1;
@@ -1249,6 +1376,17 @@ int main() {
  evo_webui_progress_sample(0,0);s_progress_finished=1;
  playback_progress_serve(0,"/evo/progress?session=session-37");
  assert(!strcmp(body,"{\"positionMs\":450000,\"durationMs\":1000000}"));
+ s_progress_next_episode=2;
+ playback_progress_serve(0,"/evo/progress?session=session-37");
+ assert(!strcmp(body,"{\"positionMs\":450000,\"durationMs\":1000000,\"nextEpisode\":2}"));
+ evo_webui_return_to_nuvio();
+ playback_progress_serve(0,"/evo/progress?session=session-37");
+ assert(!strcmp(body,"{\"positionMs\":450000,\"durationMs\":1000000,\"returnToDetail\":true}"));
+ // Back navigation must work even if no usable time sample was produced.
+ s_progress_position=0;
+ playback_progress_serve(0,"/evo/progress?session=session-37");
+ assert(!strcmp(status,"200 OK"));
+ assert(!strcmp(body,"{\"positionMs\":0,\"durationMs\":1000000,\"returnToDetail\":true}"));
 }
 '''
             probe = root/'progress.cpp'
@@ -1258,3 +1396,583 @@ int main() {
                             '-I'+str(root/'include'), str(probe), '-o', str(binary)],
                            check=True, timeout=30)
             subprocess.run([str(binary)], check=True, timeout=10)
+
+    def test_native_progress_checkpoints_survive_restart_and_torn_writes(self):
+        import json
+        import subprocess
+        source = r'''
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <cstdint>
+#include <cerrno>
+#include <string>
+#include <fcntl.h>
+#include <unistd.h>
+#include <time.h>
+#include <pthread.h>
+using std::isfinite;
+static pthread_mutex_t s_mx=PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t s_store_mx=PTHREAD_MUTEX_INITIALIZER;
+static char s_store_path[512]="/data/nuvio/state.json";
+static std::string root;
+static uint64_t now_ms=1000;
+static bool tear_write=false;
+static std::string mapped(const char *path) {
+ assert(!strncmp(path,"/data/nuvio/",12));return root+"/"+(path+12);
+}
+static int checkpoint_open(const char *path,int flags,int mode) {
+ assert(flags&O_SYNC);return open(mapped(path).c_str(),flags,mode);
+}
+static FILE *checkpoint_fopen(const char *path,const char *mode) {
+ return fopen(mapped(path).c_str(),mode);
+}
+static ssize_t checkpoint_write(int fd,const void *data,size_t size) {
+ return write(fd,data,tear_write?size/2:size);
+}
+static int checkpoint_clock(clockid_t,struct timespec *value) {
+ value->tv_sec=now_ms/1000;value->tv_nsec=(now_ms%1000)*1000000;return 0;
+}
+static int query_param(const char *path,const char *,char *out,size_t cap) {
+ snprintf(out,cap,"%s",strchr(path,'=')+1);return 1;
+}
+static void respond(int,const char *status,const char *,const char *body,size_t size) {
+ printf("%s\n%.*s\n",status,(int)size,body);
+}
+#define open checkpoint_open
+#define fopen checkpoint_fopen
+#define write checkpoint_write
+#define clock_gettime checkpoint_clock
+''' + (APP/'ps5-playback-progress.c').read_text() + r'''
+int main(int argc,char **argv) {
+ assert(argc==3);root=argv[1];std::string mode=argv[2];
+ if(mode=="read"||mode=="wrong") {
+  playback_progress_serve(0,mode=="read"?"/evo/progress?session=session-37":
+                         "/evo/progress?session=wrong-session");
+  return 0;
+ }
+ snprintf(s_progress_session,sizeof s_progress_session,"session-37");
+ evo_webui_return_to_nuvio(); // Explicit navigation also must not survive a crash.
+ s_progress_next_episode=2; // A crash must not persist automatic launch intent.
+ evo_webui_progress_sample(61.25,mode=="unknown"?0:200);
+ playback_progress_checkpoint(); // First measured position is durable promptly.
+ if(mode=="unknown")return 0;
+ evo_webui_progress_sample(92.5,200);now_ms=30999;
+ playback_progress_checkpoint(); // 29.999 seconds, not due yet.
+ if(mode=="before")return 0;
+ now_ms=31000;tear_write=mode=="failed";
+ playback_progress_checkpoint(); // Exactly 30 seconds.
+ if(mode=="failed") {
+  now_ms=61000;playback_progress_checkpoint(); // Never tear the surviving slot.
+  return 0;
+ }
+ if(mode=="after")return 0;
+ evo_webui_progress_sample(mode=="zero"?0:42.125,200);
+ if(mode=="zero")now_ms=61000;
+ else {now_ms=32000;s_progress_finished=1;++s_progress_revision;}
+ playback_progress_checkpoint(); // Backward seek / final sample, not maximum position.
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            probe, binary = root/'checkpoint.cpp', root/'checkpoint'
+            probe.write_text(source)
+            subprocess.run(['c++', '-std=c++17', '-pthread', str(probe), '-o', str(binary)],
+                           check=True, timeout=30)
+            def run(path, mode):
+                output = subprocess.check_output([str(binary), str(path), mode], text=True, timeout=10)
+                status, _, body = output.partition('\n')
+                return status, json.loads(body) if body.strip() else None
+            for mode, expected in [('before', 61250), ('after', 92500), ('failed', 61250),
+                                   ('final', 42125), ('zero', 0), ('unknown', 61250)]:
+                data = root/mode
+                data.mkdir()
+                run(data, mode)
+                # A separate process has no surviving native session or samples.
+                report = run(data, 'read')
+                if expected:
+                    self.assertEqual(report, ('200 OK', {'positionMs': expected,
+                                     'durationMs': 0 if mode == 'unknown' else 200000}))
+                else:
+                    self.assertEqual(report, ('204 No Content', None))
+                self.assertEqual(run(data, 'wrong'), ('404 Not Found', None))
+            # A damaged latest checkpoint falls back to the preceding complete one.
+            newest = root/'after/state.json.progress.0'
+            original = newest.read_bytes()
+            for damaged in [original[:len(original)//2], original.replace(b'92500', b'92501')]:
+                newest.write_bytes(damaged)
+                self.assertEqual(run(root/'after', 'read'),
+                                 ('200 OK', {'positionMs': 61250, 'durationMs': 200000}))
+            unreadable = root/'unreadable'
+            unreadable.mkdir()
+            self.assertEqual(run(unreadable, 'read'), ('404 Not Found', None))
+            for slot in range(2):
+                (unreadable/f'state.json.progress.{slot}').mkdir()
+            self.assertEqual(run(unreadable, 'read'), ('503 Service Unavailable', None))
+
+    def test_native_hui_prompts_survive_hidden_controls_and_copied_labels(self):
+        import polish
+        import subprocess
+        # Minimal host drawing surface. Exercise the emitted HUD through its
+        # public set/draw contract without fetching a GPU library in host CI.
+        header = r'''
+#include <cassert>
+#include <string>
+#include <vector>
+struct evo_playback_osd_params_t {
+ const char *metadata="", *skip_label="";
+ int skip_countdown=0, next_episode=0, playback_ended=0, paused=0, scrub_active=0;
+ int nuvio_active=1;
+};
+namespace hui::gfx {
+struct Color { float alpha=1; Color with_alpha(float a) const { return {alpha*a}; } };
+struct Rect { float x,y,w,h; float cy() const { return y+h/2; } };
+struct DrawList {
+ float opacity=1; std::vector<std::string> text; std::vector<float> cards;
+ void push_opacity(float a) { opacity*=a; } void pop_opacity() { opacity=1; }
+ void bordered_rect(Rect,int,Color,int,Color) { cards.push_back(opacity); }
+};
+}
+namespace hui::ui {
+struct Fonts { int regular=0,semibold=0; };
+enum class Button { r1,l1,circle };
+enum class Align { right };
+struct Hint { Button button; const char *label; };
+struct HintLayout { int size=0,text_size=0,item_gap=0; float cy=0; };
+struct GlyphStyle { static int dark() { return 0; } };
+inline void text(gfx::DrawList &list,int,const std::string &s,float,float,int,gfx::Color,
+                 Align=Align::right) { list.text.push_back(s); }
+inline void draw_hints(gfx::DrawList &list,const Fonts &,int,const Hint *h,int n,
+                       float,bool,HintLayout) {
+ for(int i=0;i<n;++i) list.text.push_back(h[i].label);
+}
+}
+namespace evo::kit {
+namespace ui=hui::ui;
+using namespace hui::gfx; using hui::ui::Align;
+struct Palette { Color accent; };
+struct Context { ui::Fonts fonts; Palette palette; };
+const Color kInk{},kWhite{}; const float kMargin=60;
+class OsdScreen {
+public:
+ void set(const evo_playback_osd_params_t &p);
+ void draw(DrawList &list,const Context &ctx,bool hidden) const;
+ bool focus() const;
+private:
+    void draw_top(hui::gfx::DrawList &list, const Context &ctx) const;
+    std::string title_, meta_;
+ std::string skip_label_;
+ bool skip_on_=false;
+ evo_playback_osd_params_t raw_;
+ struct { float value=0; } chrome_, skip_;
+ void draw_captions(DrawList &,const Context &,float) const {}
+ void draw_skip(DrawList &,const Context &) const;
+};
+}
+'''
+        source = r'''
+#include "evo_hui_osd.hpp"
+namespace evo::kit {
+void OsdScreen::set(const evo_playback_osd_params_t &p) {
+ auto str=[](const char *s){return std::string(s?s:"");};raw_=p;
+    meta_ = str(p.metadata);
+    skip_on_ = p.skip_label && *p.skip_label;
+    if (skip_on_) skip_label_ = p.skip_label;
+    raw_.skip_label = nullptr;
+}
+void OsdScreen::draw_skip(DrawList &,const Context &) const {
+    if (skip_.value <= 0.01f || skip_label_.empty())
+        return;
+}
+void OsdScreen::draw_top(DrawList &list, const Context &ctx) const { (void)list;(void)ctx; }
+void OsdScreen::draw(DrawList &list,const Context &ctx,bool hidden) const {
+ float chrome=hidden?0:1;
+ if (!hidden) draw_top(list,ctx);
+        draw_captions(list, ctx, chrome);
+}
+bool OsdScreen::focus() const {
+    return chrome_.value > 0.01f || raw_.scrub_active || raw_.paused;
+}
+}
+int main() {
+ using namespace evo::kit; Context ctx;OsdScreen osd;evo_playback_osd_params_t p;
+ std::string label="Skip recap";p.skip_label=label.c_str();p.skip_countdown=10;osd.set(p);
+ label.assign(1000,'x'); // The browser/controller's input strings need not survive set().
+ for(bool hidden:{false,true}) {
+  DrawList frame;osd.draw(frame,ctx,hidden);assert(osd.focus());
+  assert((frame.text==std::vector<std::string>{"Skip recap","Dims in 10s"}));
+  assert(frame.cards==std::vector<float>{1});
+ }
+ p.skip_label="Skip credits";p.skip_countdown=0;p.next_episode=2;osd.set(p);
+ DrawList both;osd.draw(both,ctx,true);
+ assert((both.text==std::vector<std::string>{"Skip credits","Next episode in 2s","Keep watching","Back to Nuvio"}));
+ assert((both.cards==std::vector<float>{0.5f,1}));
+ p.skip_label="";p.next_episode=-1;osd.set(p);DrawList manual;osd.draw(manual,ctx,true);
+ assert((manual.text==std::vector<std::string>{"Next episode","Play now","Keep watching","Back to Nuvio"}));
+ p.next_episode=0;p.playback_ended=1;osd.set(p);DrawList ended;osd.draw(ended,ctx,true);
+ assert((ended.text==std::vector<std::string>{"Playback ended","Back to Nuvio"}));
+ p.playback_ended=0;osd.set(p);DrawList empty;osd.draw(empty,ctx,true);
+ assert(empty.text.empty() && empty.cards.empty() && !osd.focus());
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for path, text in [('ui_kit/include/evo_hui_osd.hpp', header),
+                               ('ui_kit/src/evo_hui_osd.cpp', source)]:
+                target = root/path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text)
+            polish.patch_playback_hui(root)
+            binary = root/'probe'
+            subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                '-I'+str(root/'ui_kit/include'), str(root/'ui_kit/src/evo_hui_osd.cpp'),
+                '-o', str(binary)], check=True, timeout=30)
+            subprocess.run([str(binary)], check=True, timeout=10)
+
+    def test_native_skip_metadata_endpoint_confines_queries_and_preserves_failures(self):
+        import polish
+        import shutil
+        import subprocess
+        compiler = shutil.which('cc')
+        if not compiler:self.skipTest('No host C compiler')
+        fixture = '#include "evo_webui.h"\nstatic void serve_evo(int fd, const char *path)\n{\n}\n'
+        emitted = polish.patch_skip_metadata_proxy(fixture)
+        source = r'''
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+static char result_status[64], result_body[1024];
+static int network_status=200;
+static void tlog(const char *format,...) { (void)format; }
+static int query_param(const char *path,const char *key,char *out,size_t cap) {
+ char needle[64];snprintf(needle,sizeof needle,"%s=",key);
+ const char *p=strstr(path,needle);out[0]=0;if(!p)return 0;p+=strlen(needle);
+ size_t n=strcspn(p,"&");if(n>=cap)n=cap-1;memcpy(out,p,n);out[n]=0;return 1;
+}
+static void respond(int fd,const char *status,const char *type,const char *body,size_t n) {
+ (void)fd;assert(!strcmp(type,"application/json"));
+ snprintf(result_status,sizeof result_status,"%s",status);
+ assert(n<sizeof result_body);memcpy(result_body,body,n);result_body[n]=0;
+}
+static int evo_net_http_get_sync(const char *url,const char **h,int count,char **body,size_t *n,int *status) {
+ (void)h;(void)count;*status=network_status;
+ *body=strdup(url);*n=strlen(*body);return network_status==200?0:-8;
+}
+''' + emitted + r'''
+int main(void) {
+ serve_evo(0,"/evo/skip-metadata?imdb_id=tt0108778&season=1&episode=14");
+ assert(!strcmp(result_status,"200 OK"));
+ assert(!strcmp(result_body,"https://api.introdb.app/segments?imdb_id=tt0108778&season=1&episode=14"));
+ serve_evo(0,"/evo/skip-metadata?imdb_id=tt9876&is_movie=true");
+ assert(!strcmp(result_status,"200 OK"));
+ assert(!strcmp(result_body,"https://api.introdb.app/segments?imdb_id=tt9876&is_movie=true"));
+ const char *bad[]={"imdb_id=tt1/evil&season=1&episode=14","imdb_id=tt1&season=1/evil&episode=14",
+ "imdb_id=tt1&season=1","imdb_id=tt&is_movie=true","imdb_id=tt1&is_movie=anything",
+ "url=https://elsewhere.invalid/"};
+ for(size_t i=0;i<sizeof bad/sizeof bad[0];i++) {
+  char path[256];snprintf(path,sizeof path,"/evo/skip-metadata?%s",bad[i]);serve_evo(0,path);
+  assert(!strcmp(result_status,"400 Bad Request"));assert(!strcmp(result_body,"{}"));
+ }
+ network_status=404;
+ serve_evo(0,"/evo/skip-metadata?imdb_id=tt0108778&season=1&episode=14");
+ assert(!strcmp(result_status,"502 Bad Gateway"));assert(!strcmp(result_body,"{}"));
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ['evo_webui.h', 'evo_net.h']:(root/name).write_text('')
+            (root/'probe.c').write_text(source)
+            subprocess.run([compiler, '-D_POSIX_C_SOURCE=200809L', '-Wall', '-Wextra', '-Werror',
+                str(root/'probe.c'), '-o', str(root/'probe')], check=True)
+            subprocess.run([str(root/'probe')], check=True)
+
+    def test_native_skip_handoff_waits_for_metadata_and_rejects_stale_selection(self):
+        import json
+        import polish
+        import subprocess
+        source = '''" function go(t){if(done)return;done=1;saveNow(1);"
+"  fetch('/evo/play?url='+encodeURIComponent(abs)+'&title='+encodeURIComponent(t||'')+"
+"   '&return='+encodeURIComponent(good));}"'''
+        hook = ''.join(json.loads(line) for line in polish.fix_playback_handoff(source).splitlines())
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+async function run(mode) {
+ let finish,posted=[],saved=0,enabled=mode!=='disabled',profile='profile-7',timedOut;
+ const automatic=mode==='manual'?[]:mode.startsWith('other-types')?['recap','outro']:['intro','movie-credits'];
+ const intervals=[{type:'intro',startTime:13.25,endTime:87.75},
+  {type:'movie-credits',startTime:610,endTime:690},
+  {type:'post-credits',startTime:641.5,endTime:670},
+  {type:'recap',startTime:0,endTime:10},{type:'intro',startTime:-1,endTime:7},
+  {type:mode==='other-types-ed'?'ed':mode==='other-types-mixed'?'mixed-ed':'outro',startTime:550,endTime:590}];
+ const params={itemId:'tt1234',videoId:'tt1234:2:3'};
+ const ctx={__NUVIO_PS5__:true,NUVIO:true,done:0,good:'http://fixture.invalid/',
+  location:{href:'http://fixture.invalid/'},abs:'https://fixture.invalid/video',
+  URL,encodeURIComponent,clearTimeout(){},setTimeout(fn){timedOut=fn;return 1;},
+  Router:{current:'player',currentParams:params,getCurrentScreen:()=>({
+   buildPlaybackIdentityContext:()=>({itemType:mode==='series'?'tvshow':'movie',
+    imdbId:'tt1234',season:2,episode:3})})},
+  ProfileManager:{getActiveProfileId:()=>profile},
+  PlayerSettingsStore:{get:()=>({skipIntroEnabled:enabled,autoSkipSegmentTypes:automatic})},
+  skipIntroRepository:{getMovieSkipIntervals:({imdbId})=>{
+    assert.equal(imdbId,'tt1234');return new Promise(resolve=>finish=resolve);},
+   getSkipIntervals:(id,s,e)=>{assert.deepEqual([id,s,e],['tt1234',2,3]);
+    return new Promise(resolve=>finish=resolve);}},
+  getSkipIntervalTargetSeconds:(interval,all)=>{
+   assert.strictEqual(all,intervals);return interval.type==='movie-credits'?641.5:interval.endTime;},
+  saveNow:()=>saved++,fetch:url=>posted.push(url)};
+ ctx.window=ctx;
+ vm.createContext(ctx);vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+'\n'+process.argv[2],ctx);
+ ctx.go('Fixture');ctx.go('Duplicate');
+ assert.equal(posted.length,0,'No native handoff before metadata settles');
+ if(mode==='route')ctx.Router.current='home';
+ if(mode==='selection')ctx.Router.currentParams={...params,itemId:'tt9876'};
+ if(mode==='profile')profile='profile-9';
+ if(mode==='turned-off')enabled=false;
+ if(mode==='timeout')timedOut();else if(finish)finish(mode==='missing'?[]:intervals);
+ await new Promise(setImmediate);
+ if(['route','selection','profile'].includes(mode)) {
+  assert.equal(posted.length,0);assert.equal(saved,0);return;
+ }
+ assert.equal(posted.length,1);assert.equal(saved,1);
+ const skip=new URL(posted[0],ctx.good).searchParams.get('skip');
+ const expected=mode==='manual'?'i,13.250,87.750;c,610.000,641.500;r,0.000,10.000;c,550.000,590.000;':
+  mode.startsWith('other-types')?'i,13.250,87.750;c,610.000,641.500;R,0.000,10.000;C,550.000,590.000;':
+  'I,13.250,87.750;C,610.000,641.500;r,0.000,10.000;c,550.000,590.000;';
+ assert.equal(skip,['disabled','turned-off','missing','timeout'].includes(mode)?'':expected);
+}
+(async()=>{for(const mode of ['movie','series','manual','other-types','other-types-ed','other-types-mixed',
+ 'disabled','turned-off','missing','timeout','route','selection','profile'])
+ await run(mode);})().catch(e=>{console.error(e);process.exitCode=1;});
+'''
+        subprocess.run(['node', '-e', script, str(APP/'ps5-skip.js'), hook], check=True, timeout=10)
+
+    def test_native_manual_skip_boundaries_targets_and_retry(self):
+        import subprocess
+        source = r'''
+#include <assert.h>
+#include <errno.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static int query_param(const char *path,const char *key,char *out,size_t cap) {
+ (void)key;snprintf(out,cap,"%s",path);return 1;
+}
+''' + (APP/'ps5-skip.c').read_text() + r'''
+static void handoff(const char *wire) {
+ playback_skip_parse(wire);memcpy(s_play_skip,s_h_skip,sizeof s_play_skip);
+ memcpy(s_skip,s_play_skip,sizeof s_skip);s_skip_suppressed=-1;s_skip_retry_after=0;
+ evo_webui_skip_countdown(0,0,0);
+}
+int main(void) {
+ double target=-1;
+ handoff("i,13.250,87.750;c,610.000,641.500;");
+ assert(!evo_webui_skip_interval(13.249,720,0,0,&target));
+ assert(evo_webui_skip_interval(13.25,720,0,0,&target)==1 && target==87.75);
+ assert(evo_webui_skip_interval(87.249,720,0,0,&target)==1);
+ assert(!evo_webui_skip_interval(87.25,720,0,0,&target));
+ assert(evo_webui_skip_interval(620,720,0,0,&target)==2 && target==641.5);
+ assert(!evo_webui_skip_interval(650,720,0,0,&target)); /* Preserve the scene. */
+ assert(!evo_webui_skip_interval(620,630,0,0,&target)); /* Different cut. */
+ assert(!evo_webui_skip_interval(20,0,0,0,&target));
+ assert(!evo_webui_skip_interval(NAN,720,0,0,&target));
+ /* Merely showing a prompt does not consume it or initiate a seek. */
+ for(int n=0;n<10;n++)assert(evo_webui_skip_interval(20,720,n,0,&target)==1);
+ assert(evo_webui_skip_interval(20,720,100,1,&target)==1 && target==87.75);
+ assert(!evo_webui_skip_interval(20,720,5099,0,&target));
+ assert(evo_webui_skip_interval(20,720,5100,0,&target)==1); /* Failed seek can retry. */
+ /* The first ten visible playing seconds stay bright. Pausing freezes time. */
+ assert(evo_webui_skip_countdown(87.75,1000,1)==10);
+ assert(evo_webui_skip_countdown(87.75,1999,1)==10);
+ assert(evo_webui_skip_countdown(87.75,2000,1)==9);
+ assert(evo_webui_skip_countdown(87.75,3000,0)==8);
+ assert(evo_webui_skip_countdown(87.75,33000,0)==8);
+ assert(evo_webui_skip_countdown(87.75,33000,1)==8);
+ assert(evo_webui_skip_countdown(87.75,40999,1)==1);
+ assert(evo_webui_skip_countdown(87.75,41000,1)==0);
+ assert(evo_webui_skip_countdown(87.75,50000,1)==0);
+ /* Expiry only dims: the interval still accepts a manual skip afterward. */
+ assert(evo_webui_skip_interval(20,720,50000,0,&target)==1 && target==87.75);
+ assert(evo_webui_skip_interval(20,720,50000,1,&target)==1 && target==87.75);
+ assert(evo_webui_skip_countdown(641.5,51000,1)==10); /* New interval. */
+ assert(evo_webui_skip_countdown(0,52000,0)==0);
+ assert(evo_webui_skip_countdown(641.5,53000,1)==10); /* Reappearing prompt. */
+ handoff("c,610,641.5;");
+ assert(evo_webui_skip_countdown(641.5,99000,1)==10); /* Same target, new title. */
+ for(int n=0;n<8;n++) {
+  const char *bad[]={"", "i,-2,7;", "i,2,2;", "i,2,nan;", "i,2,8", "x,2,8;",
+   "i,2,8;c,9,inf;", "i,2,8;i,9,10;i,11,12;i,13,14;i,15,16;"};
+  handoff(bad[n]);assert(!evo_webui_skip_interval(3,720,0,0,&target));
+ }
+ handoff("c,610,641.5;");
+ assert(!evo_webui_skip_interval(20,720,0,0,&target)); /* No prior-title intro. */
+ assert(evo_webui_skip_interval(620,720,0,0,&target)==2);
+ /* Each interval's setting decides automation, not its shared credits label. */
+ handoff("I,13.25,87.75;c,610,641.5;R,0,10;");
+ assert(evo_webui_skip_interval(13.25,720,1000,2,&target)==1 && target==87.75);
+ assert(!evo_webui_skip_interval(13.25,720,5999,2,&target));
+ assert(evo_webui_skip_interval(13.25,720,6000,2,&target)==1); /* Failed seek retry. */
+ assert(!evo_webui_skip_interval(620,720,6001,2,&target)); /* Manual credits. */
+ assert(evo_webui_skip_interval(620,720,6002,0,&target)==2);
+ assert(evo_webui_skip_interval(620,720,6003,1,&target)==2 && target==641.5);
+ assert(evo_webui_skip_interval(2,720,6004,2,&target)==3 && target==10);
+ handoff("C,610,641.5;r,0,10;");
+ assert(!evo_webui_skip_interval(2,720,0,2,&target)); /* Manual recap. */
+ assert(evo_webui_skip_interval(2,720,1,1,&target)==3 && target==10);
+ assert(evo_webui_skip_interval(620,720,2,2,&target)==2 && target==641.5);
+ assert(!evo_webui_skip_interval(650,720,3,2,&target)); /* Post-credit scene. */
+ handoff("i,0,10;I,0,20;");
+ assert(!evo_webui_skip_interval(2,720,0,2,&target)); /* First matching interval owns the action. */
+ handoff("i,13.25,87.75;");
+ assert(!evo_webui_skip_interval(20,720,0,2,&target)); /* New title clears automation. */
+ puts("Manual skip timing, scene preservation, validation and retry: PASS");
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp)/'skip.c'
+            probe.write_text(source)
+            binary = Path(tmp)/'skip'
+            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(probe),
+                            '-lm', '-o', str(binary)], check=True, timeout=30)
+            subprocess.run([str(binary)], check=True, timeout=10)
+
+    def test_native_next_episode_countdown_cancel_and_thresholds(self):
+        import subprocess
+        source = r'''
+#include <assert.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <pthread.h>
+static pthread_mutex_t s_mx = PTHREAD_MUTEX_INITIALIZER;
+static int s_progress_next_episode, s_progress_return_detail;
+static struct { int type; double start, end; } s_skip[4];
+static void query_param(const char *path,const char *key,char *out,size_t cap) {
+ (void)key;snprintf(out,cap,"%s",path);
+}
+''' + (APP/'ps5-next.c').read_text() + r'''
+static void handoff(const char *policy) {
+ playback_next_parse(policy);s_play_next=s_h_next;playback_next_begin();
+ memset(s_skip,0,sizeof s_skip);s_progress_next_episode=s_progress_return_detail=0;
+}
+static int tick(double position,uint64_t now,int running,int visible,int action) {
+ return evo_webui_next_episode(position,1000,now,running,visible,action);
+}
+int main(void) {
+ handoff("1,3,p,0.99");
+ assert(tick(989.99,0,1,1,0)==0);
+ assert(tick(990,1000,1,1,0)==3);
+ assert(tick(991,1999,1,1,0)==3);
+ assert(tick(992,2000,1,1,0)==2);
+ assert(tick(992,2500,0,1,0)==2);
+ assert(tick(992,32500,0,1,0)==2); /* Pause cannot finish countdown. */
+ assert(tick(992,32500,1,1,0)==2);
+ assert(tick(993,33999,1,1,0)==1);
+ assert(!s_progress_next_episode);
+ assert(tick(993,34000,1,1,0)==-2 && s_progress_next_episode==2);
+ handoff("1,3,p,0.99");
+ assert(tick(990,0,1,1,0)==3);
+ assert(tick(991,1000,1,1,2)==0); /* Keep watching persists, including EOF. */
+ assert(tick(1000,9000,1,1,0)==0 && !s_progress_next_episode);
+ handoff("1,3,p,0.99");
+ assert(tick(990,0,1,1,0)==3);
+ assert(tick(991,1000,1,0,0)==0); /* Buffering / overlay freezes. */
+ assert(tick(991,9000,1,1,0)==3);
+ assert(tick(980,9500,1,1,0)==0); /* Rewind below trigger resets. */
+ assert(tick(990,9900,1,1,0)==3);
+ assert(tick(991,12900,0,1,0)==1 && !s_progress_next_episode);
+ assert(tick(991,19900,0,1,0)==1);
+ assert(tick(991,19900,1,1,0)==-2);
+ handoff("0,3,s,120");
+ assert(tick(879.99,0,1,1,0)==0);
+ assert(tick(880,0,1,1,0)==-1);
+ assert(tick(990,10000,1,1,0)==-1 && !s_progress_next_episode);
+ assert(tick(990,10000,0,1,1)==-2 && s_progress_next_episode==1);
+ handoff("1,0,p,1");
+ assert(tick(999.99,0,1,1,0)==0);
+ assert(tick(1000,0,1,1,0)==-2);
+ handoff("1,3,p,0.99");
+ s_skip[0].type=2;s_skip[0].start=900;s_skip[0].end=995;
+ assert(tick(899.99,0,1,1,0)==0 && tick(900,0,1,1,0)==3);
+ s_skip[0].end=970; /* Thirty-second post-credit scene exceeds 1% threshold. */
+ assert(tick(900,1000,1,1,0)==0 && tick(990,2000,1,1,0)==3);
+ assert(!evo_webui_next_episode(120,120.999,3000,1,1,0));
+ assert(!evo_webui_next_episode(NAN,1000,3000,1,1,0));
+ handoff("2,3,p,0.99");
+ assert(tick(989.99,1000,1,1,0)==0);
+ assert(tick(990,2000,1,1,0)==1060);
+ assert(tick(990,3000,0,1,0)==1059); /* Paused wall timer, not autoplay. */
+ assert(tick(990,61999,0,1,0)==1001 && !s_progress_next_episode);
+ assert(tick(990,62000,0,1,0)==-3 && s_progress_return_detail);
+ assert(tick(990,63000,0,1,0)==0);
+ handoff("2,0,p,0.99");
+ assert(tick(990,1000,1,1,0)==1060);
+ assert(tick(990,1001,0,1,1)==-2 && s_progress_next_episode==1);
+ assert(tick(990,1002,0,1,0)==-2); /* Continue stays a one-use transition. */
+ handoff("2,3,p,0.99");
+ assert(tick(990,1000,1,1,0)==1060);
+ assert(tick(990,1100,0,1,2)==-3 && s_progress_return_detail && !s_progress_next_episode);
+ const char *bad[]={"", "1,3,p,nan", "1,3,p,0.5", "1,3,s,211", "3,3,p,0.99", "1,4,p,1", "1,3,p,1junk"};
+ for(unsigned i=0;i<sizeof bad/sizeof bad[0];i++) {
+  handoff(bad[i]);assert(tick(1000,99999,1,1,1)==0);
+ }
+ puts("Next episode countdown, pause, cancellation, thresholds and handoff reset: PASS");
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp)/'next.c'
+            probe.write_text(source)
+            binary = Path(tmp)/'next'
+            subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(probe),
+                            '-lm', '-pthread', '-o', str(binary)], check=True, timeout=30)
+            subprocess.run([str(binary)], check=True, timeout=10)
+
+    def test_native_next_episode_profile_and_one_use_return(self):
+        import subprocess
+        script = r'''
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const store=new Map();let active='7',returning=true,aired=true;
+const settings={autoplayNextEpisode:true,nextEpisodeThresholdMode:'PERCENTAGE',nextEpisodeThresholdPercent:99};
+const screen={resolveNextEpisodeInfo:()=>({videoId:'series:3:1',hasAired:aired}),
+ params:{playerTitle:'Series'},consecutiveAutoPlayCount:2,getCurrentStreamBingeGroup:()=>'provider-group',
+ buildStreamRouteParamsFromPlayer:()=>({itemId:'series',videoId:'series:2:24',season:2,episode:24,
+ nextEpisodeVideoId:'series:3:1',episodes:[{id:'series:2:24'},{id:'series:3:1'}]})};
+const ctx={__NUVIO_PS5__:true,Router:{current:'player',getCurrentScreen:()=>screen},
+ LocalStore:{get:(k,d)=>store.get(k)??d},ProfileManager:{getActiveProfileId:()=>active},
+ PlayerSettingsStore:{get:()=>settings},canResumePs5Playback:()=>returning,
+ normalizeNextEpisodeThresholdMode:x=>x,normalizeThresholdPercent:x=>x,
+ normalizeThresholdMinutesBeforeEnd:x=>x,
+ shouldEnterStillWatchingPrompt:x=>x.stillWatchingEnabled&&x.consecutiveAutoPlayCount>=x.threshold};
+vm.createContext(ctx);vm.runInContext('const PS5_PROGRESS_KEY="progress";'+fs.readFileSync(process.argv[1],'utf8'),ctx);
+const next=ctx.__nuvioCaptureNextEpisode();
+assert.equal(next.policy,'1,3,p,0.99');assert.equal(next.params.nextEpisodeVideoId,'series:3:1');
+assert.equal(next.params.ps5NativeBingeGroup,'provider-group');assert.equal(next.params.resumePositionMs,0);
+assert.equal(next.params.streamUrl,undefined);
+const saved={session:'session-37',profileId:'7',next};store.set('progress',saved);
+assert.equal(ctx.__nuvioPlaybackNextPolicy('session-37'),'1,3,p,0.99');
+assert.equal(ctx.__nuvioPlaybackNextPolicy(''), '');assert.equal(ctx.__nuvioPlaybackNextPolicy('other'),'');
+settings.stillWatchingEnabled=true;settings.stillWatchingEpisodeThreshold=2;
+assert.equal(ctx.__nuvioCaptureNextEpisode().policy,'2,3,p,0.99');
+settings.nextEpisodeThresholdMode='MINUTES_BEFORE_END';settings.nextEpisodeThresholdMinutesBeforeEnd=1.5;
+settings.nextEpisodeCountdownEnabled=false;
+assert.equal(ctx.__nuvioCaptureNextEpisode().policy,'2,0,s,90');
+aired=false;assert.equal(ctx.__nuvioCaptureNextEpisode(),null);aired=true;
+returning=false;ctx.__nuvioAcceptNextEpisode(saved,2);assert.equal(ctx.__nuvioTakeNextEpisodeRoute(),null);
+returning=true;settings.autoplayNextEpisode=false;
+ctx.__nuvioAcceptNextEpisode(saved,2);assert.equal(ctx.__nuvioTakeNextEpisodeRoute(),null);
+ctx.__nuvioAcceptNextEpisode(saved,1);active='2';assert.equal(ctx.__nuvioTakeNextEpisodeRoute(),null);
+active='7';assert.equal(ctx.__nuvioConsumeNextEpisode({ps5NextEpisodeSession:'session-37'}),false);
+ctx.__nuvioAcceptNextEpisode(saved,1);const route=ctx.__nuvioTakeNextEpisodeRoute();
+assert.equal(route.ps5NextEpisodeUserInitiated,true);assert.equal(route.videoId,'series:2:24');
+assert.equal(ctx.__nuvioTakeNextEpisodeRoute(),null);
+assert.equal(ctx.__nuvioConsumeNextEpisode({...route,ps5NextEpisodeSession:'other'}),false);
+assert.equal(ctx.__nuvioConsumeNextEpisode(route),true);
+assert.equal(ctx.__nuvioConsumeNextEpisode({ps5NextEpisodeSession:'session-37'}),false);
+console.log('Next episode policy, aired check, profile gate and one-use authorization: PASS');
+'''
+        subprocess.run(['node', '-e', script, str(APP/'ps5-next.js')], check=True, timeout=10)

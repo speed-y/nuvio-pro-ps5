@@ -9,12 +9,12 @@ identify locally recorded downloads and are not maintainer signatures.
 | Input | Fixed identity | Use |
 |---|---|---|
 | [Nuvio TV](https://github.com/NuvioMedia/NuvioTVSmart/tree/25b984f778e4083dc6c2e768fdb5fcf46012e8b7) | `25b984f778e4083dc6c2e768fdb5fcf46012e8b7`, version 1.2.3 | Browser UI and official branding |
-| [EVO Player](https://github.com/sainsaji/EVO-PLAYER-PS5/tree/9ee9a5420c73b5be448610e5f0a90a29a75592f3) | `9ee9a5420c73b5be448610e5f0a90a29a75592f3` | Native title, bridge, decoder and runtime source |
+| [EVO Player](https://github.com/sainsaji/EVO-PLAYER-PS5/tree/f6e43e6561796630673f1e20eb1eb67d6428514c) | `f6e43e6561796630673f1e20eb1eb67d6428514c`, v0.13.5 | Native title, bridge, decoder and runtime source |
 | [Unofficial Stremio PS5 port](https://github.com/Sp9nky/unofficial-stremio-ps5-port/tree/a4b12fb515a3044f073f4befba0dd90d8244eddd) | `a4b12fb515a3044f073f4befba0dd90d8244eddd` | Read-only comparison of sandbox networking changes |
 | [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk/releases/tag/v0.43) | v0.43 | Headers, wrappers and payload link inputs |
 | [pacbrew target libraries](https://github.com/ps5-payload-dev/pacbrew-repo/releases/tag/v0.39) | v0.39 | Target libraries only |
 | [FFmpeg](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz) | 7.1.1 | Target libav* libraries. The build compiles this source and installs it over the sysroot copy |
-| [ps5-homebrew-ui mirror](https://github.com/Phononenom/ps5-homebrew-ui/tree/4bd942579dd981b3df9c740438489ca6a614ddc0) | `4bd942579dd981b3df9c740438489ca6a614ddc0` | EVO's UI kit. The EVO archive omits submodules, so the build installs this pinned tree into `third_party/` |
+| [ps5-homebrew-ui](https://github.com/sainsaji/ps5-homebrew-ui/tree/47f4b9868c33264716b2e92922b0d2c9d0f2ab0f) | `47f4b9868c33264716b2e92922b0d2c9d0f2ab0f` | EVO v0.13.5's UI submodule. The build installs this pinned tree into `third_party/` |
 | [Official Nuvio TV package](https://github.com/NuvioMedia/NuvioTVSmart/releases/tag/1.2.3) | Tizen 1.2.3 | Selected public browser login configuration |
 | [klogsrv](https://github.com/ps5-payload-dev/klogsrv/releases/tag/v0.9) | v0.9 | Optional diagnostics used in the console session |
 
@@ -44,8 +44,9 @@ Nuvio delegates firmware selection to that runtime instead of copying its versio
 SDK recognition does not establish console compatibility of Nuvio, the browser or the resident support stack.
 
 The original BlackBearReloaded UI repository returned HTTP404 on 2026-10-30.
-The Phononenom mirror serves the same commit and reproduces the original archive SHA-256.
-The source revision, checksum and attribution remain unchanged.
+Earlier builds used the Phononenom mirror at `4bd942579dd981b3df9c740438489ca6a614ddc0`, with the original archive checksum.
+The v0.13.5 migration uses EVO's newer recorded submodule revision from sainsaji's fork.
+`deps.lock` records both new archive checksums. Attribution and license requirements remain unchanged.
 
 ## Source attribution
 
@@ -120,3 +121,18 @@ The owner's approval covers this local conversion, not redistribution of the enc
 The encoder's redistribution permission remains unverified.
 No encoder executable or DLL belongs in source or title packages.
 See [Validation](VALIDATION.md#home-screen-background-and-music-2026-10-31) for commands, checksums and test limits.
+
+## Native TV-remote contract
+
+The native remote adapter uses [the PS5 SDL port](https://github.com/ps5-payload-dev/SDL/tree/ee4c47dc0d617b3bc8f35108f9956baf228a1322), revision `ee4c47dc0d617b3bc8f35108f9956baf228a1322`.
+These independently authored declarations establish the system-user remote handle, typed pad layout and remote-key mappings.
+They are community implementation source, not public Sony SDK documentation or proof of firmware 12.70 behavior.
+SDK v0.43 supplies the existing `scePadOpen`, `scePadGetHandle`, `scePadReadState` and `scePadClose` link stubs.
+
+| Source file | Locally recorded SHA-256 |
+|---|---|
+| `src/joystick/ps5/SDL_ps5joystick.h` | `16436774be2082a3fa4fd6ca4e9792ce45bbfcac64de676d5a56a7b0e6f1a706` |
+| `src/video/ps5/SDL_ps5remote.c` | `d0aac6bf7abc4a970b9199265b86e40d940502f6b10d179f9fc3a9c93bc1d85a` |
+
+`scripts/native_remote.py` retains SDL's zlib license notice, source attribution and an explicit altered-source notice in the generated adapter.
+This adaptation changes handle ownership, browser suspension, retry behavior and native action translation. It does not add SDL as a build dependency.

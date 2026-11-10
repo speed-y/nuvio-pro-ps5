@@ -3,6 +3,7 @@
 import { Router } from './routerState.js';
 import { NuvioDialog } from '../components/nuvioDialog.js';
 import { initPs5SearchKeyboard, requestPs5SearchKeyboard } from './ps5-text-input.js';
+import { startPs5TvRemoteDiagnostics } from './ps5-tv-remote.js';
 
 function visible(node) {
   return Boolean(node && node.isConnected && !node.disabled &&
@@ -111,6 +112,9 @@ async function openSearch() {
 
 export function initPs5Navigation() {
   if (!globalThis.__NUVIO_PS5__) return;
+  if (window.__evoHook && window.__NUVIO_PS5_TV_REMOTE_DIAGNOSTICS__ === true) {
+    startPs5TvRemoteDiagnostics(imageDiagnostic);
+  }
   initPs5SearchKeyboard();
   let redirecting = false;
   window.__nuvioPs5PointerDown = (event) => {

@@ -5,11 +5,15 @@ globalThis.__nuvioCapturePlayback = function () {
   if (!globalThis.__NUVIO_PS5__ || Router.current !== "player") return "";
   const context = PlayerController.createProgressContext();
   if (!context.itemId) return "";
+  const detail = Router.getCurrentScreen()?.buildDetailRouteParamsFromPlayer?.() || null;
   const session = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
   LocalStore.set(PS5_PROGRESS_KEY, {
     session,
     profileId: String(ProfileManager.getActiveProfileId()),
-    context
+    context,
+    detail: detail ? { ...detail, ps5ReturnEpisodeVideoId: context.season != null ? context.videoId : null } : null,
+    next: globalThis.__nuvioCaptureNextEpisode?.() || null,
+    general: globalThis.__nuvioCapturePresentation?.() || null
   });
   return session;
 };
@@ -18,11 +22,17 @@ let ps5ProgressImport;
 function restorePs5PlaybackProgress() {
   if (ps5ProgressImport) return ps5ProgressImport;
   ps5ProgressImport = (async () => {
-    if (!canResumePs5Playback()) return;
+    if (!globalThis.__NUVIO_PS5__) return;
     const saved = LocalStore.get(PS5_PROGRESS_KEY, null);
+    const origin = LocalStore.get(PS5_PLAYBACK_RETURN_KEY, null);
+    const profileId = String(ProfileManager.getActiveProfileId());
+    const profiles = LocalStore.get("profiles", []);
+    // A cold launch keeps ordinary profile/PIN selection and route behavior.
+    // Recover only after the originating profile is active, without a return TTL.
     if (!saved?.session || !saved.context?.itemId ||
-        saved.profileId !== ps5PlaybackReturn.profileId ||
-        saved.session !== ps5PlaybackReturn.progressSession) return;
+        saved.profileId !== profileId || saved.profileId !== origin?.profileId ||
+        saved.session !== origin?.progressSession || !Array.isArray(profiles) ||
+        !profiles.some(profile => String(profile.id) === profileId)) return;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     try {
@@ -36,14 +46,21 @@ function restorePs5PlaybackProgress() {
         return;
       }
       if (!response.ok) throw new Error("Native progress unavailable");
-      const { positionMs, durationMs } = await response.json();
-      if (!Number.isFinite(positionMs) || positionMs <= 0 ||
+      const report = await response.json();
+      const { positionMs, durationMs } = report;
+      if (!Number.isFinite(positionMs) || positionMs < 0 ||
           !Number.isFinite(durationMs) || durationMs < 0) return;
       // Never switch profiles to apply an old report, even if fetching yielded.
       if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
-      await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
-        allowCloudSync: false, syncRemote: true
-      });
+      if (positionMs > 0) {
+        await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
+          allowCloudSync: false, syncRemote: true
+        });
+      }
+      if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
+      globalThis.__nuvioAcceptPresentation?.(saved, report);
+      if (report.returnToDetail === true) globalThis.__nuvioAcceptPlaybackDetail?.(saved);
+      else globalThis.__nuvioAcceptNextEpisode?.(saved, report.nextEpisode);
       LocalStore.remove(PS5_PROGRESS_KEY);
       LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
       globalThis.__nuvioPrepareKeyboard?.(); // Flush the existing console storage bridge.
@@ -55,3 +72,4 @@ function restorePs5PlaybackProgress() {
   })().finally(() => { ps5ProgressImport = null; });
   return ps5ProgressImport;
 }
+globalThis.__nuvioRestorePlaybackProgress = restorePs5PlaybackProgress;
