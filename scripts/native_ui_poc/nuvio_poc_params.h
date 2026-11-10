@@ -19,7 +19,7 @@ enum {
     NUVIO_POC_STATUS_CHARS = 128
 };
 
-typedef struct {
+typedef struct nuvio_poc_item {
     char title[NUVIO_POC_TITLE_CHARS];
     char subtitle[NUVIO_POC_TITLE_CHARS];
     char overview[NUVIO_POC_DETAIL_CHARS];
@@ -29,7 +29,7 @@ typedef struct {
     int poster_h;
 } nuvio_poc_item_t;
 
-typedef struct {
+typedef struct nuvio_poc_theme {
     /* Theme tokens for the proof. Later phases measure Nuvio CSS. */
     uint32_t bg_top;      /* 0xRRGGBB */
     uint32_t bg_bottom;
@@ -43,7 +43,7 @@ typedef struct {
     float focus_ring;
 } nuvio_poc_theme_t;
 
-typedef struct {
+typedef struct nuvio_poc_params {
     nuvio_poc_theme_t theme;
     const char *brand;
     const char *hero_title;

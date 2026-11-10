@@ -106,6 +106,31 @@ class NativeUiPocPolishTests(unittest.TestCase):
             self.assertIn('evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio")', text)
             self.assertIn('ScreenId::NuvioPoc', text)
 
+    def test_bridge_includes_params_without_redeclarations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evo = Path(tmp)
+            app = evo / 'projects/evoplayer'
+            for relative in (
+                'ui_rml/include', 'ui_rml/src', 'include', 'ui_kit/include', 'ui_kit/src',
+                'core/include/evo/screens', 'core/src/screens',
+            ):
+                (app / relative).mkdir(parents=True)
+            (evo / 'tools/hui_preview').mkdir(parents=True)
+            bridge_h = app / 'ui_rml/include/evo_rmlui_bridge.h'
+            bridge_h.write_text(
+                '#include <stdint.h>\n#include <stdbool.h>\n\n'
+                'void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);\n')
+            (app / 'ui_rml/src/evo_rmlui_bridge.cpp').write_text('#include "evo_rmlui_bridge.h"\n')
+            native_ui_poc.install_sources(app)
+            native_ui_poc.patch_bridge(app)
+            text = bridge_h.read_text()
+            self.assertIn('#include "nuvio_poc_params.h"', text)
+            self.assertNotIn('struct nuvio_poc_params_t', text)
+            self.assertNotIn('evo_rmlui_update_nuvio_poc', text)
+            params = (app / 'include/nuvio_poc_params.h').read_text()
+            self.assertIn('typedef struct nuvio_poc_params', params)
+            self.assertEqual(params.count('void evo_rmlui_update_nuvio_poc'), 1)
+
 
 class NativeUiPocVirtualizationTests(unittest.TestCase):
     def test_scroll_window_keeps_focus_visible(self):

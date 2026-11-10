@@ -115,11 +115,8 @@ int evo_hui_render_nuvio_poc(int width, int height)
 
 def patch_bridge(app):
     bridge_h = app / 'ui_rml/include/evo_rmlui_bridge.h'
-    replace(bridge_h,
-            'void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);',
-            'void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);\n'
-            'void evo_rmlui_update_nuvio_poc(const struct nuvio_poc_params_t* params);\n'
-            'void evo_rmlui_render_nuvio_poc(uint32_t* framebuffer, int width, int height);')
+    # Keep decls only in nuvio_poc_params.h. A second bridge declaration with
+    # `struct nuvio_poc_params_t` conflicted with the typedef name.
     replace(bridge_h,
             '#include <stdint.h>\n#include <stdbool.h>\n',
             '#include <stdint.h>\n#include <stdbool.h>\n#include "nuvio_poc_params.h"\n')
