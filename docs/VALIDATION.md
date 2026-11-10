@@ -4853,3 +4853,25 @@ Signed eboot: 48,629,860 bytes, SHA-256 `e604be30b27655cecae046c43241302d1673661
 Host environment remains Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
 The target build uses SDK v0.43 and FFmpeg 7.1.1.
 The corrected build remains local. Crash resolution and the separate movie-ending report remain hardware checks.
+
+## Native UI proof host frames, 2026-11-10
+
+[LOCALLY BUILT] Phase 1 native UI proof sources land under `scripts/native_ui_poc/`.
+`bash scripts/native_ui_poc_preview.sh 1920 1080` draws the PoC screen through the
+pinned EVO hui OpenGL path and writes host frames under `output/uiview/`.
+
+Observed host frames:
+
+| Frame | Role |
+|---|---|
+| `hui_nuvio_poc.png` | Dark hero, Featured shelf, focus ring, poster row |
+| `hui_nuvio_poc_detail.png` | Detail card with Play |
+| `hui_nuvio_poc_error.png` | Failed metadata state without a frozen frame |
+
+Host preview uses EVO `f6e43e65` and `ps5-homebrew-ui` `47f4b986`.
+It does not establish console execution.
+
+[PENDING] Firmware 12.70 install after the owner accepts the host layout.
+Pending console checks: D-pad or stick focus movement, failed metadata live frame,
+Play into the existing EVO player, and return to the same native card.
+The browser path remains the default until `/data/nuvio/native_ui_poc` exists.

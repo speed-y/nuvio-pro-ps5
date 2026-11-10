@@ -346,6 +346,15 @@ See [Sources](SOURCES.md) for the implementation reference.
 the unpromoted console test.
 The release packager rejects this experimental profile.
 
+
+## Native UI proof
+
+Phase 1 adds one optional native shelf on the existing `hui` DrawList and `sceAgc`
+path. See [Native UI proof](NATIVE_UI_POC.md). The browser UI and `webui/` remain
+installed. Default startup still opens the console-hosted browser. The flag file
+`/data/nuvio/native_ui_poc` opens the proof screen instead. Play calls the current
+EVO player and returns to the same native card. UI sounds stay off on that screen.
+
 ## Browser UI hosting
 
 The build copies the Nuvio bundle into `webui/` inside the title folder, so the
