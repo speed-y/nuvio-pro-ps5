@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -173,6 +174,8 @@ class NativePreferenceTests(unittest.TestCase):
                                capture_output=True, text=True)
         if flags.returncode:
             self.skipTest('FFmpeg development libraries unavailable')
+        cflags = subprocess.run(['pkg-config', '--cflags', 'libavformat', 'libavcodec', 'libavutil'],
+                                capture_output=True, text=True, check=True)
         subtitle = native_preferences.patch_subtitle_source(native_subtitles.patch_subtitle_source(
             source_file('media/src/evo_subtitle.c')))
         web = native_preferences.patch_web_source((ROOT / 'scripts/ps5-subtitles.c').read_text())
@@ -224,12 +227,13 @@ extern "C" int controller_reopen(const char *provider, const char *key, const ch
             obj = directory / 'controller.o'
             subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', tmp,
-                            '-c', str(cpp), '-o', str(obj)], check=True, timeout=30)
+                            *cflags.stdout.split(), '-c', str(cpp), '-o', str(obj)], check=True, timeout=30)
             source = NATIVE_PRELUDE + subtitle + source_file('media/src/evo_langpref.c') + \
                 subtitle_handoff.patch_online_source(source_file('addons/src/evo_online_subs.c')) + \
                 web + NATIVE_MAIN
             result = compile_run(source, tmp, [dtos, directory], extra_flags=[
-                '-D_DEFAULT_SOURCE', '-I', tmp, '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                '-D_DEFAULT_SOURCE', '-I', tmp, '-ffunction-sections', '-fdata-sections',
+                '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
                 str(directory / 'cJSON.c'), str(directory / 'preferences.c'), str(obj),
                 '-lstdc++', '-pthread', *flags.stdout.split()])
             self.assertIn('preferences: real DTO/cache/decoder cues and manual reopens OK', result)
@@ -247,6 +251,7 @@ NATIVE_PRELUDE = r'''
 #include "evo_ntfs.h"
 #include "evo_charset.h"
 #include "evo_net.h"
+#include "evo_boot_log.h"
 AVFormatContext *play_fmt;
 int player_paused=1,audio_stream_index=-1;
 double resume_base_offset_seconds;

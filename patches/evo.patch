@@ -490,7 +490,7 @@
          EVO_LOGI("web", "startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
          evo_boot_log_flush();
          if (!g_web_ok) {
-@@ -773,17 +906,26 @@
+@@ -773,17 +906,29 @@
          web_report("", 0.0);
      } else {
          IPlaybackController* pb = app.getPlaybackController();
@@ -507,8 +507,11 @@
              /* Kept while playing: the position is gone once playback stops,
               * and the Stopped report is what sets watched / resume. */
              double pos = pb->getPositionSeconds();
-+            if (!pb->isScrubbing())
++            if (!pb->isScrubbing()) {
 +                evo_webui_progress_sample(pos, pb->getDurationSeconds());
++                if (g_web_rep.frames % 600 == 0)
++                    EVO_LOGI("web", "progress sample position=%.3f duration=%.3f", pos, pb->getDurationSeconds());
++            }
              if (pos > 0.0) g_web_rep.lastPos = pos;
              if (++g_web_rep.frames % 600 == 0)          /* ~10 s */
                  web_report("/Progress", g_web_rep.lastPos);
@@ -518,7 +521,7 @@
              web_report("/Stopped", g_web_rep.lastPos);
              g_web_rep.on = false;
              evo_webui_playback_ended(seen_active ? 1 : 0);
-@@ -1179,6 +1321,7 @@
+@@ -1179,6 +1324,7 @@
              }
              if (++m_softCloseFrames > 150) {     /* ~2.5 s of presented frames */
                  evo_agc_runtime_wait_idle(500);
@@ -526,7 +529,7 @@
                  m_softClosed = true;
                  evo_boot_log("soft close: parked - GPU idle, display latched, "
                               "safe to close from the switcher");
-@@ -1250,7 +1393,7 @@
+@@ -1250,7 +1396,7 @@
                  if (s_upd_t0.tv_sec == 0) s_upd_t0 = t;
                  if (t.tv_sec - s_upd_t0.tv_sec >= 8) {
                      s_upd_checked = true;
@@ -535,7 +538,7 @@
                  }
              }
              /* A small card at the side, not a screen: it stays until the user
-@@ -1291,6 +1434,15 @@
+@@ -1291,6 +1437,15 @@
              }
          }
          evo_usb_remote_poll();
@@ -551,7 +554,7 @@
          evo_webui_pump();   /* #101: the system browser, when a web UI is open */
          webui_playback_pump();
  
-@@ -1384,7 +1536,24 @@
+@@ -1384,7 +1539,24 @@
          uint32_t held = 0;
          bool hasInput = false;
  
@@ -577,7 +580,7 @@
              /*
               * Synthetic presses from the dev remote (`key <button>`), OR'd in
               * before anything reads the mask so they are indistinguishable
-@@ -1532,7 +1701,7 @@
+@@ -1532,7 +1704,7 @@
                  r3IsChapters = true;
              /* #227: on the keyboard's PHONE LINK OFF card, R3 is Set port. */
              const bool r3ToKeyboard = (pressed & PadButtons::R3) && evo_keyboard_wants_r3();
@@ -586,7 +589,7 @@
                  EVO_LOGI("screenshot", "stick click pressed=%#010x", pressed);
                  evo_boot_log_flush();
                  std::string shotPath;
-@@ -1576,7 +1745,31 @@
+@@ -1576,7 +1748,31 @@
              }
  
              if (evo_webui_active()) {
@@ -619,7 +622,7 @@
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1622,6 +1815,9 @@
+@@ -1622,6 +1818,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -629,7 +632,7 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1734,7 +1930,7 @@
+@@ -1734,7 +1933,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -638,7 +641,7 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1961,7 +2157,14 @@
+@@ -1961,7 +2160,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -2049,7 +2052,7 @@
 +    /* Controlled receive-buffer experiment: FFmpeg forwards this option
 +     * through HTTP/TLS to TCP before connect. Read-path diagnostics report
 +     * the actual accepted SO_RCVBUF, which the OS may cap or reject. */
-+    av_dict_set(opts, "recv_buffer_size", "1048576", 0);
++    av_dict_set(opts, "recv_buffer_size", "4194304", 0);
      av_dict_set(opts, "reconnect", "1", 0);
      av_dict_set(opts, "reconnect_streamed", "1", 0);
      av_dict_set(opts, "reconnect_on_network_error", "1", 0);
@@ -2405,7 +2408,7 @@
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
-+  "contentVersion": "01.000.008",
++  "contentVersion": "01.000.009",
    "downloadDataSize": 256,
    "gameIntent": {
      "permittedIntents": [
@@ -2868,7 +2871,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +805,967 @@
+@@ -785,17 +805,969 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3032,8 +3035,10 @@
 +        finished = 1;
 +    }
 +    if (!matches) {
++        tlog("progress serve 404");
 +        respond(fd, "404 Not Found", "text/plain", "", 0);
-+    } else if (!finished) {
++    } else if (!finished && position <= 0.0 && !return_detail) {
++        tlog("progress serve 409");
 +        respond(fd, "409 Conflict", "text/plain", "", 0);
 +    } else if (position <= 0.0 && !return_detail) {
 +        respond(fd, "204 No Content", "text/plain", "", 0);
@@ -3836,7 +3841,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1780,12 @@
+@@ -810,6 +1782,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3849,7 +3854,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1794,13 @@
+@@ -818,6 +1796,14 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3859,11 +3864,12 @@
 +        query_param(path, "session", s_h_progress_session, sizeof s_h_progress_session);
 +        presentation_handoff(s_h_progress_session);
 +        subtitles_handoff(s_h_progress_session);
++        tlog("handoff: session=%s start=%.3f", s_h_progress_session[0] ? "set" : "empty", seconds);
 +        if (url[0]) speedtest_suspend();
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2192,25 @@
+@@ -1209,13 +2195,29 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -3872,6 +3878,10 @@
 +            serve_subtitles(fd, method, req, got, hl);
 +        else if (!strncmp(path, "/evo/speedtest/", 15))
 +            serve_speedtest(fd, method, path);
++        else if (!strcmp(path, "/evo/progress") || !strncmp(path, "/evo/progress?", 14)) {
++            tlog("progress route");
++            playback_progress_serve(fd, path);
++        }
 +        else if (!strcmp(path, "/evo/presentation"))
 +            serve_presentation(fd, method, req, got, hl);
 +        else if (!strncmp(path, "/evo/storage", 12))
@@ -3891,7 +3901,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2222,14 @@
+@@ -1227,8 +2229,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -3906,7 +3916,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2251,16 @@
+@@ -1250,8 +2258,16 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -3924,7 +3934,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2268,20 @@
+@@ -1259,11 +2275,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -3947,7 +3957,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2297,7 @@
+@@ -1279,6 +2304,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -3955,7 +3965,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1318,6 +2337,7 @@
+@@ -1318,6 +2344,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -3963,7 +3973,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,6 +2362,7 @@
+@@ -1342,6 +2369,7 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -3971,7 +3981,7 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1356,6 +2377,7 @@
+@@ -1356,6 +2384,7 @@
          s_state = P_OFF;
          return;
      }
@@ -3979,7 +3989,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1505,7 +2527,9 @@
+@@ -1505,7 +2534,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -3990,7 +4000,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,18 +2545,51 @@
+@@ -1521,17 +2552,50 @@
      return 0;
  }
  
@@ -4032,20 +4042,19 @@
  
  void evo_webui_playback_ended(int played)
  {
++    pthread_mutex_lock(&s_mx);
++    s_progress_finished = 1;
++    ++s_progress_revision;
++    pthread_mutex_unlock(&s_mx);
 +    memset(s_skip, 0, sizeof s_skip);
 +    memset(&s_presentation, 0, sizeof s_presentation);
 +    /* A later native-library source has no browser handoff to replace this. */
 +    memset(&s_play_next, 0, sizeof s_play_next);
 +    playback_next_begin();
      if (s_state != P_PLAYING) return;
-+    pthread_mutex_lock(&s_mx);
-+    s_progress_finished = 1;
-+    ++s_progress_revision;
-+    pthread_mutex_unlock(&s_mx);
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-     s_frames = OPEN_DELAY_FRAMES / 2;    /* ~1 s: the player screen is going away */
-@@ -1601,6 +2658,12 @@
+@@ -1601,6 +2665,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4058,7 +4067,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2717,27 @@
+@@ -1654,3 +2724,27 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -5201,19 +5210,30 @@
  # ---------------------------------------------------------------------------
  begin "native-app dependencies"
 -eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"
-+ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"
++ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"
  need_file "${ZLIB_ARCHIVE:?}" "zlib bootstrap did not yield an archive"
  
  # ---------------------------------------------------------------------------
-@@ -196,7 +196,7 @@
+@@ -195,8 +195,8 @@
+ # ---------------------------------------------------------------------------
  begin "building host converter (ps5-native-tool)"
  TOOL="${BUILD}/host/ps5-native-tool"
- clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+-clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 -    -I "${ZLIB_INCLUDE}" \
++/usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 +     \
      "${NATIVE}/native_app_builder.cpp" "${NATIVE}/self_container.cpp" \
      "${NATIVE}/elf_object.cpp" "${NATIVE}/sce_module_writer.cpp" \
      "${ZLIB_ARCHIVE}" -o "${TOOL}"
+@@ -211,7 +211,7 @@
+     expected_signed="$(awk '{print $1}' "${NATIVE}/runtime/libc.prx.sha256")"
+     local work="${BUILD}/runtime-shim"
+     mkdir -p "${work}"
+-    clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
++    /usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+         "${NATIVE}/libc_builder.cpp" -o "${work}/libc-builder"
+     local copy
+     for copy in a b; do
 @@ -289,7 +289,7 @@
      # cached mount is caught immediately instead of costing a console session.
      # Written to a generated header to sidestep -D string quoting through the
@@ -5250,6 +5270,15 @@
               libsmb2 \
               libass libfreetype libharfbuzz libharfbuzz-subset libfribidi \
               libpng16 libsamplerate libssl libcrypto libiconv libxml2 \
+@@ -662,7 +656,7 @@
+ # The read-only segment's file offset must be a multiple of 64 KB (the code size
+ # sets it, see tools/native-app/ps5-pie.ld). At 0x4000 past one the console read
+ # one 64 KB block of .rodata from the block before it.
+-RO_OFFSET="$(readelf -lW "${BUILD}/eboot.elf" | awk '$1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; exit}')"
++RO_OFFSET="$(llvm-readelf -lW "${BUILD}/eboot.elf" | awk '!seen && $1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; seen=1}')"
+ if [[ -n "${RO_OFFSET}" ]] && (( (RO_OFFSET & 0xFFFF) != 0 )); then
+     die "read-only segment at file offset ${RO_OFFSET}, not a multiple of 64 KB - the console misreads .rodata (see ps5-pie.ld)"
+ fi
 @@ -748,7 +742,7 @@
  
  echo ""

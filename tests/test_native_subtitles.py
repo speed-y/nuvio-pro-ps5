@@ -135,6 +135,7 @@ static void read_ahead(void) {
     av_packet_free(&packet);
 }
 static void service_seek(void) {
+    (void)prospero_seek_in_progress;
     if (!prospero_seek_pending) return;
     assert(av_seek_frame(play_fmt, -1, (int64_t)(prospero_seek_target_seconds * AV_TIME_BASE),
                          AVSEEK_FLAG_BACKWARD) >= 0);
@@ -284,7 +285,8 @@ int main(int argc, char **argv) {
                     prelude + source + languages + request + main, tmp, [media],
                     extra_flags=(['-DADAPTED'] if index else []) + [
                                  '-I', tmp, '-ffunction-sections', '-fdata-sections',
-                                 '-Wl,--gc-sections', '-pthread', *flags.stdout.split()]))
+                                 '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
+                                 '-pthread', *flags.stdout.split()]))
             self.assertEqual(results[0].splitlines(), [
                 'switch paused=0 restored=0 requested=-2 cue=', 'reopen=1',
                 'switch paused=1 restored=1 requested=-2 cue=', 'reopen=1'])

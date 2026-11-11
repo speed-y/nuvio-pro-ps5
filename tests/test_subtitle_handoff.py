@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -452,6 +453,8 @@ extern "C" void check_picker(const char *key) {
                                capture_output=True, text=True)
         if flags.returncode:
             self.skipTest('FFmpeg development libraries unavailable')
+        cflags = subprocess.run(['pkg-config', '--cflags', 'libavformat', 'libavcodec', 'libavutil'],
+                                capture_output=True, text=True, check=True)
         local = source_file('core/src/screens/SubtitleFileScreen.cpp')
         local = subtitle_handoff.patch_local_file_source(local)
         self.assertIn('#include "evo_online_subs.h"', local)
@@ -539,8 +542,7 @@ extern "C" void pump_online(){pumpOnlineSubtitles();}
             obj = directory / 'local.o'
             subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', tmp,
-                            *flags.stdout.split(' -l', 1)[0].split(),
-                            '-c', str(cpp), '-o', str(obj)], check=True, timeout=30)
+                            *cflags.stdout.split(), '-c', str(cpp), '-o', str(obj)], check=True, timeout=30)
             source = prelude + subtitle + source_file('media/src/evo_langpref.c') + \
                 subtitle_handoff.patch_online_source(source_file('addons/src/evo_online_subs.c')) + r'''
 extern void pump_online(void);
@@ -582,7 +584,8 @@ int main(int argc,char **argv){
             for scenario in ('reopen', 'pending'):
                 with self.subTest(scenario=scenario):
                     result = compile_run(source, tmp, [directory, scenario], extra_flags=[
-                        '-D_DEFAULT_SOURCE', '-I', tmp, '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                        '-D_DEFAULT_SOURCE', '-I', tmp, '-ffunction-sections', '-fdata-sections',
+                        '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
                         str(directory / 'cJSON.c'), str(directory / 'preferences.c'), str(obj),
                         '-lstdc++', '-pthread', *flags.stdout.split()])
                     self.assertIn('retained B after actual picker, completion pump and reopen', result)

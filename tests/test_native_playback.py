@@ -62,6 +62,7 @@ struct Application {
     IPlaybackController* getPlaybackController() { return &playback; }
 };
 static struct { bool on = true; double lastPos = 1112.963; int frames = 0; } g_web_rep;
+#define EVO_LOGI(...) ((void)0)
 static void web_report(const char*, double) {}
 static void evo_webui_progress_sample(double position, double duration) {
     assert(position == 1112.963 && duration == 2000); ++sampled;
