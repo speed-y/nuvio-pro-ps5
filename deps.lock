@@ -148,7 +148,7 @@
     },
     {
       "id": "node",
-      "version": "22.23.2",
+      "version": "22.23.5",
       "why": "Nuvio npm-ci build and host bridge regressions"
     },
     {
