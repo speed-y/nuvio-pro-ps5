@@ -158,8 +158,10 @@ static void playback_progress_serve(int fd, const char *path)
         finished = 1;
     }
     if (!matches) {
+        tlog("progress serve 404");
         respond(fd, "404 Not Found", "text/plain", "", 0);
-    } else if (!finished) {
+    } else if (!finished && position <= 0.0 && !return_detail) {
+        tlog("progress serve 409");
         respond(fd, "409 Conflict", "text/plain", "", 0);
     } else if (position <= 0.0 && !return_detail) {
         respond(fd, "204 No Content", "text/plain", "", 0);

@@ -1,6 +1,6 @@
 --- a/css/base.css
 +++ b/css/base.css
-@@ -66,6 +66,13 @@
+@@ -67,6 +67,13 @@
    -moz-osx-font-smoothing: grayscale;
  }
  
@@ -16,7 +16,7 @@
    box-sizing: border-box;
 --- a/css/components-21.css
 +++ b/css/components-21.css
-@@ -218,6 +218,9 @@
+@@ -228,6 +228,9 @@
  }
  
  .settings-account-signout-button {
@@ -38,7 +38,7 @@
    inset: 0;
 --- a/css/components-43.css
 +++ b/css/components-43.css
-@@ -257,6 +257,10 @@
+@@ -261,6 +261,10 @@
    transition:
      box-shadow 180ms ease,
      transform 180ms ease;
@@ -51,7 +51,7 @@
  .detail-morelike-poster-image {
 --- a/css/components-60.css
 +++ b/css/components-60.css
-@@ -167,10 +167,6 @@
+@@ -212,10 +212,6 @@
    will-change: auto !important;
  }
  
@@ -62,7 +62,7 @@
  .performance-constrained .detail-company-card.focused,
  .performance-constrained .detail-comment-card.focused,
  .performance-constrained .series-primary-btn.focused,
-@@ -181,10 +177,6 @@
+@@ -226,10 +222,6 @@
    box-shadow: 0 0 0 2px var(--focus-color, #fff) !important;
  }
  
@@ -73,10 +73,142 @@
  .legacy-tizen .detail-company-card.focused,
  .legacy-tizen .detail-comment-card.focused,
  .legacy-tizen .series-primary-btn.focused,
+@@ -393,3 +385,131 @@
+   transform: none !important;
+   will-change: auto !important;
+ }
++
++.ps5-search-keyboard {
++  padding: 2vw;
++}
++.ps5-search-draft {
++  display: block;
++  box-sizing: border-box;
++  width: 100%;
++  min-height: 3.5vw;
++  padding: .8vw 1.2vw;
++  border: 2px solid #555;
++  border-radius: .7vw;
++  background-color: #0d0d0d;
++  color: #fff;
++  font-size: 1.8vw;
++  white-space: pre-wrap;
++  overflow-wrap: anywhere;
++  max-height: 7vw;
++  overflow-y: auto;
++}
++.ps5-search-draft.empty { color: #999; }
++.ps5-search-caret {
++  display: inline-block;
++  height: 1.1em;
++  border-left: 2px solid #fff;
++  vertical-align: text-bottom;
++}
++.ps5-search-suggestions {
++  display: flex;
++  gap: .6vw;
++  min-height: 3.4vw;
++  margin-top: .8vw;
++}
++.ps5-search-suggestion {
++  flex: 1 1 0;
++  min-width: 0;
++  padding: .5vw .8vw;
++  border: 2px solid #555;
++  border-radius: .6vw;
++  background: #242424;
++  color: #fff;
++  font: inherit;
++  font-size: 1.2vw;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.ps5-search-suggestion.focused {
++  background: #f5f5f5;
++  border-color: #f5f5f5;
++  color: #111;
++}
++.ps5-search-suggestion-status {
++  min-height: 1.7vw;
++  margin-top: .4vw;
++  color: #b3b3b3;
++  font-size: 1vw;
++}
++.ps5-search-keyboard .ps5-search-keys {
++  display: flex;
++  flex-direction: row;
++  flex-wrap: wrap;
++  gap: 0;
++  margin: 1vw -.2vw 0;
++}
++.ps5-search-keys .nuvio-dialog-button {
++  box-sizing: border-box;
++  display: flex;
++  align-items: center;
++  flex: 0 0 calc(10% - .4vw);
++  width: calc(10% - .4vw);
++  min-width: 0;
++  min-height: 3.1vw;
++  margin: .2vw;
++  padding: .6vw .3vw;
++  border-radius: .6vw;
++  font-size: 1.6vw;
++  line-height: 1.25;
++  justify-content: center;
++  text-align: center;
++}
++.ps5-search-keys .nuvio-dialog-button-label {
++  flex: 0 1 auto;
++}
++.ps5-key-shortcut {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  flex: 0 0 auto;
++  width: 1.6vw;
++  height: 1.6vw;
++  margin-right: .4vw;
++}
++.ps5-key-shortcut svg { display: block; width: 100%; height: 100%; }
++.ps5-key-shortcut.stick { width: 3vw; height: 3vw; }
++.ps5-key-shortcut.shoulder {
++  width: 2.08vw;
++}
++.ps5-search-keys .nuvio-dialog-button:nth-child(n+41) {
++  flex-basis: calc(16.666% - .4vw);
++  width: calc(16.666% - .4vw);
++  font-size: 1.2vw;
++}
++.ps5-search-keys .nuvio-dialog-button[aria-pressed="true"] {
++  border-color: #f5f5f5;
++}
++.ps5-search-keys .ps5-search-submit:not(.focused) {
++  background-color: #3b3b3b;
++  border-color: #777;
++}
++
++.series-primary-btn,
++.series-secondary-btn {
++  box-sizing: border-box;
++  height: auto;
++  min-height: 4.2vw;
++  padding: 1.1vw 2vw;
++  border-radius: 999px;
++  line-height: 1;
++}
++.series-primary-btn .series-btn-svg,
++.series-primary-btn .series-btn-icon svg {
++  width: 1.5vw;
++  height: 1.5vw;
++}
++.series-primary-btn { overflow: visible; }
++.stream-route-shell { zoom: .72; }
++
 --- a/js/app.js
 +++ b/js/app.js
-@@ -5,6 +5,16 @@
- import { Router } from "./ui/navigation/router.js";
+@@ -13,6 +13,16 @@
+ import { NON_BACKSTACK_ROUTES, Router } from "./ui/navigation/router.js";
  import { FocusEngine } from "./ui/navigation/focusEngine.js";
  import { PlayerController } from "./core/player/playerController.js";
 +import { StreamPreferencesStore } from "./data/local/streamPreferencesStore.js";
@@ -92,7 +224,7 @@
  import { AuthManager } from "./core/auth/authManager.js";
  import { AuthState } from "./core/auth/authState.js";
  import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
-@@ -55,6 +65,678 @@
+@@ -108,6 +118,681 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
@@ -254,6 +386,8 @@
 +    streamId: ps5GeneralPreferenceText(streamId, 512),
 +    metadata: {
 +      bingeGroup: ps5GeneralPreferenceText(metadata?.bingeGroup, 512),
++      filename: ps5GeneralPreferenceText(metadata?.filename, 1024),
++      infoHash: ps5GeneralPreferenceText(metadata?.infoHash, 64),
 +      resumeIdentity: ps5GeneralPreferenceText(metadata?.resumeIdentity, 2048)
 +    }
 +  };
@@ -612,8 +746,8 @@
 +    // A cold launch keeps ordinary profile/PIN selection and route behavior.
 +    // Recover only after the originating profile is active, without a return TTL.
 +    if (!saved?.session || !saved.context?.itemId ||
-+        saved.profileId !== profileId || saved.profileId !== origin?.profileId ||
-+        saved.session !== origin?.progressSession || !Array.isArray(profiles) ||
++        saved.profileId !== profileId ||
++        (origin?.progressSession && saved.session !== origin.progressSession) || !Array.isArray(profiles) ||
 +        !profiles.some(profile => String(profile.id) === profileId)) return;
 +    const controller = new AbortController();
 +    const timeout = setTimeout(() => controller.abort(), 5000);
@@ -624,9 +758,10 @@
 +      if (response.status === 204 || response.status === 404) {
 +        LocalStore.remove(PS5_PROGRESS_KEY);
 +        LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
-+        globalThis.__nuvioPrepareKeyboard?.();
++        globalThis.__nuvioFlushStorage?.();
 +        return;
 +      }
++      if (response.status === 409) return; // Playback is active; retry the next checkpoint.
 +      if (!response.ok) throw new Error("Native progress unavailable");
 +      const report = await response.json();
 +      const { positionMs, durationMs } = report;
@@ -645,7 +780,7 @@
 +      else globalThis.__nuvioAcceptNextEpisode?.(saved, report.nextEpisode);
 +      LocalStore.remove(PS5_PROGRESS_KEY);
 +      LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
-+      globalThis.__nuvioPrepareKeyboard?.(); // Flush the existing console storage bridge.
++      globalThis.__nuvioFlushStorage?.(); // Flush the existing console storage bridge.
 +    } catch (error) {
 +      console.warn("Native playback progress could not be restored", error);
 +    } finally {
@@ -771,7 +906,7 @@
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -209,6 +891,11 @@
+@@ -334,6 +1019,11 @@
  }
  
  async function shouldShowProfileSelection() {
@@ -780,19 +915,19 @@
 +  if (globalThis.__NUVIO_PS5__ && !canResumePs5Playback()) {
 +    await ProfileSyncService.pull();
 +  }
-   const [profiles, pinStates] = await Promise.all([
-     ProfileManager.getProfiles(),
-     ProfileSyncService.pullProfileLockStates()
-@@ -218,7 +905,7 @@
-     pinStates?.[String(activeProfileId)] || pinStates?.[Number(activeProfileId)]
-   );
+   const profiles = await ProfileManager.getProfiles();
+   const activeProfileId = ProfileManager.getActiveProfileId();
+   const cachedPinStates = ProfileSyncService.getCachedProfileLockStates();
+@@ -358,7 +1048,7 @@
+   }
+   const activeProfileHasPin = hasProfilePin(pinStates, activeProfileId);
  
 -  if (hasSelectedProfileThisSession) {
 +  if (hasSelectedProfileThisSession || canResumePs5Playback()) {
-     return { show: false, pinStates };
+     return { show: false, pinStates, liveStateKnown };
    }
  
-@@ -237,6 +924,7 @@
+@@ -377,6 +1067,7 @@
  }
  
  async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
@@ -800,9 +935,9 @@
    hasSelectedProfileThisSession = true;
    const profiles = await ProfileManager.getProfiles();
    const activeProfileId = ProfileManager.getActiveProfileId();
-@@ -265,6 +953,21 @@
-   }).catch((error) => {
-     console.warn("Profile background sync failed", error);
+@@ -415,6 +1106,21 @@
+       console.warn("Profile background sync failed", error);
+     });
    });
 +  const recommendation = experienceRoute === "home" && globalThis.__nuvioTakePresentationRoute?.();
 +  if (recommendation) {
@@ -819,10 +954,10 @@
 +    await Router.navigate("player", nativeNext, { replaceHistory: true, skipStackPush: true });
 +    return;
 +  }
-   const resumeRoute =
+   const storedResumeRoute =
      restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
        ? Router.consumeWebOsResumeRoute()
-@@ -584,8 +1287,10 @@
+@@ -797,8 +1503,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (
@@ -870,7 +1005,7 @@
    const effectiveMode = experience.mode || (layout.hasChosenLayout ? "ADVANCED" : null);
 --- a/js/core/profile/profileSelectionScreenMethods-01-mount.js
 +++ b/js/core/profile/profileSelectionScreenMethods-01-mount.js
-@@ -204,7 +204,7 @@
+@@ -226,7 +226,7 @@
          : t("profile_selection_subtitle", {}, "Select a profile to continue");
        const hint = this.isManagementMode
          ? t("profile_manage_hint", {}, "Select a profile to manage")
@@ -881,7 +1016,7 @@
        const pinScreenPhaseClass = isPinActive ? ` is-pin-${escapeHtml(this.pinOverlayPhase || "open")}` : "";
 --- a/js/core/profile/profileSelectionScreenMethods-07-activate-focused-node.js
 +++ b/js/core/profile/profileSelectionScreenMethods-07-activate-focused-node.js
-@@ -164,6 +164,7 @@
+@@ -172,6 +172,7 @@
          // results into the newly selected profile's stream screen.
          PluginRuntime.cancelAll();
          await ProfileManager.setActiveProfile(profileId);
@@ -891,7 +1026,7 @@
          await I18n.init();
 --- a/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
 +++ b/js/core/tmdb/tmdbMetadataServiceMethods-02-fetch-episode-enrichment.js
-@@ -77,9 +77,14 @@
+@@ -81,9 +81,14 @@
        const url = `${TMDB_BASE_URL}/collection/${encodeURIComponent(String(collectionId))}?api_key=${encodeURIComponent(apiKey)}&language=${encodeURIComponent(lang)}`;
        const response = await fetch(url);
        if (!response.ok) {
@@ -909,24 +1044,9 @@
        return sortCollectionPartsByReleaseDate(data?.parts)
          .map((item) => ({
            id: item?.id ? `tmdb:${String(item.id)}` : "",
---- a/js/data/local/collectionsStore.js
-+++ b/js/data/local/collectionsStore.js
-@@ -52,9 +52,9 @@
-     withoutGenres: stringOrNull(raw.withoutGenres),
-     releaseDateGte: stringOrNull(raw.releaseDateGte),
-     releaseDateLte: stringOrNull(raw.releaseDateLte),
--    voteAverageGte: Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
--    voteAverageLte: Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
--    voteCountGte: Number.isFinite(Number(raw.voteCountGte))
-+    voteAverageGte: raw.voteAverageGte != null && Number.isFinite(Number(raw.voteAverageGte)) ? Number(raw.voteAverageGte) : null,
-+    voteAverageLte: raw.voteAverageLte != null && Number.isFinite(Number(raw.voteAverageLte)) ? Number(raw.voteAverageLte) : null,
-+    voteCountGte: raw.voteCountGte != null && Number.isFinite(Number(raw.voteCountGte))
-       ? Math.trunc(Number(raw.voteCountGte))
-       : null,
-     withOriginalLanguage: stringOrNull(raw.withOriginalLanguage),
 --- a/js/data/local/playerSettingsStore.js
 +++ b/js/data/local/playerSettingsStore.js
-@@ -124,6 +124,7 @@
+@@ -132,6 +132,7 @@
    const normalized = String(value || "")
      .trim()
      .toUpperCase();
@@ -934,26 +1054,28 @@
    return STREAM_AUTO_PLAY_SOURCES.includes(normalized) ? normalized : "ALL_SOURCES";
  }
  
---- a/js/data/local/streamPreferencesStore.js
-+++ b/js/data/local/streamPreferencesStore.js
-@@ -42,6 +42,13 @@
- }
- 
- export const StreamPreferencesStore = {
-+  getBingeGroupEntry(contentId, profileId = activeProfileId()) {
-+    const key = buildContentKey(contentId, contentId);
-+    if (!key) return null;
-+    const entry = readEntries(profileId).find(item =>
-+      (item.key === key || item.key.startsWith(key + "::")) && item.bingeGroup);
-+    return entry ? { ...entry } : null;
-+  },
-   getEntry(contentId, videoId, profileId = activeProfileId()) {
-     const key = buildContentKey(contentId, videoId);
-     if (!key) {
+--- a/js/data/local/streamLinkCacheStore.js
++++ b/js/data/local/streamLinkCacheStore.js
+@@ -64,6 +64,7 @@
+ // Deliberately separate from synced settings and from source-selection preferences.
+ export const StreamLinkCacheStore = {
+   save(params, payload, profileId = activeStreamLinkProfile()) {
++    if (globalThis.__NUVIO_PS5__) return false;
+     const key = contentKey(params);
+     if (!key || !payload || !profileId) return false;
+     const entry = {
+@@ -81,6 +82,7 @@
+     return true;
+   },
+   getValid(params, maxAgeMs, profileId = activeStreamLinkProfile()) {
++    if (globalThis.__NUVIO_PS5__) return null;
+     const key = contentKey(params);
+     if (!key || !Number.isFinite(maxAgeMs) || maxAgeMs <= 0) return null;
+     const all = readAll();
 --- a/js/data/repository/skipIntroRepository.js
 +++ b/js/data/repository/skipIntroRepository.js
-@@ -81,7 +81,12 @@
-   const controller = typeof AbortController === "function" ? new AbortController() : null;
+@@ -243,7 +243,12 @@
+   const timeoutMs = Platform.isTizen() || Platform.isWebOS() ? 8000 : 3500;
    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
    try {
 -    const response = await fetch(url, {
@@ -963,10 +1085,10 @@
 +    const target = globalThis.__NUVIO_PS5__ && endpoint.origin === "https://api.introdb.app" && endpoint.pathname === "/segments"
 +      ? "/evo/skip-metadata" + endpoint.search : url;
 +    const response = await fetch(target, {
-       method: "GET",
-       mode: "cors",
-       cache: "no-store",
-@@ -157,8 +162,10 @@
+       method: options.method || "GET",
+       headers: options.headers || undefined,
+       body: options.body || undefined,
+@@ -455,8 +460,10 @@
      const url = new URL("segments", baseUrl);
      url.searchParams.set("imdb_id", normalizedImdbId);
      url.searchParams.set("is_movie", "true");
@@ -974,9 +1096,9 @@
 -    const intervals = mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true });
 +    const pending = fetchJson(url.toString())
 +      .then(data => mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true }));
-+    CACHE.set(cacheKey, pending);
++    CACHE.set(cacheKey, { intervals: pending, expiresAt: Date.now() + CACHE_EMPTY_TTL_MS });
 +    const intervals = await pending;
-     CACHE.set(cacheKey, intervals);
+     writeCache(cacheKey, intervals);
      return intervals;
    }
 --- a/js/data/repository/subtitleRepository.js
@@ -1031,7 +1153,7 @@
    getCapabilities() {
 --- a/js/platform/tizen/tizenCapabilities.js
 +++ b/js/platform/tizen/tizenCapabilities.js
-@@ -196,6 +196,7 @@
+@@ -198,6 +198,7 @@
    },
  
    canUsePlugins(runtime = globalThis) {
@@ -1044,10 +1166,10 @@
 @@ -1,4 +1,5 @@
  import { Router } from "./routerState.js";
 +import { initPs5Navigation } from "./ps5-navigation.js";
+ import { focusWithoutScroll } from "./focusWithoutScroll.js";
  import { Platform } from "../../platform/index.js";
  
- function buildNormalizedEvent(event) {
-@@ -53,6 +54,7 @@
+@@ -61,6 +62,7 @@
    activeBackKeyIdentities: new Set(),
  
    init() {
@@ -1057,7 +1179,7 @@
      this.boundHandlePointerMove = this.handlePointerMove.bind(this);
 --- a/js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js
 +++ b/js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js
-@@ -37,14 +37,15 @@
+@@ -40,14 +40,15 @@
      },
      isWebOsResumeRouteRestorable(routeName = this.current) {
        const route = String(routeName || "").trim();
@@ -1075,7 +1197,7 @@
          LocalStore.remove(WEBOS_RESUME_ROUTE_KEY);
          return;
        }
-@@ -59,7 +60,7 @@
+@@ -62,7 +63,7 @@
        }
      },
      consumeWebOsResumeRoute() {
@@ -1099,17 +1221,17 @@
    }
 --- a/js/ui/screens/collection/folderDetailScreenHelpers-04-map-trakt-entity.js
 +++ b/js/ui/screens/collection/folderDetailScreenHelpers-04-map-trakt-entity.js
-@@ -83,6 +83,7 @@
-   const url = new URL(
+@@ -84,6 +84,7 @@
      `${String(TRAKT_API_URL || "https://api.trakt.tv").replace(/\/+$/, "")}/lists/${encodeURIComponent(String(source.traktListId || ""))}/items/${mediaType}`
    );
+   url.searchParams.set("extended", "full,images");
 +  url.searchParams.set("extended", "full,images");
    url.searchParams.set("page", String(page));
    url.searchParams.set("limit", String(TRAKT_PAGE_SIZE));
    url.searchParams.set("sort_by", String(source.sortBy || "rank"));
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-03-load-detail.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-03-load-detail.js
-@@ -173,7 +173,8 @@
+@@ -190,7 +190,8 @@
        } else {
          this.seriesRatingsBySeason = {};
        }
@@ -1121,7 +1243,7 @@
        this.maybeAutoOpenContinueWatchingStream();
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-05-resolve-initial-selected-season.js
-@@ -261,6 +261,7 @@
+@@ -278,6 +278,7 @@
      },
      navigateBackFromDetail() {
        if (this.params?.returnToSearchOnBack) {
@@ -1129,7 +1251,7 @@
          Router.navigate(
            "search",
            {},
-@@ -272,7 +273,7 @@
+@@ -289,7 +290,7 @@
          );
          return true;
        }
@@ -1140,17 +1262,17 @@
            {},
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-07-merge-stream-items.js
-@@ -239,6 +239,7 @@
-                   <span class="series-btn-icon">${renderPlayGlyph()}</span>
+@@ -247,6 +247,7 @@
                    <span>${escapeHtml(playLabel)}</span>
                  </button>
+                 ${LayoutPreferences.get().randomEpisodeEnabled && ["series", "tv"].includes(String(this.params?.itemType || meta.type).toLowerCase()) ? `<button class="series-secondary-btn focusable" data-action="shuffleEpisodes" aria-label="${escapeAttribute(t("random_episode_title"))}">${escapeHtml(t(detailShuffleSettings(this).enabled ? (detailShuffleSettings(this).includeWatched ? "shuffle_enabled_all" : "shuffle_enabled_unwatched") : "random_episode_title"))}</button>` : ""}
 +                ${globalThis.__NUVIO_PS5__ ? '<button class="series-secondary-btn focusable" data-action="ps5PlayOptions">Play options</button>' : ""}
                  ${this.getActiveResumeProgress() ? `<button class="series-secondary-btn focusable" data-action="playFromBeginning">${escapeHtml(t("detail.playFromBeginning", {}, "Play from Beginning"))}</button>` : ""}
                  <button class="series-circle-btn focusable${this.isSavedInLibrary ? " is-library-selected" : ""}" data-action="toggleLibrary">
                    ${renderLibraryGlyph(this.isSavedInLibrary)}
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-08-render-external-ratings-row.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-08-render-external-ratings-row.js
-@@ -79,6 +79,7 @@
+@@ -77,6 +77,7 @@
            </div>
            <div class="row">
              <div class="card focusable" data-action="playDefault">${isSeries ? t("detail.playNextEpisode", {}, "Play Next Episode") : t("detail.play", {}, "Play")}</div>
@@ -1160,21 +1282,21 @@
              <div class="card focusable" data-action="openSearch">${t("detail.searchSimilar", {}, "Search Similar")}</div>
 --- a/js/ui/screens/detail/metaDetailsScreenMethods-26-on-key-down.js
 +++ b/js/ui/screens/detail/metaDetailsScreenMethods-26-on-key-down.js
-@@ -199,6 +199,11 @@
-         Router.navigate("search", {
-           query: this.params?.fallbackTitle || this.params?.itemId || ""
-         });
+@@ -212,6 +212,11 @@
+         openDetailShuffle(this);
+         return;
+       }
++      if (globalThis.__NUVIO_PS5__ && action === "ps5PlayOptions") {
++        this.openHeroPlayMenu();
 +        return;
 +      }
 +
-+      if (globalThis.__NUVIO_PS5__ && action === "ps5PlayOptions") {
-+        this.openHeroPlayMenu();
+       if (action === "playDefault") {
+         await this.playDefaultFromHero();
          return;
-       }
- 
 --- a/js/ui/screens/home/homeDomUpdate.js
 +++ b/js/ui/screens/home/homeDomUpdate.js
-@@ -177,6 +177,13 @@
+@@ -222,6 +222,13 @@
    source.innerHTML = markup;
    const canUpdate = incremental && hasMountedHomeDom(container);
    if (canUpdate) {
@@ -1187,7 +1309,7 @@
 +    ));
      updateChildren(container, source, focusedNode);
    } else {
-     container.innerHTML = markup;
+     releasePosters(container);
 --- a/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
 +++ b/js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js
 @@ -78,7 +78,7 @@
@@ -1199,9 +1321,46 @@
          options.push({ action: "playManually", label: t("play_manually", {}, "Play manually") });
        }
        if (!item.isNextUp) {
+--- a/js/ui/screens/onboarding/essentialAddonSetupScreen.js
++++ b/js/ui/screens/onboarding/essentialAddonSetupScreen.js
+@@ -34,7 +34,7 @@
+       </main>`;
+     this.onKeyDownBound = this.onKeyDown.bind(this);
+     this.onClickBound = this.onClick.bind(this);
+-    document.addEventListener("keydown", this.onKeyDownBound);
++    if (!globalThis.__NUVIO_PS5__) document.addEventListener("keydown", this.onKeyDownBound);
+     this.container.addEventListener("click", this.onClickBound);
+     ScreenUtils.setInitialFocus(this.container);
+   },
+--- a/js/ui/screens/onboarding/experienceModeSelectionScreen.js
++++ b/js/ui/screens/onboarding/experienceModeSelectionScreen.js
+@@ -36,7 +36,7 @@
+     this.render();
+     this.onKeyDownBound = this.onKeyDown.bind(this);
+     this.onClickBound = this.onClick.bind(this);
+-    document.addEventListener("keydown", this.onKeyDownBound);
++    if (!globalThis.__NUVIO_PS5__) document.addEventListener("keydown", this.onKeyDownBound);
+     this.container.addEventListener("click", this.onClickBound);
+     ScreenUtils.setInitialFocus(this.container);
+   },
+@@ -105,6 +105,14 @@
+     if (node.dataset.layout) await this.chooseLayout(node.dataset.layout);
+   },
+ 
++  consumeBackRequest() {
++    if (!globalThis.__NUVIO_PS5__ || this.step !== "layout") return false;
++    this.step = "mode";
++    this.render();
++    ScreenUtils.setInitialFocus(this.container);
++    return true;
++  },
++
+   async onKeyDown(event) {
+     const key = event.key;
+     if (["ArrowLeft", "ArrowRight"].includes(key)) {
 --- a/js/ui/screens/player/playerScreenMethods-01-mount.js
 +++ b/js/ui/screens/player/playerScreenMethods-01-mount.js
-@@ -5,6 +5,7 @@
+@@ -8,6 +8,7 @@
  export function createPlayerScreenMethods01() {
    const {
      PlayerController,
@@ -1209,15 +1368,15 @@
      shouldAllowNativePlaybackDuringStartupAudioGate,
      ASPECT_MODE_DEFINITIONS,
      ensureWebOsImageProxyReady,
-@@ -70,6 +71,7 @@
+@@ -75,6 +76,7 @@
            this.webOsClockSettingsSubscription = null;
          }
        }
 +      this.ps5NativeNextEpisode = false;
        this.params = params;
+       this.streamLinkCacheProfileId = activeStreamLinkProfile();
        this.trackPreferenceContentId = this.getTrackPreferenceContentId();
-       this.subtitleDelayPreferenceVideoId = this.getSubtitleDelayPreferenceVideoId();
-@@ -171,6 +173,15 @@
+@@ -175,6 +177,15 @@
  
        this.renderPlayerUi();
        this.bindPlayerExitCleanup();
@@ -1230,18 +1389,20 @@
 +        await this.playNextEpisode({ userInitiated: Boolean(params.ps5NextEpisodeUserInitiated) });
 +        return;
 +      }
-       this.pauseOverlayMeta = this.buildPauseOverlayMeta();
        if (!this.isExternalFrameMode()) {
-         this.bindVideoEvents();
+         this.bindParty(navigationContext);
+         this.loadPartyProfile();
 --- a/js/ui/screens/player/playerScreenMethods-06-handle-post-play-key.js
 +++ b/js/ui/screens/player/playerScreenMethods-06-handle-post-play-key.js
-@@ -289,10 +289,15 @@
-       if (!streamCandidate?.id || !prefContentId) {
+@@ -294,12 +294,17 @@
+       if (!streamCandidate?.id || !prefContentId || streamCandidate.partyShared || streamCandidate.raw?.partyShared) {
          return;
        }
 -      StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
 +      const metadata = {
          bingeGroup: streamCandidate?.behaviorHints?.bingeGroup || streamCandidate?.raw?.behaviorHints?.bingeGroup || "",
+         filename: streamCandidate?.behaviorHints?.filename || streamCandidate?.raw?.behaviorHints?.filename || null,
+         infoHash: streamCandidate?.infoHash || streamCandidate?.raw?.infoHash || null,
          resumeIdentity: buildStreamResumeIdentity(streamCandidate)
 -      });
 +      };
@@ -1255,22 +1416,22 @@
  }
 --- a/js/ui/screens/player/playerScreenMethods-22-should-show-next-episode-card.js
 +++ b/js/ui/screens/player/playerScreenMethods-22-should-show-next-episode-card.js
-@@ -260,6 +260,7 @@
+@@ -268,6 +268,7 @@
        return this.nextEpisodeLaunching && Number(token) === Number(this.nextEpisodeLaunchToken) && Router.getCurrent() === "player";
      },
      async runNextEpisodeCountdown(token, selectedStream) {
 +      if (this.ps5NativeNextEpisode) return this.isNextEpisodeLaunchActive(token);
        const sourceName = String(selectedStream?.name || selectedStream?.addonName || "").trim();
-       const countdownEnabled = PlayerSettingsStore.get().nextEpisodeCountdownEnabled !== false;
        this.nextEpisodeCardSearching = false;
+       this.nextEpisodeCardSourceName = sourceName;
 --- a/js/ui/screens/player/playerScreenMethods-23-maybe-autoplay-next-episode.js
 +++ b/js/ui/screens/player/playerScreenMethods-23-maybe-autoplay-next-episode.js
-@@ -169,6 +169,7 @@
+@@ -177,6 +177,7 @@
        return streamItems;
      },
      getCurrentStreamBingeGroup() {
 +      if (this.ps5NativeNextEpisode) return String(this.params?.ps5NativeBingeGroup || "");
-       const currentStream = this.getStreamCandidateByUrl(this.activePlaybackUrl) || this.getCurrentStreamCandidate();
+       const currentStream = this.getCurrentStreamCandidate() || this.getStreamCandidateByUrl(this.activePlaybackUrl);
        return String(currentStream?.behaviorHints?.bingeGroup || currentStream?.raw?.behaviorHints?.bingeGroup || "").trim();
      },
 --- a/js/ui/screens/player/playerScreenMethods-68-load-subtitles.js
@@ -1283,7 +1444,7 @@
  
  export function createPlayerScreenMethods68() {
    const {
-@@ -13,44 +15,59 @@
+@@ -13,13 +15,83 @@
    } = internals;
  
    return {
@@ -1325,37 +1486,6 @@
  
        const sidecarSubtitles = this.collectStreamSidecarSubtitles();
        const subtitleLookup = this.buildSubtitleLookupContext();
--      try {
--        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
--        this.refreshTrackDialogs();
--
--        let repositorySubtitles = [];
--
--        try {
--          if (subtitleLookup.id && subtitleLookup.type) {
--            repositorySubtitles = await subtitleRepository.getSubtitles(
--              subtitleLookup.type,
--              subtitleLookup.id,
--              subtitleLookup.videoId || null,
--              {
--                season: subtitleLookup.season,
--                episode: subtitleLookup.episode,
--                title: subtitleLookup.title,
--                year: subtitleLookup.year,
--                videoHash: subtitleLookup.videoHash || null,
--                videoSize: subtitleLookup.videoSize || null,
--                filename: subtitleLookup.filename || null
--              }
--            );
--          }
--        } catch (error) {
--          console.error("Subtitle fetch failed", error);
--        }
--
--        if (requestToken !== this.subtitleLoadToken) {
--          return;
--        }
--
 +      const ps5 = globalThis.__NUVIO_PS5__;
 +      const params = this.params, mount = this.playerMountToken;
 +      const routeParams = ps5 ? Router.currentParams : null;
@@ -1373,50 +1503,77 @@
 +      let partialSubtitles = [];
 +      const publishSubtitles = (repositorySubtitles) => {
 +        if (!current()) return;
-         const subtitleSettings = PlayerSettingsStore.get();
-         const preferredOnly =
-           subtitleSettings.addonSubtitleStartupMode === "PREFERRED_ONLY" ||
-@@ -76,12 +93,51 @@
-           }
-         }
-         this.refreshTrackDialogs();
-+      };
-+      try {
-+        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
++        const subtitleSettings = PlayerSettingsStore.get();
++        const preferredOnly = Boolean(subtitleSettings.subtitleStyle?.showOnlyPreferredLanguages);
++        if (preferredOnly) {
++          const preferredTargets = new Set(this.getStartupPreferredSubtitleLanguageTargets());
++          repositorySubtitles = repositorySubtitles.filter((entry) => {
++            const language = normalizeSubtitleLanguageKey(entry?.lang || entry?.language || entry?.languageCode || "");
++            return Array.from(preferredTargets).some((target) => {
++              if (language === target) return true;
++              if (target === "pt" || target === "es") return false;
++              return language.startsWith(`${target}-`);
++            });
++          });
++        }
++
++        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
++        if (this.subtitleDialogVisible && this.subtitleDialogTab === "builtIn") {
++          const builtInBoundary = this.resolveBuiltInSubtitleBoundary(this.getTextTracks());
++          if (builtInBoundary <= 0 && this.subtitles.length > 0) {
++            this.subtitleDialogTab = "addons";
++            this.subtitleDialogIndex = 0;
++          }
++        }
 +        this.refreshTrackDialogs();
-+
-+        let repositorySubtitles = [];
-+
-+        try {
-+          if (subtitleLookup.id && subtitleLookup.type) {
-+            repositorySubtitles = await subtitleRepository.getSubtitles(
-+              subtitleLookup.type,
-+              subtitleLookup.id,
-+              subtitleLookup.videoId || null,
-+              {
++      };
+       try {
+         this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, []);
+         this.refreshTrackDialogs();
+@@ -33,6 +105,11 @@
+               subtitleLookup.id,
+               subtitleLookup.videoId || null,
+               {
 +                ...(ps5 ? { onChunk: (result) => {
 +                  if (!current() || result?.status !== "success" || !Array.isArray(result.data)) return;
 +                  partialSubtitles = this.mergeSubtitleCandidates(partialSubtitles, result.data);
 +                  publishSubtitles(partialSubtitles);
 +                } } : {}),
-+                season: subtitleLookup.season,
-+                episode: subtitleLookup.episode,
-+                title: subtitleLookup.title,
-+                year: subtitleLookup.year,
-+                videoHash: subtitleLookup.videoHash || null,
-+                videoSize: subtitleLookup.videoSize || null,
-+                filename: subtitleLookup.filename || null
-+              }
-+            );
-+          }
-+        } catch (error) {
-+          console.error("Subtitle fetch failed", error);
-+        }
-+
+                 season: subtitleLookup.season,
+                 episode: subtitleLookup.episode,
+                 title: subtitleLookup.title,
+@@ -47,39 +124,18 @@
+           console.error("Subtitle fetch failed", error);
+         }
+ 
+-        if (requestToken !== this.subtitleLoadToken) {
 +        if (!current()) {
-+          return;
-+        }
-+
+           return;
+         }
+ 
+-        const subtitleSettings = PlayerSettingsStore.get();
+-        const preferredOnly = Boolean(subtitleSettings.subtitleStyle?.showOnlyPreferredLanguages);
+-        if (preferredOnly) {
+-          const preferredTargets = new Set(this.getStartupPreferredSubtitleLanguageTargets());
+-          repositorySubtitles = repositorySubtitles.filter((entry) => {
+-            const language = normalizeSubtitleLanguageKey(entry?.lang || entry?.language || entry?.languageCode || "");
+-            return Array.from(preferredTargets).some((target) => {
+-              if (language === target) return true;
+-              if (target === "pt" || target === "es") return false;
+-              return language.startsWith(`${target}-`);
+-            });
+-          });
+-        }
+-
+-        this.subtitles = this.mergeSubtitleCandidates(sidecarSubtitles, repositorySubtitles);
+-        if (this.subtitleDialogVisible && this.subtitleDialogTab === "builtIn") {
+-          const builtInBoundary = this.resolveBuiltInSubtitleBoundary(this.getTextTracks());
+-          if (builtInBoundary <= 0 && this.subtitles.length > 0) {
+-            this.subtitleDialogTab = "addons";
+-            this.subtitleDialogIndex = 0;
+-          }
+-        }
+-        this.refreshTrackDialogs();
 +        publishSubtitles(repositorySubtitles);
        } catch (error) {
 +        if (!current()) return;
@@ -1458,7 +1615,7 @@
  import * as internals from "./searchScreen.js";
  
  export function createSearchScreenMethods01() {
-@@ -134,6 +135,10 @@
+@@ -135,6 +136,10 @@
          if (!this.container || Router.getCurrent() !== "search") {
            return;
          }
@@ -1469,7 +1626,7 @@
          this.render();
        });
      },
-@@ -178,11 +183,16 @@
+@@ -179,11 +184,15 @@
          console.warn("Search sidebar profile failed to load", err);
          return null;
        });
@@ -1478,8 +1635,7 @@
 -      } catch (err) {
 -        console.warn("Search cached sidebar profile failed to load", err);
 -        this.sidebarProfile = null;
-+      // PS5 Search must paint within the Triangle user gesture so
-+      // focusing its real input can request the browser's native keyboard.
++      // PS5 Search paints before the local keyboard opens.
 +      // The existing background profile request still refreshes the avatar.
 +      if (!globalThis.__NUVIO_PS5__) {
 +        try {
@@ -1491,7 +1647,7 @@
        }
        this.sidebarExpanded = false;
        this.focusZone = "content";
-@@ -229,6 +239,7 @@
+@@ -230,6 +239,7 @@
        // completes. Paint the Smart TV shell now so the native input and sidebar
        // remain usable while the row request runs in the background.
        this.render();
@@ -1501,7 +1657,7 @@
          if (!profile || routeLoadToken !== this.loadToken || Router.getCurrent() !== "search") {
 --- a/js/ui/screens/search/searchScreenMethods-02-load-discover-rows.js
 +++ b/js/ui/screens/search/searchScreenMethods-02-load-discover-rows.js
-@@ -238,7 +238,7 @@
+@@ -239,7 +239,7 @@
          if (this.mode === "search") {
            return `
                <div class="search-empty-state search-empty-state-results">
@@ -1510,7 +1666,7 @@
                  <h2>${escapeHtml(t("search_no_results_title", {}, "No Results"))}</h2>
                  <p>${escapeHtml(t("search_no_results_subtitle", {}, "Try searching with different keywords"))}</p>
                </div>
-@@ -249,7 +249,7 @@
+@@ -250,7 +250,7 @@
          }
          return `
              <div class="search-empty-state">
@@ -1541,6 +1697,14 @@
                    </button>
                  `
                      : ""
+@@ -100,6 +100,7 @@
+                 }
+                 <input
+                   id="searchInput"
++                  ${globalThis.__NUVIO_PS5__ ? 'readonly inputmode="none"' : ''}
+                   class="search-input-field focusable"
+                   type="text"
+                   data-action="searchInput"
 --- a/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
 +++ b/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
 @@ -298,7 +298,12 @@
@@ -1559,7 +1723,7 @@
        this.loadToken = (this.loadToken || 0) + 1;
 --- a/js/ui/screens/settings/settingsScreenHelpers-04-row-icons.js
 +++ b/js/ui/screens/settings/settingsScreenHelpers-04-row-icons.js
-@@ -170,7 +170,9 @@
+@@ -168,7 +168,9 @@
  }
  
  export function arePluginsSupported() {
@@ -1590,7 +1754,7 @@
    };
 --- a/js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js
 +++ b/js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js
-@@ -148,7 +148,7 @@
+@@ -153,7 +153,7 @@
  
        if (this.textDialog) {
          const activeField = document.activeElement?.matches?.("[data-text-dialog-role='field']");
@@ -1601,7 +1765,7 @@
            this.dialogFocusIndex = clamp(this.dialogFocusIndex + delta, 0, this.getTextDialogMaxFocusIndex());
 --- a/js/ui/screens/settings/settingsScreenPlaybackActions-01.js
 +++ b/js/ui/screens/settings/settingsScreenPlaybackActions-01.js
-@@ -221,7 +221,8 @@
+@@ -199,7 +199,8 @@
    this.actionMap.set("playback:autoStreamSource", () => {
      this.openOptionDialog({
        title: t("autoplay_scope", {}, "Auto-play Source Scope"),
@@ -1613,7 +1777,7 @@
        onSelect: (option) => {
 --- a/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
 +++ b/js/ui/screens/settings/settingsScreenPlaybackMarkup-06-section.js
-@@ -25,6 +25,8 @@
+@@ -27,6 +27,8 @@
    });
    return `
            ${this.renderSectionHeader(SECTION_META.find((item) => item.id === "playback"))}
@@ -1624,50 +1788,23 @@
                ${this.renderCollapsibleRow({
 --- a/js/ui/screens/stream/streamScreenMethods-04-load-streams.js
 +++ b/js/ui/screens/stream/streamScreenMethods-04-load-streams.js
-@@ -264,9 +264,9 @@
-         if (this.streams.length) {
-           const visibleStreams = this.getFilteredStreams();
+@@ -279,7 +279,7 @@
            const maxCardIndex = Math.max(0, visibleStreams.length - 1);
--          let initialIndex = clamp(Number(this.focusState?.index || 0), 0, maxCardIndex);
-+          let initialIndex = clamp(Number(this.focusState?.row ?? this.focusState?.index ?? 0), 0, maxCardIndex);
+           let initialIndex = clamp(Number(this.focusState?.row ?? this.focusState?.index ?? 0), 0, maxCardIndex);
            const preferred = String(this.params?.preferredStreamId || "").trim();
 -          if (preferred) {
 +          if (preferred && this.focusState?.zone !== "card") {
              const prefIdx = visibleStreams.findIndex((s) => String(s?.id || "") === preferred);
              if (prefIdx >= 0) {
                initialIndex = prefIdx;
---- a/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
-+++ b/js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js
-@@ -24,6 +24,12 @@
-       if (this.autoResumeAttempted) {
-         return;
-       }
-+      // Manual selection must also bypass the progress stream identity.
-+      // Disabling only stored-link reuse still allowed an automatic launch.
-+      if (globalThis.__NUVIO_PS5__ && this.params?.manualSelection) {
-+        this.autoResumeUiActive = false;
-+        return;
-+      }
-       const settings = PlayerSettingsStore.get();
-       const reusableStream = settings.streamReuseLastLinkEnabled
-         ? StreamPreferencesStore.getValid(
-@@ -101,7 +107,9 @@
-       }
-       const savedPreference =
-         settings.streamAutoPlayPreferBingeGroupForNextEpisode && settings.streamAutoPlayReuseBingeGroup
--          ? StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId)
-+          ? (globalThis.__NUVIO_PS5__
-+            ? StreamPreferencesStore.getBingeGroupEntry(this.params?.itemId)
-+            : StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId))
-           : null;
-       const preferredBingeGroup = String(savedPreference?.bingeGroup || "").trim();
-       const installedAddonNames = new Set(
 --- a/js/ui/screens/stream/streamScreenMethods-09-render.js
 +++ b/js/ui/screens/stream/streamScreenMethods-09-render.js
-@@ -23,12 +23,16 @@
-       this.cancelScheduledRender();
-       const previousVirtualModel = this.streamVirtualized ? this.streamVirtualModel : null;
+@@ -26,13 +26,17 @@
        const previousFocusedIndex = Number(this.focusState?.row);
+       // New earlier sources replace the initial first result. Once the user
+       // navigates (or returns from playback), retain the selected identity.
+-      const holdFirstResult = this.focusState?.zone === "card" && previousFocusedIndex === 0 && !this.streamUserMovedFocus;
++      const holdFirstResult = !globalThis.__NUVIO_PS5__ && this.focusState?.zone === "card" && previousFocusedIndex === 0 && !this.streamUserMovedFocus;
 +      const previousStreams = this.renderedStreamListStreams || [];
 +      const previousKeys = previousVirtualModel?.keys || this.getStreamVirtualKeys(
 +        this.addonFilter === "all" ? previousStreams : previousStreams.filter((s) => s.addonName === this.addonFilter)
@@ -1682,14 +1819,14 @@
 +        previousFocusedIndex < previousKeys.length
 +          ? previousKeys[previousFocusedIndex]
            : "";
-       if (previousVirtualModel && !this.streamVirtualFocusReset && Number(this.listScrollTop || 0) > 0) {
+       if (previousVirtualModel && !holdFirstResult && !this.streamVirtualFocusReset && Number(this.listScrollTop || 0) > 0) {
          const previousAnchorIndex = findStreamVirtualIndex(previousVirtualModel.offsets, Number(this.listScrollTop || 0));
-@@ -63,7 +67,7 @@
+@@ -67,7 +71,7 @@
        // cards interactive while their images warm in the background; the card
        // renderer already has a text fallback for a missing logo.
        const virtualizedStreamList = Boolean(this.shouldUseStreamVirtualization(allStreams) && filtered.length);
--      if (virtualizedStreamList && previousFocusedKey && !this.streamVirtualFocusReset) {
-+      if (previousFocusedKey && !this.streamVirtualFocusReset) {
+-      if (virtualizedStreamList && previousFocusedKey && !holdFirstResult && !this.streamVirtualFocusReset) {
++      if (previousFocusedKey && !holdFirstResult && !this.streamVirtualFocusReset) {
          const nextKeys = this.getStreamVirtualKeys(filtered);
          const nextFocusedIndex = nextKeys.indexOf(previousFocusedKey);
          if (nextFocusedIndex >= 0) {

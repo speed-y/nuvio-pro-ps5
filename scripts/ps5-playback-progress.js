@@ -30,8 +30,8 @@ function restorePs5PlaybackProgress() {
     // A cold launch keeps ordinary profile/PIN selection and route behavior.
     // Recover only after the originating profile is active, without a return TTL.
     if (!saved?.session || !saved.context?.itemId ||
-        saved.profileId !== profileId || saved.profileId !== origin?.profileId ||
-        saved.session !== origin?.progressSession || !Array.isArray(profiles) ||
+        saved.profileId !== profileId ||
+        (origin?.progressSession && saved.session !== origin.progressSession) || !Array.isArray(profiles) ||
         !profiles.some(profile => String(profile.id) === profileId)) return;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -39,12 +39,15 @@ function restorePs5PlaybackProgress() {
       const response = await fetch("/evo/progress?session=" + encodeURIComponent(saved.session), {
         cache: "no-store", signal: controller.signal
       });
-      if (response.status === 204 || response.status === 404) {
+      // HTTP 404 can arrive before the native checkpoint is readable. Keep the
+      // saved context and retry instead of deleting the only recovery record.
+      if (response.status === 204) {
         LocalStore.remove(PS5_PROGRESS_KEY);
         LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
-        globalThis.__nuvioPrepareKeyboard?.();
+        globalThis.__nuvioFlushStorage?.();
         return;
       }
+      if (response.status === 404 || response.status === 409) return;
       if (!response.ok) throw new Error("Native progress unavailable");
       const report = await response.json();
       const { positionMs, durationMs } = report;
@@ -53,9 +56,24 @@ function restorePs5PlaybackProgress() {
       // Never switch profiles to apply an old report, even if fetching yielded.
       if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
       if (positionMs > 0) {
-        await PlayerController.flushProgress(positionMs, durationMs, false, saved.context, {
+        const progressContext = { ...saved.context };
+        delete progressContext.progressSession;
+        await PlayerController.flushProgress(positionMs, durationMs, false, progressContext, {
           allowCloudSync: false, syncRemote: true
         });
+        LocalStore.remove("homeContinueWatchingDisplaySnapshot");
+        globalThis.__nuvioProgressHomeDirty = true;
+        const resume = LocalStore.get("webos_last_resume_route", null);
+        if (resume?.params) {
+          LocalStore.set("webos_last_resume_route", {
+            ...resume,
+            params: { ...resume.params, resumePositionMs: positionMs, resumeDurationMs: durationMs },
+            savedAt: Date.now()
+          });
+        }
+        const home = Router.getCurrent?.() === "home" ? Router.getCurrentScreen?.() : null;
+        home?.clearContinueWatchingSnapshot?.();
+        home?.refreshHomeContinueWatchingAfterSync?.();
       }
       if (String(ProfileManager.getActiveProfileId()) !== saved.profileId) return;
       globalThis.__nuvioAcceptPresentation?.(saved, report);
@@ -63,7 +81,7 @@ function restorePs5PlaybackProgress() {
       else globalThis.__nuvioAcceptNextEpisode?.(saved, report.nextEpisode);
       LocalStore.remove(PS5_PROGRESS_KEY);
       LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
-      globalThis.__nuvioPrepareKeyboard?.(); // Flush the existing console storage bridge.
+      globalThis.__nuvioFlushStorage?.(); // Flush the existing console storage bridge.
     } catch (error) {
       console.warn("Native playback progress could not be restored", error);
     } finally {

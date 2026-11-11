@@ -44,8 +44,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
  const fast={url:'https://subs.invalid/fast.srt',lang:'en'};
  const foreign={url:'https://subs.invalid/foreign.srt',lang:'fr'};
  async function setup({ps5=true,preferred=false,canonical=false,original=false}={}){
-  let profile='one',sent,settings={addonSubtitleStartupMode:preferred===true?'PREFERRED_ONLY':'ALL_SUBTITLES',
-   subtitleStyle:{showOnlyPreferredLanguages:preferred==='style'}};
+  let profile='one',sent,settings={subtitleStyle:{showOnlyPreferredLanguages:preferred}};
   const timers=new Map(),requests=[];let timerId=0;
   const params={itemId:canonical?'custom:123':scenario==='ids'?'tt123:alternate':'tt123',itemType:'movie'};
   const candidate={id:'source-one'};
@@ -80,7 +79,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
  }
  // Exercise the actual repository, loader, merger and sender through the same
  // four-second deadline; one successful request must not wait for another.
- for(const preferred of [false,true,'style']){
+ for(const preferred of [false,true]){
   const f=await setup({preferred});const preparing=f.ctx.__nuvioPrepareSubtitles();await flush();
   assert.equal(f.requests.length,scenario==='ids'?1:2);
   f.requests[0].resolve({subtitles:[fast,foreign,fast]});await flush();
@@ -174,13 +173,15 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('nod
      getStreamCandidateByUrl:()=>candidate,getCurrentStreamCandidate:()=>candidate,
      getEngineFsStateForStream:()=>null,isCurrentSourceLikelyHls:()=>false,
      enableStartupAudioGate(){},buildPlaybackContext:()=>({}),
+     isActiveMountToken:()=>false,
+     prefetchTizenEmbeddedAudioTracks(){},
      loadManifestTrackDataForCurrentStream(){},startTrackDiscoveryWindow(){},schedulePlaybackStallGuard(){}};
    const ctx=vm.createContext({URL,AbortController,setTimeout,clearTimeout,__NUVIO_PS5__:true,
      Router:{current:'player',currentParams:params,getCurrentScreen:()=>screen},
      ProfileManager:{getActiveProfileId:()=> 'one'},
      async fetch(url,options){assert.equal(url,'/evo/subtitles');sent=JSON.parse(options.body);return {ok:true};},
      internals:{subtitleRepository:{getSubtitles:()=>new Promise(resolve=>pending.push(resolve))},
-       PlayerSettingsStore:{get:()=>({addonSubtitleStartupMode:'ALL_SUBTITLES'})}},
+       PlayerSettingsStore:{get:()=>({})}},
      Environment:{isWebOS:()=>false},shouldAllowNativePlaybackDuringStartupAudioGate:()=>false,
      initialStreamUrl:'https://media.invalid/film',mountToken:1,screen});
    const general=fs.readFileSync(process.argv[2]+'/scripts/ps5-general.js','utf8').split('// Preference identities')[0];

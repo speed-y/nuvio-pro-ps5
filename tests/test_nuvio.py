@@ -158,6 +158,9 @@ function node(text=false){return {events:[],clicks:0,isConnected:true,disabled:f
   click(){this.clicks++;listener(e(this));},dispatchEvent(e){assert.equal(e.keyCode,13);assert.equal(e.which,13);this.events.push(e.type);}};}
 listener(e()); assert.equal(stopped,2); // No focus never activates the stationary pointer.
 focused=node();listener(e());assert.deepEqual(focused.events,['keydown','keyup']);
+const stoppedBeforeProgrammatic=stopped;
+listener({...e(focused),isTrusted:false}); // Upstream Enter -> .click() reaches its own action listener.
+assert.equal(stopped,stoppedBeforeProgrammatic);assert.equal(focused.events.length,2);
 let pointerPrevented=false;context.window.__nuvioPs5PointerDown({button:0,target:{},preventDefault(){pointerPrevented=true;}});
 assert.equal(pointerPrevented,true);
 listener(e(focused));assert.equal(focused.events.length,4); // Pointer on focus also activates once.
@@ -219,16 +222,18 @@ function target(name){return {isConnected:true,getAttribute:()=>null,getClientRe
  dispatchEvent:e=>keys.push([name,e.type,e.key,e.keyCode,e.which])};}
 const page=target('page'),dialog=target('dialog');
 const document={hidden:false,body:{classList:{contains:()=>modal}},
+ addEventListener(){},
  querySelectorAll:()=>[{classList:{contains:()=>false},querySelector:()=>focused?dialog:null}]};
 const context={__NUVIO_PS5__:true,document,Event:class{constructor(type){this.type=type;}},
+ CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail;}},
  KeyboardEvent:class{constructor(type,init){this.type=type;this.key=init.key;this.keyCode=0;this.which=0;}},
  Router:{getCurrentScreen:()=>({container:{querySelector:s=>s==='.focused'&&focused?page:null}})},
   initPs5SearchKeyboard(){},requestPs5SearchKeyboard(){},
-  window:{__evoHook:true,addEventListener(){},dispatchEvent:e=>events.push(e.type)},
+  window:{__evoHook:true,addEventListener(){},dispatchEvent:e=>events.push(e.detail?e.type+':'+e.detail:e.type)},
   setTimeout:fn=>{timer=fn;},XMLHttpRequest:class{constructor(){request=this;}open(){}send(){}}};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/mg,'').replace('export function','function')+'\ninitPs5Navigation();',context);
-function response(options,menu,status=200,navigation=0,direction=0){request.status=status;request.responseText=JSON.stringify({options,menu,navigation,direction});request.onload();request.onloadend();timer();}
+function response(options,menu,status=200,navigation=0,direction=0,keyboard=0,shortcut=0){request.status=status;request.responseText=JSON.stringify({options,menu,navigation,direction,keyboard,shortcut});request.onload();request.onloadend();timer();}
 response(7,2);assert.deepEqual(events,[]); // Establish a baseline, not seven old presses.
 response(8,2);assert.deepEqual(events,['nuvio:options']);
 response(8,2);assert.equal(events.length,1); // A held native button does not replay.
@@ -253,152 +258,19 @@ response(13,3,503,24,1);response(13,3,200,25,1);assert.equal(keys.length,12);
 document.hidden=true;response(13,3,200,26,1);document.hidden=false;timer();
 response(13,3,200,27,1);assert.equal(keys.length,12); // Baseline after resume, no queued navigation.
 response(13,3,200,28,3);assert.equal(keys.length,14);
+response(13,3,200,28,3,1,1);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:shift');
+const count=events.length;response(13,3,200,28,3,1,1);assert.equal(events.length,count);
+response(13,3,200,28,3,2,2);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:submit');
+modal=false;response(13,3,200,28,3,3,1);assert.equal(events.length,count+1);
+modal=true;response(13,3,200,28,3,3,1);assert.equal(events.length,count+1); // No replay when opening a keyboard.
+response(13,3,200,28,3,4,9);assert.equal(events.length,count+1); // No guessed shortcut.
+response(13,3,503,28,3,5,1);response(13,3,200,28,3,6,1);assert.equal(events.length,count+1);
+response(13,3,200,28,3,7,2);assert.equal(events.length,count+2);
+response(13,3,200,28,3,8,3);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:left');
+response(13,3,200,28,3,9,4);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:right');
+response(13,3,200,28,3,9,4);assert.equal(events.length,count+4); // Held R1 does not replay.
 """
         subprocess.run([node, '-e', script, str(APP/'ps5-navigation.js')], check=True, timeout=10)
-
-
-class PS5SearchKeyboardTests(unittest.TestCase):
-    def test_native_search_accept_cancel_failure_and_stale_route(self):
-        import subprocess
-        script = r"""
-const fs=require('fs'),vm=require('vm'),assert=require('assert');
-let route='search',statuses=[],requests=[],changes=[],statusNode=null,release;
-const input={isConnected:true,value:'Initial & query',dispatchEvent:e=>changes.push([e.type,input.value]),
- closest:()=>({insertAdjacentElement:(where,node)=>{statusNode=node;}})};
-const submissions=[];
-const screen={container:{querySelector:s=>s==='#searchInput'?input:statusNode},
- cancelScheduledInputSearch(){},runSearchFromInput:async(node,options)=>submissions.push([node.value,options.autoFocusResults])};
-const events={};
-const context={__NUVIO_PS5__:true,Router:{getCurrent:()=>route,getCurrentScreen:()=>screen},
- window:{__evoHook:true,addEventListener:(name,fn)=>events[name]=fn},
- document:{hidden:false,createElement:()=>({style:{},setAttribute(){},remove(){statusNode=null;}})},
- URLSearchParams,Event:class{constructor(type){this.type=type;}},setTimeout:fn=>setImmediate(fn),
- fetch:async url=>{requests.push(url);const next=statuses.shift();assert(next,'Unexpected request');
-   if(next.wait)await new Promise(resolve=>release=resolve);
-   return {status:next.status,text:async()=>next.text};}};
-vm.createContext(context);
-vm.runInContext(fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/mg,'')
- .replace(/export /g,'')+'\ninitPs5SearchKeyboard();',context);
-const settle=()=>new Promise(setImmediate);
-(async()=>{
- statuses=[{status:202},{status:200,text:'Amélie & 東京'}];
- await context.requestPs5SearchKeyboard();
- assert.equal(requests[0],'/evo/text-input?open=Initial%20%26%20query');
- assert.equal(requests[1],'/evo/text-input');
- assert.equal(input.value,'Amélie & 東京');assert.deepEqual(changes,[['input','Amélie & 東京']]);
- statuses=[{status:204}];await context.requestPs5SearchKeyboard();
- assert.equal(input.value,'Amélie & 東京');assert.equal(changes.length,1);
- statuses=[{status:503}];await context.requestPs5SearchKeyboard();
- assert(statusNode.textContent.includes('could not open'));assert.equal(changes.length,1);
- statuses=[{status:200,text:'stale',wait:true}];
- const pending=context.requestPs5SearchKeyboard();await settle();
- const count=requests.length;await context.requestPs5SearchKeyboard();assert.equal(requests.length,count);
- route='home';release();await pending;assert.equal(input.value,'Amélie & 東京');
- // Returning from result details preserves results without opening native IME.
- route='search';const beforeBack=requests.length;
- await context.requestPs5SearchKeyboard({isBackNavigation:true});
- assert.equal(requests.length,beforeBack);assert.equal(input.value,'Amélie & 東京');
- // A later explicit textbox request still opens the keyboard on that same page.
- route='search';statuses=[{status:204}];events.click({target:{id:'searchInput'}});await settle();
- assert.equal(statuses.length,0);
- assert.equal(events.focusin,undefined); // Rerenders and D-pad focus never open IME.
- context.window.__evoHook=false;await context.requestPs5SearchKeyboard();
- assert.equal(requests.length,count+1); // Desktop previews never request PS5 IME.
- // Save the exact query/profile before browser closure.
- context.window.__evoHook=true;const saved=[];
- context.window.location={search:''};
- context.Router.persistWebOsResumeRoute=(route,params)=>saved.push([route,params.query]);
- context.window.__nuvioSavePlaybackReturn=()=>saved.push('profile');
- context.window.__nuvioPrepareKeyboard=()=>saved.push('flush');
- statuses=[{status:204}];await context.requestPs5SearchKeyboard();
- assert.deepEqual(saved,[['search','Amélie & 東京'],'profile','flush']);
- // Recreated Search reads the result once; later explicit requests work again.
- context.window.location.search='?nuvioPlaybackReturn=1&nuvioKeyboardReturn=1';
- statuses=[{status:200,text:'Arrival'}];await context.requestPs5SearchKeyboard();
- assert.equal(requests.at(-1),'/evo/text-input');assert.equal(input.value,'Arrival');
- assert.deepEqual(submissions.at(-1),['Arrival',true]);
- statuses=[{status:204}];await context.requestPs5SearchKeyboard();
- assert.equal(requests.at(-1),'/evo/text-input?open=Arrival');assert.equal(saved.length,6);
-})().catch(error=>{console.error(error);process.exitCode=1;});
-"""
-        subprocess.run(['node','-e',script,str(APP/'ps5-text-input.js')],check=True,timeout=10)
-
-    def test_native_endpoint_accepts_cancels_and_refuses_without_fallback(self):
-        import subprocess
-        import tempfile
-        source = r'''
-#include <assert.h>
-#include <pthread.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdarg.h>
-enum {P_RUN=1,P_CLOSING=2,P_PLAYING=3,CDLG_STATUS_NONE=0,CDLG_STATUS_INITIALIZED=1,CDLG_STATUS_RUNNING=2,CDLG_STATUS_FINISHED=3};
-static pthread_mutex_t s_mx=PTHREAD_MUTEX_INITIALIZER;
-static const char *s_hook_profile="nuvio";
-static int active=1,available=1,opened=0,finish=0;
-static int s_state=P_RUN,s_closed_by_evo,webstatus=2,imestatus=0,nativeCalls=0;
-static char s_reopen_url[2048],s_open_url[2048]="http://127.0.0.1:8686/";
-static void (*submit)(const char *,void *);
-static char status[64],body[1024];
-static int sceWebBrowserDialogClose(void){return active?0:-1;}
-static int sceWebBrowserDialogUpdateStatus(void){return webstatus;}
-static int sceImeDialogGetStatus(void){return imestatus;}
-static int evo_keyboard_is_open(void){return opened;}
-static int evo_keyboard_open_native(const char *title,const char *text,int max,
-                                   void (*cb)(const char *,void *),void *data){
- (void)title;(void)text;(void)max;(void)data;
- assert(webstatus!=2);nativeCalls++;submit=cb;imestatus=available;return opened=available;
-}
-static void evo_keyboard_update(void){
- if(finish){opened=0;imestatus=0;if(finish==1)submit("Amélie & 東京",NULL);finish=0;}
-}
-static int query_param(const char *path,const char *key,char *out,size_t cap){
- (void)key;const char *value=strstr(path,"?open=");
- snprintf(out,cap,"%s",value?value+6:"");return value!=NULL;
-}
-static void respond(int fd,const char *s,const char *type,const char *b,size_t n){
- (void)fd;(void)type;snprintf(status,sizeof status,"%s",s);
- assert(n<sizeof body);memcpy(body,b,n);body[n]=0;
-}
-static void tlog(const char *fmt,...){(void)fmt;}
-#include "ps5-text-input.c"
-#include "ps5-text-input-session.c"
-static void open_dialog(const char *url){assert(imestatus==0);assert(strstr(url,"nuvioKeyboardReturn=1"));s_state=P_RUN;webstatus=2;}
-static void read_result(void){assert(s_closed_by_evo);}
-static void pump_open(void){
- text_input_session_pump();int calls=nativeCalls;text_input_session_pump();assert(nativeCalls==calls);
- webstatus=3;text_input_session_pump();
-}
-static void pump_finish(void){text_input_session_pump();text_input_session_pump();}
-int main(void){
- text_input_serve(0,"/evo/text-input?open=initial");assert(!strcmp(status,"202 Accepted"));
- pump_open();text_input_serve(0,"/evo/text-input?open=duplicate");
- assert(!strcmp(status,"409 Conflict"));
- text_input_serve(0,"/evo/text-input");assert(!strcmp(status,"202 Accepted"));
- finish=1;pump_finish();text_input_serve(0,"/evo/text-input");
- assert(!strcmp(status,"200 OK"));assert(!strcmp(body,"Amélie & 東京"));
- text_input_serve(0,"/evo/text-input?open=");pump_open();finish=2;pump_finish();
- text_input_serve(0,"/evo/text-input");assert(!strcmp(status,"204 No Content"));assert(!*body);
- available=0;text_input_serve(0,"/evo/text-input?open=retry");pump_open();text_input_session_pump();
- text_input_serve(0,"/evo/text-input");assert(!strcmp(status,"503 Service Unavailable"));assert(!*body);
- available=1;text_input_serve(0,"/evo/text-input?open=retry");pump_open();
- text_input_serve(0,"/evo/text-input");assert(!strcmp(status,"202 Accepted"));
- /* There is no typing timeout, even after five minutes. */
- s_text_started.tv_sec-=300;text_input_session_pump();assert(opened);
- finish=2;pump_finish();active=0;
- text_input_serve(0,"/evo/text-input?open=inactive");text_input_session_pump();
- text_input_serve(0,"/evo/text-input");assert(!strcmp(status,"503 Service Unavailable"));
- return 0;
-}
-'''
-        with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory)/'keyboard.c'
-            path.write_text(source)
-            (Path(directory)/'evo_ime_dialog.h').write_text('enum { SCE_IME_DIALOG_STATUS_NONE=0 };\n')
-            binary=Path(directory)/'keyboard'
-            subprocess.run(['cc','-std=c11','-D_POSIX_C_SOURCE=200809L','-Wall','-Wextra','-Werror','-pthread',
-                            '-I',directory,'-I',str(APP),str(path),'-o',str(binary)],check=True,timeout=20)
-            subprocess.run([str(binary)],check=True,timeout=10)
 
 
 class ProviderSeekTests(unittest.TestCase):
@@ -681,7 +553,7 @@ class StreamSelectionTests(unittest.TestCase):
             polish.patch_stream_selection(root)
             script = r"""
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const ctx={clamp:(n,l,h)=>Math.min(h,Math.max(l,n))};vm.createContext(ctx);
+const ctx={__NUVIO_PS5__:true,clamp:(n,l,h)=>Math.min(h,Math.max(l,n))};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(process.argv[1],'utf8')+fs.readFileSync(process.argv[2],'utf8'),ctx);
 for(const total of [50,100,101,130]) {
  const b=Array.from({length:total-10},(_,i)=>({id:'B-'+i,addonName:'B'}));
@@ -715,16 +587,18 @@ for(const total of [50,100,101,130]) {
 
 class CollectionSourceTests(unittest.TestCase):
     def test_nullable_rating_filters_survive_repeated_normalization(self):
-        import polish
+        import re
         import shutil
         import subprocess
+        from tests.test_subtitle_handoff import frontend_file
         node=shutil.which('node')
         if not node:self.skipTest('Node unavailable')
-        source=(APP.parent/'tests/fixtures/collection_sources.js.txt').read_text()
-        fixed=polish.patch_collection_filters(source)
+        # The upstream normalizer supersedes our old Number(null) patch.
+        source=frontend_file('js/data/local/collectionsStore.js')
+        source=re.sub(r'^import .*;\s*$', '', source, flags=re.M)
         script=r"""
 const vm=require('vm'),assert=require('assert');
-const ctx={};vm.createContext(ctx);
+const ctx={createProfileScopedStore:()=>({})};vm.createContext(ctx);
 vm.runInContext(process.argv[1].replace(/^export /mg,''),ctx);
 for(const [input,expected] of [
  [undefined,[null,null,null]], [null,[null,null,null]],
@@ -745,9 +619,7 @@ for(const [input,expected] of [
  }
 }
 """
-        subprocess.run([node,'-e',script,fixed],check=True,timeout=10)
-        with self.assertRaises(RuntimeError):
-            polish.patch_collection_filters('changed upstream')
+        subprocess.run([node,'-e',script,source],check=True,timeout=10)
 
 
 class UIIndexTests(unittest.TestCase):
@@ -1337,6 +1209,9 @@ static int query_param(const char *,const char *,char *out,size_t cap) {
 static void respond(int,const char *s,const char *,const char *b,size_t n) {
  snprintf(status,sizeof status,"%s",s);memcpy(body,b,n);body[n]=0;
 }
+static void tlog(const char *,...) {}
+static struct { int frames; } g_web_rep;
+#define EVO_LOGI(...) ((void)0)
 ''' + bridge + r'''
 class PlaybackController {
 public:
@@ -1440,6 +1315,7 @@ static int query_param(const char *path,const char *,char *out,size_t cap) {
 static void respond(int,const char *status,const char *,const char *body,size_t size) {
  printf("%s\n%.*s\n",status,(int)size,body);
 }
+static void tlog(const char *,...) {}
 #define open checkpoint_open
 #define fopen checkpoint_fopen
 #define write checkpoint_write

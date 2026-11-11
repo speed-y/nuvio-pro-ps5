@@ -38,7 +38,6 @@ def apply(evo,nuvio):
     patch_playback_hui(app)
     web.write_text(patch_controller_hook(web.read_text()))
     web.write_text(patch_storage_hook(web.read_text()))
-    patch_search_keyboard(app)
     header=app/'ui_rml/include/evo_rmlui_app.h'
     replace(header,'    void RenderLaunch(uint32_t* framebuffer, int width, int height);','    void RenderLaunch(uint32_t* framebuffer, int width, int height);\n    void RenderNuvio(uint32_t* framebuffer, int width, int height, const char* message);')
     replace(header,'    Rml::ElementDocument* m_launch_doc = nullptr;','    Rml::ElementDocument* m_nuvio_doc = nullptr;\n    Rml::ElementDocument* m_launch_doc = nullptr;')
@@ -66,6 +65,12 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     player.write_text(fix_player_back(player.read_text()))
     patch_playback_end(app)
     application=app/'core/src/Application.cpp'
+    replace(application, 'if ((seen_active && !active) || (!seen_active && ++frames > 600)) {', 'if ((seen_active && !active) || (!seen_active && ++frames > 300)) {')
+    # Browser L3 belongs to Search. Preserve the native screenshot shortcut
+    # everywhere else; its original handler runs before our browser bridge.
+    replace(application,
+        '            if ((pressed & PadButtons::L3) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {',
+        '            if (((pressed & PadButtons::L3) && !evo_webui_active()) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {')
     replace(application, '''            if (evo_webui_active()) {
                 /* #101: the system browser is up and owns the controller. */''', '''            if (evo_webui_active()) {
                 /* Keep physical D-pad/X/Circle with the browser. Either stick
@@ -90,14 +95,16 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
                     evo_input_fired(&browserSticks, EVO_ACT_DOWN) ? 3 :
                     evo_input_fired(&browserSticks, EVO_ACT_LEFT) ? 4 : 0;
                 evo_webui_controller(pressed & PadButtons::Options,
-                                     pressed & PadButtons::Triangle, direction);''')
+                                     pressed & PadButtons::Triangle, direction,
+                                     pressed & PadButtons::R2 ? 2 : (pressed & PadButtons::L3 ? 1 :
+                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 : 0))));''')
     h=app/'include/evo_webui.h'
-    h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nvoid evo_webui_controller(int options, int menu, int direction);\n')
+    h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nvoid evo_webui_controller(int options, int menu, int direction, int shortcut);\n')
     replace(application,'std::atomic<bool> g_web_done{false};','std::atomic<bool> g_web_done{false};\nbool g_nuvio_preparing = false;')
     replace(application,'        g_web_src = PlaybackSource();','        g_nuvio_preparing = true;\n        g_web_src = PlaybackSource();')
     replace(application,'        pthread_join(g_web_thread, nullptr);','        pthread_join(g_web_thread, nullptr);\n        g_nuvio_preparing = false;')
     replace(application,'        bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);','        bool nuvioShell = !isPlayer &&\n            !(m_playbackController && m_playbackController->isActive()) &&\n            !evo_webui_native_requested();\n        bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);')
-    replace(application,'int uiActive = (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||','int uiActive = nuvioShell || (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||')
+    replace(application,'int uiActive = (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||','int uiActive = nuvioShell || evo_webui_active() || (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||')
     source=application.read_text();anchor='                m_screenManager->render(m_uiScratch, DisplayWidth, DisplayHeight);'
     if source.count(anchor)!=2:raise RuntimeError('Pinned render branches changed')
     before,after=source.rsplit(anchor,1)
@@ -124,6 +131,8 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     subtitle_handoff.patch_native(app)
     import native_preferences
     native_preferences.patch_native(app)
+    import native_skin
+    native_skin.patch_native(app)
 
 
 def patch_speedtest(app):
@@ -134,6 +143,10 @@ def patch_speedtest(app):
     replace(web, '        if (!strcmp(path, "/evo/presentation"))',
         '''        if (!strncmp(path, "/evo/speedtest/", 15))
             serve_speedtest(fd, method, path);
+        else if (!strcmp(path, "/evo/progress") || !strncmp(path, "/evo/progress?", 14)) {
+            tlog("progress route");
+            playback_progress_serve(fd, path);
+        }
         else if (!strcmp(path, "/evo/presentation"))''')
     replace(web, '    s_srv_stop = 1;', '    speedtest_suspend();\n    s_srv_stop = 1;')
     replace(web, '    s_state = P_RUN;\n    s_frames = 0;',
@@ -195,7 +208,8 @@ def patch_storage_hook(source):
 "}catch(e){storeReady=false;}"
 "function saveNow(kind){if(!storeReady)return;try{var sv=snap();if(sv===null||sv===lastSnap)return;"
 " var x=new XMLHttpRequest();x.open('POST','/evo/storage',false);x.setRequestHeader('Content-Type','application/json');"
-" x.send(sv);if(x.status===204)lastSnap=sv;}catch(e){}}"'''
+" x.send(sv);if(x.status===204)lastSnap=sv;}catch(e){}}"
+"window.__nuvioFlushStorage=function(){saveNow(1);};"'''
     return source.replace(old,new)
 
 
@@ -211,16 +225,6 @@ def patch_resume_router(text):
         raise RuntimeError('Pinned restorable route predicate changed')
     text=text.replace('!WEBOS_NON_RESTORABLE_ROUTES.has(route)',
         '(!WEBOS_NON_RESTORABLE_ROUTES.has(route) || (globalThis.__NUVIO_PS5__ && ["detail", "stream"].includes(route)))')
-    return text
-
-
-def patch_collection_filters(text):
-    # Number(null) must not create a zero rating ceiling during normalization.
-    for field in ('voteAverageGte', 'voteAverageLte', 'voteCountGte'):
-        old=f'Number.isFinite(Number(raw.{field}))'
-        if text.count(old)!=1:
-            raise RuntimeError('Pinned collection filter changed: '+field)
-        text=text.replace(old, f'raw.{field} != null && '+old)
     return text
 
 
@@ -308,12 +312,48 @@ def patch_nuvio(nuvio):
     shutil.copyfile(Path(__file__).parent/'ps5-navigation.js', navigation/'ps5-navigation.js')
     shutil.copyfile(Path(__file__).parent/'ps5-text-input.js', navigation/'ps5-text-input.js')
     shutil.copyfile(Path(__file__).parent/'ps5-tv-remote.js', navigation/'ps5-tv-remote.js')
+    with (nuvio/'css/components-60.css').open('a') as css:
+        css.write('\n'+(Path(__file__).parent/'ps5-search-keyboard.css').read_text()+"""
+.series-primary-btn,
+.series-secondary-btn {
+  box-sizing: border-box;
+  height: auto;
+  min-height: 4.2vw;
+  padding: 1.1vw 2vw;
+  border-radius: 999px;
+  line-height: 1;
+}
+.series-primary-btn .series-btn-svg,
+.series-primary-btn .series-btn-icon svg {
+  width: 1.5vw;
+  height: 1.5vw;
+}
+.series-primary-btn { overflow: visible; }
+.stream-route-shell { zoom: .72; }
+
+""")
     search_actions=nuvio/'js/ui/screens/search/searchScreenMethods-06-activate-action-node.js'
     search_actions.write_text(patch_search_back(search_actions.read_text()))
     replace(navigation/'focusEngine.js',
         'import { Router } from "./routerState.js";',
         'import { Router } from "./routerState.js";\nimport { initPs5Navigation } from "./ps5-navigation.js";')
     replace(navigation/'focusEngine.js', '  init() {', '  init() {\n    initPs5Navigation();')
+    # FocusEngine already forwards keys to these screens. Their extra document
+    # listeners otherwise advance two onboarding steps on one PS5 activation.
+    for name in ('experienceModeSelectionScreen.js', 'essentialAddonSetupScreen.js'):
+        replace(nuvio/'js/ui/screens/onboarding'/name,
+            '    document.addEventListener("keydown", this.onKeyDownBound);',
+            '    if (!globalThis.__NUVIO_PS5__) document.addEventListener("keydown", this.onKeyDownBound);')
+    replace(nuvio/'js/ui/screens/onboarding/experienceModeSelectionScreen.js',
+        '  async onKeyDown(event) {', '''  consumeBackRequest() {
+    if (!globalThis.__NUVIO_PS5__ || this.step !== "layout") return false;
+    this.step = "mode";
+    this.render();
+    ScreenUtils.setInitialFocus(this.container);
+    return true;
+  },
+
+  async onKeyDown(event) {''')
     search=nuvio/'js/ui/screens/search/searchScreenMethods-01-get-route-state-key.js'
     replace(search, '/* eslint-disable no-unused-vars */',
         '/* eslint-disable no-unused-vars */\nimport { requestPs5SearchKeyboard } from "../../navigation/ps5-text-input.js";')
@@ -326,8 +366,7 @@ def patch_nuvio(nuvio):
         console.warn("Search cached sidebar profile failed to load", err);
         this.sidebarProfile = null;
       }''',
-        '''      // PS5 Search must paint within the Triangle user gesture so
-      // focusing its real input can request the browser's native keyboard.
+        '''      // PS5 Search paints before the local keyboard opens.
       // The existing background profile request still refreshes the avatar.
       if (!globalThis.__NUVIO_PS5__) {
         try {
@@ -357,6 +396,9 @@ def patch_nuvio(nuvio):
         this.render();
       });''')
     search_render=nuvio/'js/ui/screens/search/searchScreenMethods-03-render-recent-searches.js'
+    replace(search_render, '                  id="searchInput"',
+        '''                  id="searchInput"
+                  ${globalThis.__NUVIO_PS5__ ? 'readonly inputmode="none"' : ''}''')
     replace(search_render,
         '<span class="search-action-icon material-icons" aria-hidden="true">explore</span>',
         '''${globalThis.__NUVIO_PS5__ ? '<svg class="search-action-icon" width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg>' : '<span class="search-action-icon material-icons" aria-hidden="true">explore</span>'}''')
@@ -373,8 +415,7 @@ def patch_nuvio(nuvio):
         raise RuntimeError('Pinned Search empty icons changed')
     empty.write_text(text.replace(old,
         '''${globalThis.__NUVIO_PS5__ ? '<svg class="search-empty-icon" width="136" height="136" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></svg>' : '<span class="search-empty-icon material-icons" aria-hidden="true">search</span>'}'''))
-    collections=nuvio/'js/data/local/collectionsStore.js'
-    collections.write_text(patch_collection_filters(collections.read_text()))
+    # Upstream 1.3.11 normalizes nullable collection ratings without Number(null).
     # Request the artwork consumed by mapTraktEntity, as library lists do.
     replace(nuvio/'js/ui/screens/collection/folderDetailScreenHelpers-04-map-trakt-entity.js',
         '  url.searchParams.set("page", String(page));',
@@ -435,19 +476,7 @@ def patch_nuvio(nuvio):
     home=nuvio/'js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js'
     replace(home, 'if (!isCloud && this.showContinueWatchingManualPlayOption) {',
         'if (!isCloud && (globalThis.__NUVIO_PS5__ || this.showContinueWatchingManualPlayOption)) {')
-    replace(nuvio/'js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js',
-        '''      if (this.autoResumeAttempted) {
-        return;
-      }''',
-        '''      if (this.autoResumeAttempted) {
-        return;
-      }
-      // Manual selection must also bypass the progress stream identity.
-      // Disabling only stored-link reuse still allowed an automatic launch.
-      if (globalThis.__NUVIO_PS5__ && this.params?.manualSelection) {
-        this.autoResumeUiActive = false;
-        return;
-      }''')
+    # Upstream now also honors manualSelection before progress-based resume.
     settings=nuvio/'js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js'
     replace(settings,
         'if ((code === 38 || code === 40) && !(activeField && this.textDialog.multiline)) {',
@@ -469,6 +498,250 @@ def patch_nuvio(nuvio):
           ${globalThis.__NUVIO_PS5__ ? this.renderActionRow({ focusKey: "playback:ps5-speedtest", title: "Speed test", subtitle: "Test native download speed to TorBox" }) : ""}''')
     router=nuvio/'js/ui/navigation/routerMethods-02-complete-route-return-back-guard.js'
     router.write_text(patch_resume_router(router.read_text()))
+    # 1.3.11 published a local Nuvio Sync snapshot while the cold pull was still
+    # running, so Home kept the cached Continue Watching row. 1.2.3 held that
+    # snapshot as provisional until the pull merged.
+    replace(nuvio/'js/ui/screens/home/homeContinueWatchingLoad.js',
+        """      // Publish usable local progress while the cold pull runs, like Android.
+      // Only an empty local result needs to wait for the authoritative pull.
+      const shouldWaitForStartupSync = Boolean(
+        initialContinueWatchingPending &&
+        !shouldShowLoading &&
+        (startupSyncPullPromise || startupSyncCompletedDuringLoad) &&
+        !progressErrors.all &&
+        !progressErrors.recent
+      );""",
+        """      // A local Nuvio Sync snapshot is provisional while the cold pull is
+      // active. Do not publish it as the first row, because the pull can
+      // replace it with additional remote entries moments later.
+      const shouldWaitForStartupSync = Boolean(
+        initialContinueWatchingPending &&
+        (startupSyncPullPromise || startupSyncCompletedDuringLoad) &&
+        !progressErrors.all &&
+        !progressErrors.recent
+      );""")
+    replace(nuvio/'js/ui/screens/home/homeContinueWatchingLoad.js',
+        "      if (startupSyncPullPromise || startupSyncCompletedDuringLoad) {",
+        "      if (shouldWaitForStartupSync) {")
+    replace(nuvio/'js/ui/screens/home/homeContinueWatchingLoad.js',
+        """        }
+      }
+      if (shouldWaitForStartupSync) {
+        this.continueWatchingLoading = true;""",
+        """        }
+        this.continueWatchingLoading = true;""")
+    # 1.3.11 returned before flushing live playback. A restored progressSession
+    # can also carry completedKeys as a plain object after LocalStore JSON.
+    replace(nuvio/'js/core/player/playerControllerMethods-20-flush-progress.js',
+        """      if (this.currentPlaybackIsLive === true) {
+        return false;
+      }
+      const active = context || this.createProgressContext();""",
+        "      const active = context || this.createProgressContext();")
+    replace(nuvio/'js/core/player/playerControllerMethods-19-pause.js',
+        """      if (this.currentPlaybackIsLive === true) {
+        return false;
+      }
+      const context = this.createProgressContext();""",
+        "      const context = this.createProgressContext();")
+    replace(nuvio/'js/core/player/playerControllerMethods-20-flush-progress.js',
+        """      const session = active.progressSession || (this.watchProgressSession ||= { completedKeys: new Set() });
+      const progressKey = this.buildProgressSnapshotKey(active);
+      if (!clear && session.completedKeys.has(progressKey)) return false;""",
+        """      const session = active.progressSession || (this.watchProgressSession ||= { completedKeys: new Set() });
+      const progressKey = this.buildProgressSnapshotKey(active);
+      const completedKeys = session.completedKeys instanceof Set ? session.completedKeys : (session.completedKeys = new Set());
+      if (!clear && completedKeys.has(progressKey)) return false;""")
+    replace(nuvio/'js/core/player/playerControllerMethods-20-flush-progress.js',
+        "        session.completedKeys.add(progressKey);",
+        "        completedKeys.add(progressKey);")
+    # A saved PREFERRED_ONLY startup mode must still limit subtitles when the
+    # newer preferred-language flag is off.
+    replace(nuvio/'js/ui/screens/player/playerScreenMethods-68-load-subtitles.js',
+        "        const preferredOnly = Boolean(subtitleSettings.subtitleStyle?.showOnlyPreferredLanguages);",
+        """        const preferredOnly =
+          subtitleSettings.addonSubtitleStartupMode === \"PREFERRED_ONLY\" ||
+          (subtitleSettings.addonSubtitleStartupMode === \"ALL_SUBTITLES\" && subtitleSettings.subtitleStyle?.showOnlyPreferredLanguages);""")
+    # Hide a Home catalog only when search is required, not when any extra is.
+    replace(nuvio/'js/core/addons/homeCatalogs.js',
+        """export function catalogShouldShowOnHome(catalog = {}) {
+  // A required extra (search, genre, ...) makes the catalog unusable as a
+  // parameterless Home row; AIOStreams/AIOMetadata also mark those catalogs
+  // showInHome=false, but not every addon does.
+  if (catalogRequiresExtras(catalog)) {
+    return false;
+  }
+  return catalog?.hasExplicitShowInHome !== true || catalog?.showInHome === true;
+}""",
+        """export function catalogShouldShowOnHome(catalog = {}) {
+  const isSearchOnly =
+    Array.isArray(catalog?.extra) &&
+    catalog.extra.some(
+      (entry) =>
+        String(entry?.name || entry || \"\")
+          .trim()
+          .toLowerCase() === \"search\" && Boolean(entry?.isRequired)
+    );
+  if (isSearchOnly) {
+    return false;
+  }
+  return catalog?.hasExplicitShowInHome !== true || catalog?.showInHome === true;
+}""")
+    # A watched mark must push the existing progress row as completed. A 100 ms
+    # placeholder is dropped by isSyncableProgressItem, so the server keeps the
+    # half-played row and the next pull restores it.
+    replace(nuvio/'js/data/repository/watchProgressRepository.js',
+        """  async getProgressByContentId(contentId) {""",
+        """  async markStoredProgressWatched(contentId, videoId = null) {
+    const pid = activeProfileId();
+    const rows = WatchProgressStore.listForProfile(pid).filter((item) =>
+      matchesProgressTarget(item, contentId, videoId)
+    );
+    if (!rows.length) {
+      return false;
+    }
+    const completed = rows.map((item) => {
+      const stored = Number(item?.durationMs);
+      const durationMs = Number.isFinite(stored) && stored >= 60000 ? stored : 60000;
+      return { ...item, positionMs: durationMs, durationMs, updatedAt: Date.now() };
+    });
+    WatchProgressStore.upsertMany(completed, pid);
+    queueWatchProgressCloudSync(pid);
+    return true;
+  }
+
+  async getProgressByContentId(contentId) {""")
+    for path, old in (
+        (nuvio/'js/ui/screens/home/homeScreenMethods-09-toggle-continue-watching-watched.js',
+         """      await watchProgressRepository.saveProgress({
+        contentId: normalized.contentId,
+        imdbId: normalized.imdbId || null,
+        tmdbId: normalized.tmdbId || null,
+        traktId: normalized.traktId || null,
+        contentType: normalized.type || \"movie\",
+        videoId: normalized.videoId || null,
+        season: normalized.season,
+        episode: normalized.episode,
+        positionMs: 100,
+        durationMs: 100,
+        updatedAt: Date.now()
+      });"""),
+        (nuvio/'js/ui/screens/home/homeScreenMethods-09-toggle-continue-watching-watched.js',
+         """      await watchProgressRepository.saveProgress({
+        contentId: item.id,
+        imdbId: item.imdbId || null,
+        tmdbId: item.tmdbId || null,
+        traktId: item.traktId || null,
+        contentType: item.type || \"movie\",
+        videoId: null,
+        season: null,
+        episode: null,
+        positionMs: 100,
+        durationMs: 100,
+        updatedAt: Date.now()
+      });"""),
+        (nuvio/'js/ui/components/posterOptionsMenu.js',
+         """    await watchProgressRepository.saveProgress({
+      contentId: item.id,
+      imdbId: item.imdbId || null,
+      tmdbId: item.tmdbId || null,
+      traktId: item.traktId || null,
+      contentType: item.type || \"movie\",
+      videoId: null,
+      positionMs: 100,
+      durationMs: 100,
+      updatedAt: Date.now()
+    });"""),
+        (nuvio/'js/ui/screens/detail/metaDetailsScreenMethods-26-on-key-down.js',
+         """          await watchProgressRepository.saveProgress({
+            contentId: this.params?.itemId,
+            ...providerIds,
+            contentType: this.params?.itemType || \"movie\",
+            videoId: null,
+            positionMs: 100,
+            durationMs: 100,
+            updatedAt: Date.now()
+          });"""),
+    ):
+        replace(path, old, "      await watchProgressRepository.markStoredProgressWatched(" + (
+            "normalized.contentId, normalized.videoId || null" if "normalized.contentId" in old else
+            "this.params?.itemId" if "this.params" in old else "item.id"
+        ) + ");")
+    replace(nuvio/'js/data/repository/watchedSeriesReconciliationService.js',
+        """  const progressItems = episodes.map((episode) => ({
+    contentId,
+    contentType,
+    imdbId: identityOptions.imdbId,
+    tmdbId: identityOptions.tmdbId,
+    traktId: identityOptions.traktId,
+    videoId: episode.id,
+    season: episode.season,
+    episode: episode.episode,
+    title: meta?.name || null,
+    episodeTitle: episode.title || null,
+    positionMs: 100,
+    durationMs: 100,
+    updatedAt: watchedAt
+  }));
+  const outcome = await watchedItemsRepository.markBatch(watchedItems, { skipTrackingWrite });""",
+        """  const outcome = await watchedItemsRepository.markBatch(watchedItems, { skipTrackingWrite });""")
+    replace(nuvio/'js/data/repository/watchedSeriesReconciliationService.js',
+        """  await watchProgressRepository.saveProgressBatch(
+    progressItems.filter((item) =>
+      outcome.succeeded.some((entry) => entry.videoId === item.videoId)
+    )
+  );""",
+        """  await Promise.all(episodes.filter((episode) =>
+    outcome.succeeded.some((entry) => entry.videoId === episode.id)
+  ).map((episode) => watchProgressRepository.markStoredProgressWatched(contentId, episode.id)));""")
+    replace(nuvio/'js/ui/screens/detail/metaDetailsScreenMethods-15-refresh-episode-playback-state.js',
+        """        await watchProgressRepository.saveProgress({
+          contentId: this.params?.itemId,
+          ...providerIds,
+          contentType: \"series\",
+          videoId: episode.id,
+          season: episode.season,
+          episode: episode.episode,
+          positionMs: 100,
+          durationMs: 100,
+          updatedAt: Date.now()
+        });""",
+        """        await watchProgressRepository.markStoredProgressWatched(this.params?.itemId, episode.id);""")
+    replace(nuvio/'js/ui/screens/detail/metaDetailsScreenMethods-14-move-episode-focus.js',
+        """        await watchProgressRepository.saveProgressBatch(
+          targets
+            .filter((episode) => outcome.succeeded.some((item) => item.videoId === episode.id))
+            .map((episode) => ({
+              contentId: this.params?.itemId,
+              ...providerIds,
+              contentType: \"series\",
+              videoId: episode.id,
+              season: episode.season,
+              episode: episode.episode,
+              title: this.meta?.name || this.params?.fallbackTitle || null,
+              episodeTitle: episode.title || null,
+              positionMs: 100,
+              durationMs: 100,
+              updatedAt: watchedAt
+            }))
+        );""",
+        """        await Promise.all(targets
+          .filter((episode) => outcome.succeeded.some((item) => item.videoId === episode.id))
+          .map((episode) => watchProgressRepository.markStoredProgressWatched(this.params?.itemId, episode.id)));""")
+    replace(nuvio/'js/ui/screens/stream/streamScreenMethods-03-mount.js',
+        '    async mount(params = {}, navigationContext = {}) {',
+        '''    async mount(params = {}, navigationContext = {}) {
+      await globalThis.__nuvioRestorePlaybackProgress?.();''')
+    replace(nuvio/'js/ui/screens/home/homeScreenMethods-20-mount.js',
+        '      this.continueWatchingDisplay = readContinueWatchingDisplaySnapshot(watchProgressRepository.getContinueWatchingSourceKey());\n      this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);',
+        '''      if (globalThis.__nuvioProgressHomeDirty) {
+        this.continueWatchingDisplay = [];
+        this.continueWatchingHydratedFromSnapshot = false;
+        globalThis.__nuvioProgressHomeDirty = false;
+      } else {
+        this.continueWatchingDisplay = readContinueWatchingDisplaySnapshot(watchProgressRepository.getContinueWatchingSourceKey());
+        this.continueWatchingHydratedFromSnapshot = Boolean(this.continueWatchingDisplay.length);
+      }''')
     replace(nuvio/'js/data/repository/skipIntroRepository.js',
         '    const response = await fetch(url, {',
         '''    // IntroDB does not allow the console's loopback browser origin.
@@ -491,10 +764,22 @@ import { skipIntroRepository } from "./data/repository/skipIntroRepository.js";
 import { getSkipIntervalTargetSeconds } from "./core/player/skipIntervalRules.js";
 import { normalizeNextEpisodeThresholdMode, normalizeThresholdMinutesBeforeEnd,
   normalizeThresholdPercent, shouldEnterStillWatchingPrompt } from "./ui/screens/player/playerNextEpisodeRules.js";''')
-    replace(app, 'async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {',
-        '''async function enterWithLastProfile({ restoreWebOsRoute = false } = {}) {
-  await restorePs5PlaybackProgress();''')
-    replace(app, '  const resumeRoute =\n    restoreWebOsRoute',
+    replace(app, '''  runAfterFirstHomePaint(() => {
+    void StartupSyncService.requestSyncNow({
+      notifyPullCompleted: ["home", "plugins"].includes(experienceRoute)
+    }).catch((error) => {
+      console.warn("Profile background sync failed", error);
+    });
+  });
+  const storedResumeRoute =''',
+        '''  await StartupSyncService.requestSyncNow({
+    notifyPullCompleted: ["home", "plugins"].includes(experienceRoute)
+  }).catch((error) => {
+    console.warn("Profile background sync failed", error);
+  });
+  await restorePs5PlaybackProgress();
+  const storedResumeRoute =''')
+    replace(app, '  const storedResumeRoute =\n    restoreWebOsRoute',
         '''  const recommendation = experienceRoute === "home" && globalThis.__nuvioTakePresentationRoute?.();
   if (recommendation) {
     await Router.navigate("detail", recommendation, { replaceHistory: true, skipStackPush: true });
@@ -510,7 +795,7 @@ import { normalizeNextEpisodeThresholdMode, normalizeThresholdMinutesBeforeEnd,
     await Router.navigate("player", nativeNext, { replaceHistory: true, skipStackPush: true });
     return;
   }
-  const resumeRoute =
+  const storedResumeRoute =
     restoreWebOsRoute''')
     replace(detail/'metaDetailsScreenMethods-03-load-detail.js', '      this.render(meta);',
         '''      this.render(meta, globalThis.__NUVIO_PS5__ && this.params?.ps5ReturnEpisodeVideoId
@@ -575,114 +860,6 @@ export async function resolveExperienceRoute(profileId) {
     native_preferences.patch_frontend(nuvio)
 
 
-def patch_search_keyboard(app):
-    keyboard=app/'ui/src/evo_keyboard.c'
-    source=keyboard.read_text()
-    signature='evo_keyboard_cb on_submit, void *userdata, int phone)'
-    if source.count(signature)!=2:
-        raise RuntimeError('Pinned keyboard signatures changed')
-    source=source.replace(signature, signature[:-1]+', int native_only)')
-    # Standard and numeric upstream entry points both use the same opener.
-    if source.count('on_submit, userdata, 0);') != 2:
-        raise RuntimeError('Pinned keyboard entry points changed')
-    source=source.replace('on_submit, userdata, 0);', 'on_submit, userdata, 0, 0);')
-    keyboard.write_text(source)
-    replace(keyboard, 'on_submit, userdata, 1);', 'on_submit, userdata, 1, 0);')
-    replace(keyboard, '    if (!g_kb.number) kb_setup_phone();',
-        '    if (!native_only && !g_kb.number) kb_setup_phone();')
-    replace(keyboard,
-        '''if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !g_kb.phone &&
-        !g_kb.number && !g_kb.noport) {''',
-        '''if (!g_native_ime_broken && (native_only ||
-        (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_kb.phone && !g_kb.number && !g_kb.noport))) {''')
-    replace(keyboard, '        if (cd_rc != 0) {',
-        '        if (cd_rc != 0) {\n            if (native_only) { g_kb.is_open = 0; return; }')
-    replace(keyboard,
-        '        g_native_ime_broken = 1;\n        char err_msg[64];',
-        '        if (native_only) { g_kb.is_open = 0; return; }\n        g_native_ime_broken = 1;\n        char err_msg[64];')
-    replace(keyboard,
-        '    g_kb.is_native_active = 0;\n    evo_feedback(EVO_FB_OPEN);',
-        '    if (native_only) { g_kb.is_open = 0; return; }\n    g_kb.is_native_active = 0;\n    evo_feedback(EVO_FB_OPEN);')
-    # Diagnostic only: keep the existing NONE/FINISHED handling unchanged.
-    replace(keyboard, '#include <string.h>', '#include <string.h>\n#include <time.h>')
-    replace(keyboard, 'static uint16_t g_ime_buf[1024];', '''static struct timespec s_ime_trace_start;
-static int s_ime_trace_status, s_ime_trace_changes, s_ime_trace_checkpoint;
-
-static long ime_trace_ms(void)
-{
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    return (now.tv_sec - s_ime_trace_start.tv_sec) * 1000L +
-           (now.tv_nsec - s_ime_trace_start.tv_nsec) / 1000000L;
-}
-
-static uint16_t g_ime_buf[1024];''')
-    replace(keyboard, '        int rc = sceImeDialogInit(&param, NULL);', '''        clock_gettime(CLOCK_MONOTONIC, &s_ime_trace_start);
-        s_ime_trace_status = -1;
-        s_ime_trace_changes = 0;
-        s_ime_trace_checkpoint = 0;
-        int rc = sceImeDialogInit(&param, NULL);''')
-    replace(keyboard, '        int status = sceImeDialogGetStatus();', '''        int status = sceImeDialogGetStatus();
-        long elapsed = ime_trace_ms();
-        int checkpoint = elapsed >= 10000 ? 3 : elapsed >= 5000 ? 2 : elapsed >= 1000 ? 1 : 0;
-        if ((status != s_ime_trace_status && s_ime_trace_changes < 16) ||
-            checkpoint > s_ime_trace_checkpoint) {
-            evo_log("ime trace: status=%d elapsed_ms=%ld open=%d native=%d",
-                    status, elapsed, g_kb.is_open, g_kb.is_native_active);
-            evo_log_flush();
-            if (status != s_ime_trace_status) ++s_ime_trace_changes;
-        }
-        s_ime_trace_status = status;
-        s_ime_trace_checkpoint = checkpoint;''')
-    replace(keyboard, '            sceImeDialogGetResult(&result);', '''            int result_rc = sceImeDialogGetResult(&result);
-            evo_log("ime trace: GetResult rc=0x%08x end=%d elapsed_ms=%ld",
-                    (unsigned)result_rc, result.endStatus, ime_trace_ms());
-            evo_log_flush();''')
-    # Capture every existing cleanup call without changing its result handling.
-    source = keyboard.read_text()
-    source = source.replace('        sceImeDialogAbort();', '''        int abort_rc = sceImeDialogAbort();
-        evo_log("ime trace: Abort rc=0x%08x elapsed_ms=%ld", (unsigned)abort_rc, ime_trace_ms());
-        evo_log_flush();''')
-    if source.count('sceImeDialogTerm();') != 3:
-        raise RuntimeError('Pinned IME cleanup paths changed')
-    source = source.replace('sceImeDialogTerm();', '''int term_rc = sceImeDialogTerm();
-        evo_log("ime trace: Term rc=0x%08x elapsed_ms=%ld", (unsigned)term_rc, ime_trace_ms());
-        evo_log_flush();''')
-    keyboard.write_text(source)
-    keyboard.write_text(keyboard.read_text()+'''
-/* Browser Search must not silently replace the PS5 keyboard with EVO's UI.
- * A busy browser/CommonDialog refusal is not a permanent native-IME failure. */
-int evo_keyboard_open_native(const char *title, const char *initial_value,
-                             int max_len, evo_keyboard_cb callback, void *userdata)
-{
-    if (g_kb.is_open || g_native_ime_broken) return 0;
-    kb_open(title, initial_value, max_len, callback, userdata, 0, 1);
-    return evo_keyboard_is_native_active();
-}
-''')
-    header=app/'ui/include/evo_keyboard.h'
-    replace(header, 'void evo_keyboard_close(void);',
-        '''int evo_keyboard_open_native(const char *title, const char *initial_value,
-                             int max_len, evo_keyboard_cb callback, void *userdata);
-void evo_keyboard_close(void);''')
-    web=app/'src/evo_webui.c'
-    replace(web, 'static void serve_evo(int fd, const char *path)',
-        '#include "evo_keyboard.h"\n'+(Path(__file__).parent/'ps5-text-input.c').read_text()+
-        '\n'+(Path(__file__).parent/'ps5-text-input-session.c').read_text()+
-        '\nstatic void serve_evo(int fd, const char *path)')
-    replace(web, '    if (!strncmp(path, "/evo/hook.js", 12)) {',
-        '''    if (!strcmp(path, "/evo/text-input") || !strncmp(path, "/evo/text-input?", 16)) {
-        text_input_serve(fd, path);
-    } else if (!strncmp(path, "/evo/hook.js", 12)) {''')
-    replace(web, 'void evo_webui_pump(void)\n{',
-        'void evo_webui_pump(void)\n{\n    if (text_input_session_pump()) { tlog_drain(); return; }')
-    replace(web, '    return s_state == P_RUN || s_state == P_CLOSING;',
-        '    return s_text_phase || s_state == P_RUN || s_state == P_CLOSING;')
-    replace(web, '"setInterval(function(){saveNow(0);},5000);"',
-        '"window.__nuvioPrepareKeyboard=function(){saveNow(1);};"\n'
-        '"setInterval(function(){saveNow(0);},5000);"')
-
-
 def patch_controller_hook(source):
     # The upstream click adapter fabricates a 60 ms hold for a small subset of
     # cards. The frontend adapter now sends one Enter cycle for every X click.
@@ -706,27 +883,32 @@ def patch_controller_hook(source):
     anchor='static char s_hook_profile[16];'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller state anchor changed')
-    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation;\nstatic int s_controller_direction;')
+    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;\nstatic int s_controller_direction, s_controller_shortcut;')
     anchor='    } else if (!strncmp(path, "/evo/close", 10)) {'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller endpoint anchor changed')
     source=source.replace(anchor, '''    } else if (!strcmp(path, "/evo/controller")) {
         char body[160];
         pthread_mutex_lock(&s_mx);
-        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d}",
+        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d,\\"keyboard\\":%u,\\"shortcut\\":%d}",
                          (unsigned)s_controller_options, (unsigned)s_controller_menu,
-                         (unsigned)s_controller_navigation, s_controller_direction);
+                         (unsigned)s_controller_navigation, s_controller_direction,
+                         (unsigned)s_controller_keyboard, s_controller_shortcut);
         pthread_mutex_unlock(&s_mx);
         respond(fd, "200 OK", "application/json", body, (size_t)n);
 '''+anchor)
     return source+'''
-void evo_webui_controller(int options, int menu, int direction) {
+void evo_webui_controller(int options, int menu, int direction, int shortcut) {
     pthread_mutex_lock(&s_mx);
     if (options) ++s_controller_options;
     if (menu) ++s_controller_menu;
     if (direction >= 1 && direction <= 4) {
         ++s_controller_navigation;
         s_controller_direction = direction;
+    }
+    if (shortcut >= 1 && shortcut <= 4) {
+        ++s_controller_keyboard;
+        s_controller_shortcut = shortcut;
     }
     pthread_mutex_unlock(&s_mx);
     if (options) tlog("controller: Options");
@@ -812,10 +994,12 @@ def patch_stream_selection(nuvio):
     """Keep the selected stream across incremental source ordering and completion."""
     stream = nuvio/'js/ui/screens/stream'
     render = stream/'streamScreenMethods-09-render.js'
-    replace(render, '''      const previousFocusedIndex = Number(this.focusState?.row);
-      const previousFocusedKey =
-        previousVirtualModel &&''', '''      const previousFocusedIndex = Number(this.focusState?.row);
-      const previousStreams = this.renderedStreamListStreams || [];
+    # PS5 keeps the focused source even when it is the first result. Upstream
+    # follows newly arriving sources until the user moves on other platforms.
+    replace(render, 'const holdFirstResult = this.focusState?.zone === "card"',
+        'const holdFirstResult = !globalThis.__NUVIO_PS5__ && this.focusState?.zone === "card"')
+    replace(render, '''      const previousFocusedKey =
+        previousVirtualModel &&''', '''      const previousStreams = this.renderedStreamListStreams || [];
       const previousKeys = previousVirtualModel?.keys || this.getStreamVirtualKeys(
         this.addonFilter === "all" ? previousStreams : previousStreams.filter((s) => s.addonName === this.addonFilter)
       );
@@ -824,11 +1008,11 @@ def patch_stream_selection(nuvio):
     replace(render, '''        previousFocusedIndex < previousVirtualModel.keys.length
           ? previousVirtualModel.keys[previousFocusedIndex]''', '''        previousFocusedIndex < previousKeys.length
           ? previousKeys[previousFocusedIndex]''')
-    replace(render, '      if (virtualizedStreamList && previousFocusedKey && !this.streamVirtualFocusReset) {',
-        '      if (previousFocusedKey && !this.streamVirtualFocusReset) {')
+    replace(render, '      if (virtualizedStreamList && previousFocusedKey && !holdFirstResult && !this.streamVirtualFocusReset) {',
+        '      if (previousFocusedKey && !holdFirstResult && !this.streamVirtualFocusReset) {')
     load = stream/'streamScreenMethods-04-load-streams.js'
-    replace(load, '          let initialIndex = clamp(Number(this.focusState?.index || 0), 0, maxCardIndex);',
-        '          let initialIndex = clamp(Number(this.focusState?.row ?? this.focusState?.index ?? 0), 0, maxCardIndex);')
+    # Upstream now reads row before index. Do not replace the user's selection
+    # with preferredStreamId at aggregate completion.
     replace(load, '          if (preferred) {',
         '          if (preferred && this.focusState?.zone !== "card") {')
 
@@ -872,7 +1056,7 @@ def patch_playback_read_diagnostics(app):
     replace(stream_io, '    av_dict_set(opts, "reconnect", "1", 0);', '''    /* Controlled receive-buffer experiment: FFmpeg forwards this option
      * through HTTP/TLS to TCP before connect. Read-path diagnostics report
      * the actual accepted SO_RCVBUF, which the OS may cap or reject. */
-    av_dict_set(opts, "recv_buffer_size", "1048576", 0);
+    av_dict_set(opts, "recv_buffer_size", "4194304", 0);
     av_dict_set(opts, "reconnect", "1", 0);''')
     demux = app/'media/src/evo_demux.c'
     replace(demux, '#include <unistd.h>', '''#include <unistd.h>
@@ -983,7 +1167,8 @@ def patch_playback_progress(app):
     }''')
     replace(web, '        s_h_start = seconds;',
         '''        s_h_start = seconds;
-        query_param(path, "session", s_h_progress_session, sizeof s_h_progress_session);''')
+        query_param(path, "session", s_h_progress_session, sizeof s_h_progress_session);
+        tlog("handoff: session=%s start=%.3f", s_h_progress_session[0] ? "set" : "empty", seconds);''')
     replace(web, '            s_play_start = s_h_start;',
         '''            s_play_start = s_h_start;
             snprintf(s_play_progress_session, sizeof s_play_progress_session, "%s", s_h_progress_session);''')
@@ -995,11 +1180,11 @@ def patch_playback_progress(app):
     ++s_progress_revision;
     pthread_mutex_unlock(&s_mx);''')
     replace(web, '    if (s_state != P_PLAYING) return;',
-        '''    if (s_state != P_PLAYING) return;
-    pthread_mutex_lock(&s_mx);
+        '''    pthread_mutex_lock(&s_mx);
     s_progress_finished = 1;
     ++s_progress_revision;
-    pthread_mutex_unlock(&s_mx);''')
+    pthread_mutex_unlock(&s_mx);
+    if (s_state != P_PLAYING) return;''')
     replace(web, '''    while (!s_srv_stop) {
         int c = accept(s_listen_fd, NULL, NULL);''',
         '''    while (!s_srv_stop) {
@@ -1018,7 +1203,9 @@ static inline void evo_webui_playback_ended(int played) { (void)played; }''')
     replace(app/'core/src/Application.cpp', '            double pos = pb->getPositionSeconds();',
         '''            double pos = pb->getPositionSeconds();
             if (!pb->isScrubbing())
-                evo_webui_progress_sample(pos, pb->getDurationSeconds());''')
+                evo_webui_progress_sample(pos, pb->getDurationSeconds());
+                if (g_web_rep.frames % 600 == 0)
+                    EVO_LOGI("web", "progress sample position=%.3f duration=%.3f", pos, pb->getDurationSeconds());''')
     playback = app/'core/src/services/PlaybackController.cpp'
     replace(playback, '#include "evo/services/PlaybackController.hpp"',
         '#include "evo/services/PlaybackController.hpp"\n#include "evo_webui.h"')

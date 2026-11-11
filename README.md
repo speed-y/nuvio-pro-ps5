@@ -18,7 +18,7 @@ I'm a developer, and I want to maintain and improve the version of Nuvio I use o
 Keeping a fork lets me choose its direction, make changes and release them on my own schedule.
 I don't want every decision to depend on an upstream project's priorities or approval.
 
-The work here goes beyond repackaging: controller navigation, native keyboard integration, playback handling and fixes for everyday browsing bugs.
+The work here goes beyond repackaging: controller navigation, in-browser Search entry, playback handling and fixes for everyday browsing bugs.
 I want it to feel at home on the PS5, while keeping the freedom to keep building on it myself.
 Useful changes can still go upstream. Maintaining this fork and contributing back are compatible.
 
@@ -29,7 +29,8 @@ Their work made this possible. This fork preserves their history, credits and li
 ## What this fork changes
 
 - **Controller-first browsing.** D-pad and analog navigation, focused X activation, and Square or Options for item and profile menus.
-- **Native Search entry.** Triangle opens Search with the PS5 keyboard, without losing your place when you return from a result.
+- **In-browser Search entry.** Triangle opens a controller-operated keyboard without closing the browser. Returning from a result preserves Search without reopening it.
+- **Nuvio-style player controls.** Native EVO playback uses Nuvio's neutral palette, bottom title and timeline, with its existing controller shortcuts.
 - **Better playback return.** Circle brings you back to browsing without automatically starting the same video again.
 - **Resume and progress handling.** Pass saved positions to native playback and bring progress back to the correct profile, movie or episode.
   Native playback checkpoints changed progress every 30 seconds for recovery after a forced close or restart. PS5 validation remains pending.
@@ -99,7 +100,15 @@ to `build/EVO-PLAYER-PS5-*/output/app/PPSA99996/` and the helpers to
 - D-pad moves focus. X activates the focused item.
 - Either analog stick also moves browsing focus.
 - Square or Options opens the focused item's actions, including profile management.
-- Triangle opens Search and its native keyboard. Returning from a result restores Search without reopening the keyboard.
+- Triangle opens Search and its in-browser keyboard. D-pad selects keys, X types, and Circle cancels without changing the query.
+  Select Search to submit. Space, Delete, Clear and Shift are available. Other text fields retain their existing keyboard behavior.
+  Within this keyboard, Triangle inserts Space, Square deletes, L1 moves left and R1 moves right. L2 toggles Shift and R2 submits Search. These use observed browser events F5-F8. Action keys show their button icons.
+  L1 moves the text caret left and R1 moves it right. Typing inserts at the caret, and Delete removes the preceding character.
+  The owner reports that physical shoulder shortcuts fail on build `1110-1708`. X activation works. Investigation and L3 console validation remain pending.
+  Triangle does not reopen Search while this keyboard is open.
+  Suggestions combine recent searches with matching addon titles. Move Up from the number row, then press X to complete the query.
+  Completion does not submit. Press R2 or select Search when ready. Live title suggestions need two characters and available searchable addons.
+- The fallback Controller menu includes Display diagnostics. It reports browser dimensions without changing scaling or verifying the HDMI output resolution.
 - Play options on title details opens the existing menu without a long press.
 - Circle stops playback that started from Nuvio and returns to browsing.
 - There is no dedicated Change stream button or player menu. Return to browsing to select another stream.

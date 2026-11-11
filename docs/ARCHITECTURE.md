@@ -56,6 +56,17 @@ The old upstream identity is `PPSA99997`. Historical evidence retains that ident
 patches show changes to upstream files. The adapters also copy the loading
 artwork and the RML assets. The patches alone do not perform the full build.
 
+The browser UI uses Nuvio TV 1.3.11. EVO remains pinned to v0.13.5 with the existing native patches.
+Upstream now supplies nullable collection-rating normalization, manual source selection and series-wide stream preference lookup.
+PS5 adapters retain focused stream identity during incremental loading and defer preference writes until native playback succeeds.
+The adapters disable the new stream-link cache on PS5. Stream reuse still matches fresh addon results instead of storing signed URLs or headers.
+Onboarding keys pass through the existing focus engine once. Layout Back returns to experience selection.
+
+`scripts/native_skin.py` applies Nuvio's 1.3.11 player palette, bottom metadata and timeline to the native homebrew-ui renderer and RML fallback.
+It preserves native controller actions, playback state, subtitle styles, skip prompts, next-episode policy and clock visibility.
+The subtitle picker distinguishes the selected track from controller focus. Native menu navigation remains EVO's model, not the web player's model.
+Captions move above the taller controls while the controls are visible. Native library and settings themes remain unchanged.
+
 ## Controller and screen state
 
 The PS5 browser sends X as a click at its stationary pointer. Nuvio moves its own
@@ -76,21 +87,36 @@ Physical D-pad events remain browser-owned. Native player and keyboard controls 
 Options calls the focused item's existing context-menu method.
 Triangle opens the existing Search screen and focuses its real text box within the browser key event.
 On PS5, Search paints before awaiting profile decoration. Background result refreshes preserve an active text box.
-The owner confirms navigation works, but browser focus alone does not open the system keyboard on 12.70.
-The native text-entry adapter queues the existing EVO IME from Search and polls it on the main thread.
-It saves the selected profile and Search query, closes the browser, then opens the keyboard after confirmed browser closure.
-The owner confirms keyboard display without the browser on 12.70. Simultaneous browser/IME display failed in the recorded comparison.
-After confirmed keyboard cleanup, the adapter reopens console-hosted Search through the existing one-use profile return snapshot.
-Accepted text uses Search's normal submit path and focuses results. Cancellation keeps the query.
+Search now uses a controller-operated `NuvioDialog` keyboard. Its readonly textbox suppresses browser text entry while the dialog edits a local draft.
+The Search-only native IME endpoint and browser-close state machine are removed. Other native keyboards remain unchanged.
+The grid has four ten-key rows and six actions: Space, Delete, Clear, Shift, Search and Cancel.
+Physical character keys and Backspace also edit the draft. Deletion removes complete Unicode code points, with a 255-code-point query limit.
+Action keys display local SVG adaptations of the pinned homebrew-ui controller glyphs used by EVO's native renderer.
+They retain its colored face symbols, dark button discs, L3 stick badge and shaped R2 trigger, with source attribution beside the SVG code.
+Triangle inserts Space and Square deletes through the observed browser F1/F2 events. L1, R1, L2 and R2 use owner-ordered firmware 12.70 browser events F5, F6, F7 and F8. Native counters remain the fallback.
+L1/R1 move the visible text caret through Unicode code points. Typing inserts there, and Delete removes the preceding code point.
+Insertion at the query limit preserves the suffix and caret. Clear and suggestion completion reset the caret to the new query's end.
+The adapter uses existing `PadButtons::L1`, `R1`, `L3` and `R2` declarations, not guessed browser shoulder keycodes.
+Native screenshot capture leaves browser L3 available to this bridge. Native L3 capture and R3 behavior remain unchanged outside that exclusion.
+Triangle's browser event stops at the keyboard. Native Search notifications cannot navigate or reopen Search while a dialog is active.
+Keyboard listeners exist only while the dialog is open. The controller poll discards stale counters after reconnect or backgrounding.
+Suggestions show up to four matching recent searches and addon titles. Selection completes the draft and focuses Search without submitting it.
+After two characters and a 400 ms debounce, lookups use the existing catalogue repository and searchable-addon contract.
+Each lookup selects at most one movie and one series catalogue. If neither type exists, it uses at most two other searchable catalogues.
+Requests have a 2.5-second abort timer. Query changes and keyboard closure cancel outstanding requests, and generation checks reject stale replies.
+Suggestions deduplicate titles without case sensitivity and respect Hide unreleased content. Failures leave manual Search available, with recent matches retained.
+Accepted text uses Search's normal submit path and focuses results. Cancellation keeps the original query.
+Removed inputs and stale routes cannot submit the draft. Editing needs no native IME. Live suggestions use existing addons, not a new search provider.
 Search mount requests input except during back navigation. Triangle and textbox activation remain explicit input requests.
 Returning from result details preserves Search without opening the keyboard. Merely focusing or rerendering the textbox does not reopen it.
 Detail Back pops an existing Search history entry instead of leaving a duplicate Search predecessor that blocks the next Back.
-There is no typing timeout or one-shot limit. Restored Search without a history predecessor sends Back to Home after dismissing actions.
-An unavailable native keyboard reports failure without a prompt or virtual-keyboard fallback.
-Repeatable entry and controller navigation after return remain pending console validation for the new candidate.
+There is no typing timeout or one-shot limit. Search without a history predecessor sends Back to Home after dismissing actions.
+The keyboard passes host browser checks. Actual PS5 key mapping, IME suppression and repeated entry remain pending console validation.
 The adapter leaves undocumented browser IME pointers and control bits unchanged.
 Search uses local SVGs for Discover, empty-state search and recent-history removal, without a remote icon font.
-The controller menu remains an item-action fallback containing Player settings.
+The controller menu remains an item-action fallback containing Player settings and Display diagnostics.
+Display diagnostics reads the CSS viewport, pixel ratio, screen dimensions and visual viewport without changing settings or writing logs.
+Viewport multiplied by DPR is an estimate, not proof of the internal browser surface or HDMI output resolution.
 The detail page also exposes a D-pad-reachable Play options button.
 Settings > Playback exposes Player settings without a pointer.
 These native button paths still require console validation while the system browser owns the controller.

@@ -67,6 +67,28 @@ async function openContextMenu() {
   dispatchKey('keyup', document.body);
 }
 
+function openDisplayDiagnostics() {
+  const dpr = window.devicePixelRatio || 1;
+  const viewport = window.visualViewport;
+  const content = document.createElement('pre');
+  content.style.cssText = 'white-space:pre-wrap;font:inherit;line-height:1.6';
+  content.textContent = [
+    `CSS viewport: ${window.innerWidth} × ${window.innerHeight}`,
+    `Device pixel ratio: ${dpr}`,
+    `Viewport × DPR estimate: ${Math.round(window.innerWidth * dpr)} × ${Math.round(window.innerHeight * dpr)}`,
+    `Screen (CSS px): ${window.screen.width} × ${window.screen.height}`,
+    `Available screen: ${window.screen.availWidth} × ${window.screen.availHeight}`,
+    viewport ? `Visual viewport: ${viewport.width} × ${viewport.height}, scale ${viewport.scale}` : 'Visual viewport: unavailable',
+    '', 'Browser-reported values only. The estimate does not verify the internal rendering surface or HDMI output mode.',
+    'No scaling settings changed. Compare these values with the TV signal information.'
+  ].join('\n');
+  let dialog;
+  dialog = new NuvioDialog({
+    title: 'Display diagnostics', widthVw: 70, content,
+    buttons: [{ label: 'Close', onAction: () => dialog.destroy() }]
+  }).mount(document.body);
+}
+
 function openControllerMenu() {
   if (document.body.classList.contains('nuvio-modal-open')) return;
   const restore = focusedNode();
@@ -83,6 +105,9 @@ function openControllerMenu() {
         dismiss();
         document.getElementById('__evoClose')?.click();
       } },
+      { label: 'Display diagnostics', onAction: () => {
+        dialog.destroy({ afterExit: openDisplayDiagnostics });
+      } },
       { label: 'Cancel', onAction: dismiss }
     ],
     onDismiss: () => { if (visible(restore)) restore.focus({ preventScroll: true }); }
@@ -97,8 +122,7 @@ async function openSearch() {
     'essentialAddonSetup', 'player'].includes(route) ||
     document.body.classList.contains('nuvio-modal-open') ||
     Router.getCurrentScreen()?.container?.querySelector('[data-overlay-root], .settings-dialog-backdrop')) return;
-  // Search paints synchronously on PS5. Focus before awaiting navigation so a
-  // real F1 press retains its browser user gesture for native text entry.
+  // Search paints synchronously on PS5. Focus before awaiting decoration.
   const navigation = route !== 'search' ? Router.navigate('search') : null;
   if (Router.getCurrent() !== 'search' || document.hidden) return navigation;
   const screen = Router.getCurrentScreen();
@@ -126,7 +150,9 @@ export function initPs5Navigation() {
     }
   };
   window.__nuvioPs5Activate = (event) => {
-    if (redirecting || event.button !== 0) return;
+    // Upstream Enter handlers also use .click(). Those intentional actions
+    // must reach their listeners, not recurse through another Enter event.
+    if (redirecting || event.isTrusted === false || event.button !== 0) return;
     if (event.target?.closest?.('#__evoClose')) return;
     const node = focusedNode();
     if (node?.matches('input, textarea, select') && node.contains(event.target)) return;
@@ -136,8 +162,7 @@ export function initPs5Navigation() {
     redirecting = true;
     try {
       if (node.matches('input, textarea, select')) {
-        // Keep the browser's own text-entry mechanism, input/change handlers
-        // and physical keyboard support. No replacement keyboard or prompt.
+        // Search uses our browser keyboard. Other fields retain native entry.
         node.focus({ preventScroll: true });
         node.click();
         if (node.id === 'searchInput') void requestPs5SearchKeyboard();
@@ -165,6 +190,9 @@ export function initPs5Navigation() {
     // Owner's ordered Up, Square, Down, Options diagnostic on build 1031-1013:
     // ArrowUp/38, F2/113, ArrowDown/40, F3/114. Later isolated Triangle: F1/112.
     if (!['F1', 'F2', 'F3'].includes(event.key) && ![112, 113, 114].includes(event.keyCode)) return;
+    // The keyboard owns Triangle/Space and Square/Delete while it is open.
+    if (document.body.classList.contains('nuvio-modal-open') &&
+        (event.key === 'F1' || event.key === 'F2' || [112, 113].includes(event.keyCode))) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!event.repeat) {
@@ -177,6 +205,9 @@ export function initPs5Navigation() {
 
   // The native hook is absent in desktop previews. Do not hammer their server.
   if (!window.__evoHook) return;
+  document.addEventListener('visibilitychange', () => {
+    imageDiagnostic('ps5 visibility hidden=' + Number(document.hidden));
+  });
   // Private-candidate diagnostics: observe the failing console before changing
   // loading policy. Never send image URLs, titles, account state or raw errors.
   let imageReports = 0;
@@ -301,6 +332,13 @@ export function initPs5Navigation() {
               dispatchKey('keydown', node, key, code);
               dispatchKey('keyup', node.isConnected ? node : document.body, key, code);
             }
+          }
+          if (document.body.classList.contains('nuvio-modal-open') &&
+              Number.isInteger(next.keyboard) && Number.isInteger(previous.keyboard) &&
+              next.keyboard !== previous.keyboard && [1, 2, 3, 4].includes(next.shortcut)) {
+            window.dispatchEvent(new CustomEvent('nuvio:keyboard-shortcut', {
+              detail: ['shift', 'submit', 'left', 'right'][next.shortcut - 1]
+            }));
           }
         }
         previous = next;
