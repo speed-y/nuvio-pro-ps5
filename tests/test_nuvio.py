@@ -222,6 +222,7 @@ function target(name){return {isConnected:true,getAttribute:()=>null,getClientRe
  dispatchEvent:e=>keys.push([name,e.type,e.key,e.keyCode,e.which])};}
 const page=target('page'),dialog=target('dialog');
 const document={hidden:false,body:{classList:{contains:()=>modal}},
+ addEventListener(){},
  querySelectorAll:()=>[{classList:{contains:()=>false},querySelector:()=>focused?dialog:null}]};
 const context={__NUVIO_PS5__:true,document,Event:class{constructor(type){this.type=type;}},
  CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail;}},
@@ -1208,6 +1209,9 @@ static int query_param(const char *,const char *,char *out,size_t cap) {
 static void respond(int,const char *s,const char *,const char *b,size_t n) {
  snprintf(status,sizeof status,"%s",s);memcpy(body,b,n);body[n]=0;
 }
+static void tlog(const char *,...) {}
+static struct { int frames; } g_web_rep;
+#define EVO_LOGI(...) ((void)0)
 ''' + bridge + r'''
 class PlaybackController {
 public:
@@ -1311,6 +1315,7 @@ static int query_param(const char *path,const char *,char *out,size_t cap) {
 static void respond(int,const char *status,const char *,const char *body,size_t size) {
  printf("%s\n%.*s\n",status,(int)size,body);
 }
+static void tlog(const char *,...) {}
 #define open checkpoint_open
 #define fopen checkpoint_fopen
 #define write checkpoint_write
