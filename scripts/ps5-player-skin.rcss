@@ -1,0 +1,43 @@
+/* Nuvio TV 1.3.11 native skin. RCSS fallback for unsupported kit glyphs.
+ * Values from base.css and the final ATV overrides in components-35.css.
+ * Keep every existing dynamic ID and subtitle, prompt and clock policy. */
+#top-scrim {
+    height: 300dp;
+    background-color: transparent;
+    decorator: vertical-gradient(#000000b3 #00000000);
+}
+#bottom-scrim {
+    height: 400dp;
+    padding: 48dp 64dp 24dp 64dp;
+    background-color: transparent;
+    decorator: vertical-gradient(#00000000 #000000cc);
+}
+#title-block { width: 1160dp; height: 100dp; }
+#media-title { font-size: 48dp; letter-spacing: 0dp; }
+#media-meta { font-size: 28dp; font-weight: normal; color: #ffffffad; margin-top: 0dp; width: 1160dp; }
+#badge-rack { margin: 8dp 0dp 20dp 0dp; gap: 8dp; }
+.badge-res, .badge-hdr, .badge-codec, .badge-fps, .badge-decoder,
+.badge-upscale, .badge-smooth, .badge-upscale.active, .badge-smooth.active {
+    background-color: #00000057;
+    color: #ffffff;
+    border-color: #ffffff47;
+    border-width: 1dp;
+    border-radius: 6dp;
+}
+#progress-container, #progress-track, #time-row, #controls-row { width: 1792dp; }
+#progress-track { height: 12dp; border-radius: 6dp; background-color: #ffffff4d; }
+#progress-fill { height: 12dp; border-radius: 6dp; background-color: #f5f5f5; }
+#progress-thumb { display: none; }
+#time-current, #time-duration { font-size: 24dp; font-weight: normal; color: #ffffffe6; }
+#controls-row { gap: 24dp; }
+.control-label { color: #ffffff; letter-spacing: 0dp; font-size: 18dp; }
+.glyph-badge { background-color: transparent; }
+.btn-tag { background-color: #242424; border-color: #333333; color: #f5f5f5; }
+#scrub-capsule, #pause-badge, #loading-badge { background-color: #1a1a1acc; border-color: #ffffff47; }
+#scrub-label { color: #f5f5f5; }
+#loading-spinner { border-color: #ffffff33; border-top-color: #f5f5f5; }
+#nuvio-skip, #nuvio-next, .nuvio-general-card { background-color: #111111f5; border-color: #f5f5f5; }
+.nuvio-general-heading { color: #f5f5f5; }
+#nuvio-clock { top: 48dp; right: 64dp; font-size: 26dp; }
+/* Captions keep their own size/style controls; only clear the taller HUD. */
+#subtitle-layer.raised { bottom: 360dp; }

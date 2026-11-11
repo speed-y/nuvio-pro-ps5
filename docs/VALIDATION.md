@@ -4863,3 +4863,220 @@ Signed eboot: 48,629,860 bytes, SHA-256 `d421c228aa1c5c0d60c648720844657593edf66
 `make check` passes 150 tests without skips, with zero documentation hard findings and passing source/private-artifact checks.
 Environment: Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0, LLVM 19.1.7, SDK v0.43 and target FFmpeg 7.1.1.
 The versioned candidate remains untested on PS5. Preparation does not publish a release or authorize console deployment.
+
+## Nuvio TV 1.3.11 integration, 2026-11-10
+
+[SOURCE-VERIFIED] The UI and selected public TV configuration now use release 1.3.11.
+UI commit: `c1d2e507feebd66be91fd4e58a4ce03222b9c72a`.
+Source archive SHA-256: `19752f07286746c16ab0802e7af4038669ebc3108bebf9afcf1a6829d4bfdab5`.
+Official configuration archive SHA-256: `258698260aa408889500163fa6b674be3c09d64e84ceba1ee513dd18727661bb`.
+All native dependency pins and `patches/evo.patch` remain unchanged. EVO stays at v0.13.5.
+The title remains `PPSA99996`. Public and PS5 content versions remain unchanged.
+
+The adapters retain PS5 source focus, native Search, playback return, subtitle handoff and deferred stream preferences.
+Upstream replaces the old nullable-rating, manual-selection and series-wide binge preference patches.
+The new signed-link cache cannot save or return entries on PS5. Fresh addon matching remains the source-reuse policy.
+Deferred preferences retain upstream filename and info-hash metadata without persisting signed playback links.
+
+[LOCALLY BUILT] `make build` completes as `f6e43e65-nuvio_1110-1538`, with valid signed-container integrity.
+All 274 title receipt hashes match their files.
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,860 | `02aa9376a3cce50775aa833225a3fe922c297cebcedd6b027fd8dbc22f0c6b10` |
+| UI app bundle | 3,860,997 | `f7aa06c9e2878ec378090a0c082e9252734bc418144d31e3a207a34591968386` |
+| Unchanged runtime | 1,284,674 | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+Host: Linux x86-64, Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
+Target inputs remain SDK v0.43 and FFmpeg 7.1.1.
+The adapted UI passes all 90 upstream `test:perf` tests without skips.
+The final `make check` passes all 150 tests without skips, with zero documentation hard findings and passing source/private-artifact checks.
+
+Chromium 157 renders the compiled, PS5-flagged UI with a guest profile, without owner configuration.
+The 1920x1080 preview shows Home artwork, readable headings, focused cards and native Playback settings actions.
+The new experience chooser advances once per activation. Layout Back returns to experience selection.
+A recorded keyboard/pointer sequence and inspected screenshots cover those transitions.
+The 1280x720 Home preview clips the first row heading. This run validates the 1080p desktop preview, not every viewport.
+
+Initial checks failed against stale 1.2.3 test harnesses and the host's fallback GCC warning policy.
+Updated harnesses use pinned 1.3.11 modules. Checks use the existing orb Python, Node and LLVM tools.
+The source scanner initially failed on an unstaged deleted fixture. Staging that deletion restored its indexed-file contract.
+Browser checks exposed recursive onboarding clicks, duplicate key forwarding and a failing initial layout-Back adapter.
+The corrected adapters preserve upstream programmatic actions, forward onboarding keys once and return layout Back through the router's consume hook.
+A 1080p recording attempt exceeded the encoder buffer. The inspected interaction recording uses a 720p viewport instead.
+
+[UNKNOWN] This candidate has not run on the PS5.
+Firmware 12.70 checks remain pending: QR login, addon sync, controller input, native Search, source selection and playback return.
+Subtitle discovery, intro skipping, next-episode reuse, audio switching and movie-ending behavior also need hardware checks.
+No console connection, installation, release publication or deployment occurred. Changes remain local and uncommitted.
+
+## Browser keyboard, player skin and display diagnostics, 2026-11-10
+
+[SOURCE-VERIFIED] This candidate retains Nuvio TV 1.3.11 and EVO v0.13.5 with unchanged dependency pins from the integration above.
+The Search keyboard now edits a draft inside the console-hosted browser. Its Search-only native IME endpoint and browser-close state machine are removed.
+Other text fields retain their existing keyboard behavior. Playback-progress import retains the storage flush through a generic hook.
+The native skin changes playback presentation, not decoder, controller, subtitle selection or next-episode policy.
+Captions clear the taller controls. Their configured styles remain unchanged.
+
+Display diagnostics reports browser dimensions, DPR and the visual viewport. It changes no scaling settings and writes no logs.
+The browser dialog still requests 1920x1080. Source inspection does not establish its internal raster size or the HDMI output mode.
+The earlier desktop screenshots used 1920x1080 CSS pixels at DPR 2, producing 3840x2160 captures.
+A 4K TV alone does not establish that the console browser renders its UI at 4K.
+
+[LOCALLY BUILT] `make build` completes as `f6e43e65-nuvio_1110-1619`, title `PPSA99996`, with valid signed-container integrity.
+All 274 title receipt hashes match their files.
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,988 | `da3f6deba783fa803d83c13967053a570cc0a955fd46fa9e27204b677b5701f7` |
+| UI app bundle | 3,863,634 | `e6af300deaab39b07a169be722cc2670792fdb35e149dd28322647a81b98797d` |
+| Unchanged runtime | 1,284,674 | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+Host versions remain Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM/Clang/lld 19.1.7.
+Target inputs remain SDK v0.43 and FFmpeg 7.1.1.
+The keyboard regression uses Chromium and the pinned Nuvio dialog, covering submission, cancellation, repeated entry, grid boundaries, Shift and Unicode deletion.
+It also covers the 255-code-point limit, removed inputs and stale routes. Diagnostic fixtures check asymmetric dimensions without modifying them.
+The compiled browser UI shows 46 keyboard buttons and a readonly Search textbox.
+Inspected captures cover empty 1080p entry and typed, shifted 720p entry. An inspected recording covers pointer movement and D-pad selection across rows.
+The display dialog opens from Controller menu and labels its DPR product as an estimate, not verified HDMI or backing-surface dimensions.
+
+Native previews use the actual homebrew-ui screen sources with Mesa's OpenGL backend and synthetic artwork, not a browser mock.
+Ten inspected 1920x1080 states cover controls, skip, next episode, pause, scrubbing, clock visibility, captions, subtitles and audio selection.
+All ten renders report GL error 0x0, with zero overflow findings. The RML fallback compiles but was not visually rendered.
+Host rendering does not establish PS5 AGC output or actual controller behavior.
+
+The first combined `make check` passed its 154 tests but failed the indexed-file scanner on the deleted native Search files.
+Staging those deletions preserves the scanner's existing contract. No files were committed.
+The corrected `make check` passes 154 tests without skips, with zero documentation hard findings and passing source/private-artifact checks.
+The adapted UI passes all 90 upstream `test:perf` tests without skips.
+The compiled browser also submits `aw` once, preserves it after cancelling an edited draft, and reopens with Q focused.
+
+[UNKNOWN] The console was unavailable. Actual rendering resolution, readonly IME suppression, Circle mapping, repeat entry and native overlay behavior remain hardware checks.
+No console connection, installation, firmware change, release publication or deployment occurred. Changes remain local and uncommitted.
+
+## Search completion and keyboard shortcuts, 2026-11-10
+
+[SOURCE-VERIFIED] The in-browser Search keyboard now offers matching recent searches and live addon title suggestions.
+Lookups use the existing searchable-addon and catalogue repository contracts, without adding a search provider.
+Each debounced lookup uses at most two catalogues. Suggestions respect Hide unreleased content and ignore stale replies.
+Selecting a suggestion completes the draft without submitting or changing the original Search field.
+The action keys show Triangle/Space, Square/Delete, L2/Shift, R2/Search and Circle/Cancel icons.
+Triangle and Square use the owner's observed F1/F2 browser mappings. L2/R2 use existing native pad declarations and edge counters.
+No shoulder browser keycodes, offsets or platform symbols are guessed. Native playback controls and dependency pins remain unchanged.
+
+[LOCALLY BUILT] `make build` completes as `f6e43e65-nuvio_1110-1638`, with valid signed-container integrity.
+All 274 title receipt hashes match their files. The title remains `PPSA99996`.
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,988 | `cfe75e8f6ad36fd2b03486ad77e428e8f2b7db3fb778d4ba4d319dd62e1db6c3` |
+| UI app bundle | 3,867,551 | `64902ec1ef5dd3ee6b64230d5e20c083060fbffb5449b7358da7246f58026b37` |
+| Unchanged runtime | 1,284,674 | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+Host versions remain Python 3.13.7, Node 22.23.2, GCC/G++ 12.2.0 and LLVM 19.1.7. Target inputs remain SDK v0.43 and FFmpeg 7.1.1.
+The six targeted browser/controller tests pass. They cover completion, deduplication, request limits, cancellation, stale responses, release filtering and offline lookup.
+They also cover shortcut editing, submission and counter delivery without replay after reconnect or opening a modal.
+Chromium 157 renders the compiled UI at 1920x1080 and 1280x720 CSS pixels, both at DPR 2.
+Inspected captures show default entry, focused live suggestions, completed Shift state, unavailable suggestions and no matches.
+Typing `al` returns live addon titles, including Alien. Selecting Alien fills the draft, leaves the original field unchanged and focuses Search.
+Browser F1 inserts a space and F2 removes it. A simulated native Shift event updates the case indicator.
+The compiled Search action closes the dialog and submits Alien. This check does not establish physical R2 delivery.
+A recording shows D-pad completion, shortcut editing and Shift. Its final Search exit is cut short, so it does not prove submission.
+A later recording wait command used an unsupported flag and failed. DOM checks, not that recording, establish dialog closure.
+
+[UNKNOWN] The PS5 is unavailable. Physical L2/R2 delivery while its browser is open and combined controller behavior remain hardware checks.
+No console connection, installation, firmware change, commit, push or release publication occurred.
+
+## Search shortcut alignment, 2026-11-10
+
+[LOCALLY BUILT] The compiled browser showed shape icons 4.03 CSS pixels above their label centers at 1920x1080.
+L2/R2 badges sat 1.79 CSS pixels below their label centers. The keyboard buttons inherited block layout and a fixed line height.
+Keyboard-only flex alignment and proportional line height now center each icon beside its label.
+`make ui` passes with the same host and dependency versions recorded above. No native code or scaling settings changed.
+Chromium checks report zero center offset for all five shortcut icons at 1920x1080 and 1280x720 CSS pixels, both at DPR 2.
+All action labels fit. Inspected captures cover default 1080p and focused Shift at 720p, without clipping or overlap.
+The rebuilt browser preview includes this correction. The previously built installable title does not yet include it.
+[UNKNOWN] PS5 rendering remains untested. No console connection, deployment, commit or push occurred.
+
+## EVO-style Search shortcut glyphs, 2026-11-10
+
+[SOURCE-VERIFIED] EVO's current homebrew-ui renderer uses `GlyphStyle::dark()` for player hints, not the older RML PNG assets.
+The browser now uses inline SVG adaptations of its colored face symbols, dark discs and lit L2/R2 trigger shapes.
+The source is `src/ui/glyphs.cpp` in homebrew-ui revision `47f4b9868c33264716b2e92922b0d2c9d0f2ab0f`.
+Its locally recorded SHA-256 is `fc962fd38ed8693a458fa97c9496a9c5dd5bc273f667e492b5dbf92ae803c59a`.
+The adapter retains BlackBearReloaded's copyright and GPL notice. These are browser adaptations, not pixel-identical native raster output.
+
+[LOCALLY BUILT] `make ui` passes with the previously recorded host and dependency versions.
+Inspected Chromium captures cover default 1080p and focused Space at 720p, both rendered at DPR 2.
+All five shortcut icons remain centered beside their labels and fit at 720p. Colored symbols remain visible on focused keys.
+No native sources, controller actions, EVO pin, title identity or scaling settings changed.
+The rebuilt preview includes these glyphs. The installable title still needs a rebuild before console testing.
+[UNKNOWN] PS5 appearance remains untested. No console connection, deployment, commit or push occurred.
+
+## Caret editing and PS5 test candidate, 2026-11-10
+
+[SOURCE-VERIFIED] L1/R1 now move a visible browser caret through Unicode code points, using the existing native pad-edge bridge.
+Typing and Space insert at the caret. Square/Delete removes the preceding code point. Movement clamps at both ends.
+Insertion at the 255-code-point limit preserves the existing suffix and caret position.
+Triangle's browser event remains keyboard-owned while open. Native Search notifications remain blocked by the existing modal guard.
+The regression exercises both Triangle paths around the same keyboard, without navigation, duplicate spaces or submission.
+
+[LOCALLY BUILT] The new regression first failed on the unchanged keyboard with `No visible text caret`.
+All seven targeted keyboard/controller tests now pass, including middle insertion, Unicode deletion, boundaries, submission and cancellation.
+The compiled Chromium UI retains one dialog and an unchanged original Search field after Triangle inserts a middle space.
+The inspected recording shows typing Alien, simulated native L1/R1 movement, insertion, deletion and Triangle Space without reopening Search.
+Inspected 1080p and 720p captures show a visible caret and complete controller instructions, both at DPR 2.
+These browser events do not establish physical controller delivery.
+
+`make build` succeeds as `f6e43e65-nuvio_1110-1708`, with valid signed-container integrity and all 274 title receipt hashes verified.
+Host versions remain Python 3.13.7, Node 22.23.2, LLVM 19.1.7 and GCC 12.2.0. Target inputs remain SDK v0.43 and FFmpeg 7.1.1.
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,988 | `d2a494ecff97f4e77319a64997b58eb134958a2dbd2bc9e58e31ac21e5d56094` |
+| UI app bundle | 3,868,733 | `85ad43f43ac2ed9151a62435377a292a85040fc331deb21241be64cc49f90088` |
+| Unchanged runtime | 1,284,674 | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+The title remains `PPSA99996`, with Nuvio TV 1.3.11, EVO v0.13.5, prior PS5 fixes and unchanged scaling.
+[UNKNOWN] Firmware 12.70 execution and physical shoulder-button delivery remain pending. The console is unavailable.
+No console connection, installation, firmware change, commit, push or release publication occurred.
+
+## L3 Shift and shoulder investigation, 2026-11-10
+
+[OWNER-REPORTED] On build `f6e43e65-nuvio_1110-1708`, L1, R1, L2 and R2 keyboard shortcuts fail. X on the same action keys works. The owner requests L3 for Shift.
+X success does not identify the pad reader, HTTP bridge or browser event as the failed layer.
+
+[SOURCE-VERIFIED] EVO consumes L3 for native screenshots before the browser bridge. The browser exclusion now preserves that press for Search Shift.
+R3 screenshots and native behavior outside the browser remain unchanged.
+L1, R1 and R2 already use declared pad bits and browser-only edge counters. No shoulder browser keycodes or offsets are guessed.
+
+[LOCALLY BUILT] `make build` succeeds as `f6e43e65-nuvio_1110-1809`, with valid signed-container integrity and all 274 receipt hashes verified.
+`make check` passes 156 tests. Upstream `test:perf` passes all 90 tests.
+The native input tests pass. They do not establish physical shoulder-button reads.
+
+| Artifact | Bytes | SHA-256 |
+|---|---|---|
+| Signed eboot | 48,629,988 | `6740a80e777a45f6397fe4cbd5b9a3b646a92bc252e4b1dbd48b1da88ef39f50` |
+| UI app bundle | 3,869,163 | `354bea78bef82b7762000c9e61d28fe1707c43f8cec6ab44b98fe0c833e5399d` |
+| Unchanged runtime | 1,284,674 | `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` |
+
+Host versions remain Python 3.13.7, Node 22.23.2, LLVM 19.1.7 and GCC 12.2.0. Target inputs remain SDK v0.43 and FFmpeg 7.1.1.
+Inspected Chromium captures show the L3 Shift badge and focused Shift activation at 1280x720 CSS pixels, DPR 2.
+No console connection, installation, deployment, commit, push or release publication occurred.
+
+[UNKNOWN] A bounded read-only console-log capture failed before any byte or file metadata.
+The token request timed out at 2026-11-10 20:38:27-20:38:42 UTC. An earlier attempt also failed before a read.
+Missing log records do not establish that the console omitted controller events.
+
+[TESTED-ON-CONSOLE] A bounded read of the installed log succeeded after the Mac returned.
+The captured range is bytes 8,303,867-12,498,171. Its SHA-256 is `f2cc021b5b6adaf25cd7c43d644a09d94820cf7586489c0db6ad26ab457814a6`.
+The latest build `1110-1708` section contains browser F5-F10 events, key codes 116-121.
+It also contains 35 native `skip R1` records. Those records occur in native playback, not in the browser keyboard.
+The section contains no literal L1, L2, R2, L3, Triangle, Square or controller-counter records.
+This capture does not identify which physical button produced each function key.
+The owner then pressed L1, R1, L2, R2, L3 and R3 once each. The new log range bytes 12,498,171-12,535,755 records consecutive F5-F10 events. The keyboard now maps F5 left, F6 right, F7 Shift and F8 Search. F9 and F10 remain observed but unused.
+
+## v0.2.0-alpha.2 preparation, 2026-11-11
+
+[SOURCE-VERIFIED] Public version is `0.2.0-alpha.2`. Title remains `PPSA99996`. PS5 content version is `01.000.009`.
+The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not publish a release or authorize console deployment.

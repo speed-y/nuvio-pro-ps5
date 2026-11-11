@@ -251,7 +251,8 @@ assert(Buffer.byteLength(s.posts[0].options.body) <= 8192);
         self.run_js(r'''
 const { state: s, context: c, screen, save } = fixture();
 c.__nuvioDeferStreamPreference(screen, 'tt1', 'tt1:1:1', 'stream-1', {
-  bingeGroup: 'release-group', resumeIdentity: 'url:["https://signed.invalid/?token=secret"]' });
+  bingeGroup: 'release-group', filename: 'Series.S01E01.mkv', infoHash: 'a'.repeat(40),
+  resumeIdentity: 'url:["https://signed.invalid/?token=secret"]' });
 await c.__nuvioPreparePresentation();
 const saved = save();
 assert.equal(saved.general.pending.metadata.resumeIdentity, '');
@@ -262,7 +263,8 @@ s.profile = '2'; c.__nuvioAcceptPresentation(saved, { session: 'session-1', play
 assert.equal(s.commits.length, 0);
 s.profile = '1'; c.__nuvioAcceptPresentation(saved, { played: true }); // verified endpoint need not echo session
 assert.equal(s.commits.length, 1);
-assert.deepEqual(s.commits[0], ['tt1', 'tt1:1:1', 'stream-1', { bingeGroup: 'release-group', resumeIdentity: '' }, '1']);
+assert.deepEqual(s.commits[0], ['tt1', 'tt1:1:1', 'stream-1', {
+  bingeGroup: 'release-group', filename: 'Series.S01E01.mkv', infoHash: 'a'.repeat(40), resumeIdentity: '' }, '1']);
 c.__nuvioAcceptPresentation(saved, { session: 'session-1', played: true });
 assert.equal(s.commits.length, 1);
 assert.equal(saved.general.pending, null);
@@ -301,6 +303,8 @@ FRONTEND = {
       const prefVideoId = this.params.videoId;
       StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
         bingeGroup: streamCandidate?.behaviorHints?.bingeGroup || streamCandidate?.raw?.behaviorHints?.bingeGroup || "",
+        filename: streamCandidate?.behaviorHints?.filename || streamCandidate?.raw?.behaviorHints?.filename || null,
+        infoHash: streamCandidate?.infoHash || streamCandidate?.raw?.infoHash || null,
         resumeIdentity: buildStreamResumeIdentity(streamCandidate)
       });
 }''',
@@ -320,45 +324,32 @@ function normalizeStreamAutoPlaySource(value) {
   const normalized = String(value || "").trim().toUpperCase();
   return STREAM_AUTO_PLAY_SOURCES.includes(normalized) ? normalized : "ALL_SOURCES";
 }''',
-    'js/data/local/streamPreferencesStore.js': '''export const StreamPreferencesStore = {
-  getEntry() { return { bingeGroup: 'exact-video' }; }
-};''',
-    'js/data/repository/skipIntroRepository.js': '''const CACHE = new Map();
-async function lookup(cacheKey) {
-    if (CACHE.has(cacheKey)) return CACHE.get(cacheKey);
-    const url = new URL('https://metadata.invalid');
-    const data = await fetchJson(url.toString());
-    const intervals = mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true });
-    CACHE.set(cacheKey, intervals);
-    return intervals;
-}''',
-    'js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js': '''function select(settings) {
-      const savedPreference =
-        settings.streamAutoPlayPreferBingeGroupForNextEpisode && settings.streamAutoPlayReuseBingeGroup
-          ? StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId)
-          : null;
-      return savedPreference;
-}'''
 }
 
 
 class FrontendPatchTests(unittest.TestCase):
     def test_emitted_capability_scope_remember_and_group_contracts(self):
+        from tests.test_subtitle_handoff import frontend_file
+        sources = dict(FRONTEND)
+        for name in ('js/data/local/streamPreferencesStore.js', 'js/data/local/streamLinkCacheStore.js',
+                     'js/data/repository/skipIntroRepository.js'):
+            sources[name] = frontend_file(name)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for name, text in FRONTEND.items():
+            for name, text in sources.items():
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text)
             playback_general.patch_frontend(root)
-            emitted = {key: (root / key).read_text() for key in FRONTEND}
+            emitted = {key: (root / key).read_text() for key in sources}
             self.assertIn('__nuvioPreparePresentation', emitted['js/app.js'])
             self.assertIn('import { parentalGuideRepository }', emitted['js/app.js'])
             code = r'''
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const files = JSON.parse(process.argv[1]);
-const load = (suffix, context) => vm.runInContext(Object.entries(files).find(([key]) => key.endsWith(suffix))[1].replace(/export /g, ''), context);
+const load = (suffix, context) => vm.runInContext(Object.entries(files).find(([key]) => key.endsWith(suffix))[1]
+  .replace(/^import .*;$/gm, '').replace(/export /g, ''), context);
 let deferred = 0; let committed = 0;
 const context = vm.createContext({ __NUVIO_PS5__: true, __NUVIO_ALLOW_BROWSER_PLUGIN_RUNTIME__: true,
   Platform: { isBrowser: () => true }, buildStreamResumeIdentity: () => 'file:identity',
@@ -385,26 +376,38 @@ assert.equal(context.normalizeStreamAutoPlaySource('ENABLED_PLUGINS_ONLY'), 'ENA
 context.remember.call({ params: { itemId: 'tt1', videoId: 'tt1:1:1' } }, { id: 'stream' });
 assert.equal(committed, 1); assert.equal(deferred, 1);
 const groupContext = vm.createContext({ __NUVIO_PS5__: true,
-  activeProfileId: () => '1', buildContentKey: id => id,
-  readEntries: profile => profile === '1' ? [{ key: 'tt10::ep1', bingeGroup: 'wrong' },
-    { key: 'tt1::ep1', bingeGroup: 'series-group', cachedAtMs: 10 }] : [] });
+  ProfileManager: { getActiveProfileId: () => '1' },
+  LocalStore: {get: () => ({'1': [{ key: 'tt10::ep1', bingeGroup: 'wrong' },
+    { key: 'tt1::ep1', bingeGroup: 'series-group', cachedAtMs: 10 }]})} });
 load('streamPreferencesStore.js', groupContext);
-load('streamScreenMethods-05-maybe-auto-resume-stream.js', groupContext);
-const result = groupContext.select.call({ params: { itemId: 'tt1', videoId: 'ep2' } },
-  { streamAutoPlayPreferBingeGroupForNextEpisode: true, streamAutoPlayReuseBingeGroup: true });
+const result = vm.runInContext('StreamPreferencesStore.getLatestForContent("tt1")', groupContext);
 assert.equal(result.bingeGroup, 'series-group'); assert.equal(result.cachedAtMs, 10);
-assert.equal(groupContext.select.call({params:{}}, {streamAutoPlayPreferBingeGroupForNextEpisode:false, streamAutoPlayReuseBingeGroup:true}), null);
-assert.equal(vm.runInContext('StreamPreferencesStore.getBingeGroupEntry("tt1", "2")', groupContext), null);
+assert.equal(vm.runInContext('StreamPreferencesStore.getLatestForContent("tt1", "2")', groupContext), null);
+let stored = {};
+const linkContext = vm.createContext({__NUVIO_PS5__:false, URL,
+  ProfileManager:{getActiveProfileId:()=> '1'}, isExpiredStreamUrl:()=>false,
+  LocalStore:{get:()=>stored,set:(key,value)=>stored=value}});
+load('streamLinkCacheStore.js', linkContext);
+// Seed a real non-PS5 cache so the PS5 read guard cannot pass on an empty cache.
+assert.equal(vm.runInContext('StreamLinkCacheStore.save({itemId:"tt1"}, {url:"https://media.invalid/?token=fixture", streamName:"Test"})', linkContext), true);
+linkContext.__NUVIO_PS5__=true;
+assert.equal(vm.runInContext('StreamLinkCacheStore.getValid({itemId:"tt1"}, 60000)', linkContext), null);
+assert.equal(vm.runInContext('StreamLinkCacheStore.save({itemId:"tt2"}, {url:"https://media.invalid/other", streamName:"Other"})', linkContext), false);
+linkContext.__NUVIO_PS5__=false;
+assert(vm.runInContext('StreamLinkCacheStore.getValid({itemId:"tt1"}, 60000)', linkContext));
+assert.equal(vm.runInContext('StreamLinkCacheStore.getValid({itemId:"tt2"}, 60000)', linkContext), null);
 let requests = 0; let complete;
-const cacheContext = vm.createContext({ URL,
-  fetchJson: () => { ++requests; return new Promise(resolve => complete = resolve); },
-  mapIntroDbSegmentsToSkipIntervals: value => value });
+const cacheContext = vm.createContext({ URL, AbortController, setTimeout, clearTimeout,
+  INTRODB_API_URL:'https://metadata.invalid', Platform:{isWebOS:()=>false,isTizen:()=>false},
+  fetch: () => { ++requests; return new Promise(resolve => complete = value => resolve({ok:true,json:async()=>value})); } });
 load('skipIntroRepository.js', cacheContext);
-const first = cacheContext.lookup('movie:tt1'); const second = cacheContext.lookup('movie:tt1');
+const lookup = () => vm.runInContext('skipIntroRepository.getMovieSkipIntervals({imdbId:"tt1"})', cacheContext);
+const first = lookup(); const second = lookup();
 assert.equal(requests, 1);
-complete([{startTime: 10, endTime: 20}]);
+complete({outro:{start_sec:10,end_sec:20}});
 Promise.all([first, second]).then(async ([a, b]) => {
-  assert.equal(a, b); assert.equal(await cacheContext.lookup('movie:tt1'), a); assert.equal(requests, 1);
+  assert.equal(a, b); assert.equal(a[0].startTime, 10); assert.equal(a[0].endTime, 20);
+  assert.equal(await lookup(), a); assert.equal(requests, 1);
 }).catch(error => { console.error(error); process.exitCode = 1; });
 '''
             result = subprocess.run(['node', '-e', code, json.dumps(emitted)], capture_output=True, text=True)

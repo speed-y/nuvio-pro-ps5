@@ -1,0 +1,109 @@
+.ps5-search-keyboard {
+  padding: 2vw;
+}
+.ps5-search-draft {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.5vw;
+  padding: .8vw 1.2vw;
+  border: 2px solid #555;
+  border-radius: .7vw;
+  background-color: #0d0d0d;
+  color: #fff;
+  font-size: 1.8vw;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 7vw;
+  overflow-y: auto;
+}
+.ps5-search-draft.empty { color: #999; }
+.ps5-search-caret {
+  display: inline-block;
+  height: 1.1em;
+  border-left: 2px solid #fff;
+  vertical-align: text-bottom;
+}
+.ps5-search-suggestions {
+  display: flex;
+  gap: .6vw;
+  min-height: 3.4vw;
+  margin-top: .8vw;
+}
+.ps5-search-suggestion {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: .5vw .8vw;
+  border: 2px solid #555;
+  border-radius: .6vw;
+  background: #242424;
+  color: #fff;
+  font: inherit;
+  font-size: 1.2vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ps5-search-suggestion.focused {
+  background: #f5f5f5;
+  border-color: #f5f5f5;
+  color: #111;
+}
+.ps5-search-suggestion-status {
+  min-height: 1.7vw;
+  margin-top: .4vw;
+  color: #b3b3b3;
+  font-size: 1vw;
+}
+.ps5-search-keyboard .ps5-search-keys {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 1vw -.2vw 0;
+}
+.ps5-search-keys .nuvio-dialog-button {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  flex: 0 0 calc(10% - .4vw);
+  width: calc(10% - .4vw);
+  min-width: 0;
+  min-height: 3.1vw;
+  margin: .2vw;
+  padding: .6vw .3vw;
+  border-radius: .6vw;
+  font-size: 1.6vw;
+  line-height: 1.25;
+  justify-content: center;
+  text-align: center;
+}
+.ps5-search-keys .nuvio-dialog-button-label {
+  flex: 0 1 auto;
+}
+.ps5-key-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6vw;
+  height: 1.6vw;
+  margin-right: .4vw;
+}
+.ps5-key-shortcut svg { display: block; width: 100%; height: 100%; }
+.ps5-key-shortcut.stick { width: 3vw; height: 3vw; }
+.ps5-key-shortcut.shoulder {
+  width: 2.08vw;
+}
+.ps5-search-keys .nuvio-dialog-button:nth-child(n+41) {
+  flex-basis: calc(16.666% - .4vw);
+  width: calc(16.666% - .4vw);
+  font-size: 1.2vw;
+}
+.ps5-search-keys .nuvio-dialog-button[aria-pressed="true"] {
+  border-color: #f5f5f5;
+}
+.ps5-search-keys .ps5-search-submit:not(.focused) {
+  background-color: #3b3b3b;
+  border-color: #777;
+}

@@ -21,9 +21,13 @@ import { PostPlayRecommendationController, shouldUsePostPlayRecommendation } fro
     player = nuvio / 'js/ui/screens/player/playerScreenMethods-06-handle-post-play-key.js'
     replace(player, '''      StreamPreferencesStore.set(prefContentId, prefVideoId, streamCandidate.id, {
         bingeGroup: streamCandidate?.behaviorHints?.bingeGroup || streamCandidate?.raw?.behaviorHints?.bingeGroup || "",
+        filename: streamCandidate?.behaviorHints?.filename || streamCandidate?.raw?.behaviorHints?.filename || null,
+        infoHash: streamCandidate?.infoHash || streamCandidate?.raw?.infoHash || null,
         resumeIdentity: buildStreamResumeIdentity(streamCandidate)
       });''', '''      const metadata = {
         bingeGroup: streamCandidate?.behaviorHints?.bingeGroup || streamCandidate?.raw?.behaviorHints?.bingeGroup || "",
+        filename: streamCandidate?.behaviorHints?.filename || streamCandidate?.raw?.behaviorHints?.filename || null,
+        infoHash: streamCandidate?.infoHash || streamCandidate?.raw?.infoHash || null,
         resumeIdentity: buildStreamResumeIdentity(streamCandidate)
       };
       if (globalThis.__NUVIO_PS5__) {
@@ -53,32 +57,25 @@ import { PostPlayRecommendationController, shouldUsePostPlayRecommendation } fro
     replace(store, '  return STREAM_AUTO_PLAY_SOURCES.includes(normalized) ? normalized : "ALL_SOURCES";',
             '''  if (globalThis.__NUVIO_PS5__ && normalized === "ENABLED_PLUGINS_ONLY") return "INSTALLED_ADDONS_ONLY";
   return STREAM_AUTO_PLAY_SOURCES.includes(normalized) ? normalized : "ALL_SOURCES";''')
-    # Reuse Binge Group is series-wide, unlike Reuse Last Link's exact-video
-    # cache. Keep the original cache timestamps/expiry and per-profile storage.
-    preferences = nuvio / 'js/data/local/streamPreferencesStore.js'
-    replace(preferences, 'export const StreamPreferencesStore = {',
-            '''export const StreamPreferencesStore = {
-  getBingeGroupEntry(contentId, profileId = activeProfileId()) {
-    const key = buildContentKey(contentId, contentId);
-    if (!key) return null;
-    const entry = readEntries(profileId).find(item =>
-      (item.key === key || item.key.startsWith(key + "::")) && item.bingeGroup);
-    return entry ? { ...entry } : null;
-  },''')
-    stream = nuvio / 'js/ui/screens/stream/streamScreenMethods-05-maybe-auto-resume-stream.js'
-    replace(stream, '          ? StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId)',
-            '''          ? (globalThis.__NUVIO_PS5__
-            ? StreamPreferencesStore.getBingeGroupEntry(this.params?.itemId)
-            : StreamPreferencesStore.getEntry(this.params?.itemId, this.params?.videoId || this.params?.itemId))''')
+    # Upstream getLatestForContent now provides series-wide binge reuse.
+    # Keep PS5 source reuse based on fresh addon results, not cached signed URLs
+    # or request headers, regardless of which frontend path attempts a save.
+    cache = nuvio / 'js/data/local/streamLinkCacheStore.js'
+    replace(cache, '  save(params, payload, profileId = activeStreamLinkProfile()) {',
+            '''  save(params, payload, profileId = activeStreamLinkProfile()) {
+    if (globalThis.__NUVIO_PS5__) return false;''')
+    replace(cache, '  getValid(params, maxAgeMs, profileId = activeStreamLinkProfile()) {',
+            '''  getValid(params, maxAgeMs, profileId = activeStreamLinkProfile()) {
+    if (globalThis.__NUVIO_PS5__) return null;''')
     # prepare and the skip hook run concurrently. Share the movie lookup rather
     # than queueing duplicate requests on the console's metadata HTTP thread.
     repository = nuvio / 'js/data/repository/skipIntroRepository.js'
     replace(repository, '''    const data = await fetchJson(url.toString());
     const intervals = mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true });
-    CACHE.set(cacheKey, intervals);
+    writeCache(cacheKey, intervals);
     return intervals;''', '''    const pending = fetchJson(url.toString())
       .then(data => mapIntroDbSegmentsToSkipIntervals(data, { isMovie: true }));
-    CACHE.set(cacheKey, pending);
+    CACHE.set(cacheKey, { intervals: pending, expiresAt: Date.now() + CACHE_EMPTY_TTL_MS });
     const intervals = await pending;
-    CACHE.set(cacheKey, intervals);
+    writeCache(cacheKey, intervals);
     return intervals;''')

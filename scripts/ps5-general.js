@@ -43,6 +43,8 @@ globalThis.__nuvioDeferStreamPreference = function (screen, contentId, videoId, 
     streamId: ps5GeneralPreferenceText(streamId, 512),
     metadata: {
       bingeGroup: ps5GeneralPreferenceText(metadata?.bingeGroup, 512),
+      filename: ps5GeneralPreferenceText(metadata?.filename, 1024),
+      infoHash: ps5GeneralPreferenceText(metadata?.infoHash, 64),
       resumeIdentity: ps5GeneralPreferenceText(metadata?.resumeIdentity, 2048)
     }
   };

@@ -490,7 +490,7 @@
          EVO_LOGI("web", "startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
          evo_boot_log_flush();
          if (!g_web_ok) {
-@@ -773,12 +906,21 @@
+@@ -773,17 +906,26 @@
          web_report("", 0.0);
      } else {
          IPlaybackController* pb = app.getPlaybackController();
@@ -512,6 +512,12 @@
              if (pos > 0.0) g_web_rep.lastPos = pos;
              if (++g_web_rep.frames % 600 == 0)          /* ~10 s */
                  web_report("/Progress", g_web_rep.lastPos);
+         }
+-        if ((seen_active && !active) || (!seen_active && ++frames > 600)) {
++        if ((seen_active && !active) || (!seen_active && ++frames > 300)) {
+             web_report("/Stopped", g_web_rep.lastPos);
+             g_web_rep.on = false;
+             evo_webui_playback_ended(seen_active ? 1 : 0);
 @@ -1179,6 +1321,7 @@
              }
              if (++m_softCloseFrames > 150) {     /* ~2.5 s of presented frames */
@@ -571,7 +577,16 @@
              /*
               * Synthetic presses from the dev remote (`key <button>`), OR'd in
               * before anything reads the mask so they are indistinguishable
-@@ -1576,7 +1745,29 @@
+@@ -1532,7 +1701,7 @@
+                 r3IsChapters = true;
+             /* #227: on the keyboard's PHONE LINK OFF card, R3 is Set port. */
+             const bool r3ToKeyboard = (pressed & PadButtons::R3) && evo_keyboard_wants_r3();
+-            if ((pressed & PadButtons::L3) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {
++            if (((pressed & PadButtons::L3) && !evo_webui_active()) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {
+                 EVO_LOGI("screenshot", "stick click pressed=%#010x", pressed);
+                 evo_boot_log_flush();
+                 std::string shotPath;
+@@ -1576,7 +1745,31 @@
              }
  
              if (evo_webui_active()) {
@@ -598,11 +613,13 @@
 +                    evo_input_fired(&browserSticks, EVO_ACT_DOWN) ? 3 :
 +                    evo_input_fired(&browserSticks, EVO_ACT_LEFT) ? 4 : 0;
 +                evo_webui_controller(pressed & PadButtons::Options,
-+                                     pressed & PadButtons::Triangle, direction);
++                                     pressed & PadButtons::Triangle, direction,
++                                     pressed & PadButtons::R2 ? 2 : (pressed & PadButtons::L3 ? 1 :
++                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 : 0))));
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1622,6 +1813,9 @@
+@@ -1622,6 +1815,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -612,16 +629,16 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1734,7 +1928,7 @@
+@@ -1734,7 +1930,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
 -        int uiActive = (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||
-+        int uiActive = nuvioShell || (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||
++        int uiActive = nuvioShell || evo_webui_active() || (frame < 10) || isPlayer || isSurround || hasInput || hasAnim ||
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1961,7 +2155,14 @@
+@@ -1961,7 +2157,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -1465,7 +1482,7 @@
 +#ifdef __cplusplus
 +extern "C"
 +#endif
-+void evo_webui_controller(int options, int menu, int direction);
++void evo_webui_controller(int options, int menu, int direction, int shortcut);
 +
 +#ifdef __cplusplus
 +extern "C"
@@ -2724,8 +2741,8 @@
 -static char s_hook_profile[16];      /* "" = media server, "nuvio" */
 +static int s_native_requested;
 +static char s_hook_profile[16];
-+static uint32_t s_controller_options, s_controller_menu, s_controller_navigation;
-+static int s_controller_direction;      /* "" = media server, "nuvio" */
++static uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;
++static int s_controller_direction, s_controller_shortcut;      /* "" = media server, "nuvio" */
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
  
@@ -2787,7 +2804,7 @@
 +"function saveNow(kind){if(!storeReady)return;try{var sv=snap();if(sv===null||sv===lastSnap)return;"
 +" var x=new XMLHttpRequest();x.open('POST','/evo/storage',false);x.setRequestHeader('Content-Type','application/json');"
 +" x.send(sv);if(x.status===204)lastSnap=sv;}catch(e){}}"
-+"window.__nuvioPrepareKeyboard=function(){saveNow(1);};"
++"window.__nuvioFlushStorage=function(){saveNow(1);};"
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
@@ -2851,7 +2868,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +805,1111 @@
+@@ -785,17 +805,967 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3234,149 +3251,6 @@
 +    if (!s_next.automatic) return -1;
 +    if (s_next_elapsed >= (uint64_t)s_next.seconds * 1000) return s_next.seconds ? 1 : -1;
 +    return (int)(((uint64_t)s_next.seconds * 1000 - s_next_elapsed + 999) / 1000);
-+}
-+
-+#include "evo_keyboard.h"
-+/* Included in evo_webui.c. Only the main-thread session calls the existing IME.
-+ * The server thread queues requests and returns text, without logging it.
-+ * State: 0 idle, 1 queued, 2 open, 3 accepted, 4 cancelled, 5 unavailable. */
-+static int s_text_state;
-+static char s_text_value[1024];
-+
-+static void text_input_submit(const char *text, void *unused)
-+{
-+    (void)unused;
-+    pthread_mutex_lock(&s_mx);
-+    snprintf(s_text_value, sizeof s_text_value, "%s", text);
-+    s_text_state = 3;
-+    pthread_mutex_unlock(&s_mx);
-+}
-+
-+static void text_input_serve(int fd, const char *path)
-+{
-+    char value[1024];
-+    int opening = query_param(path, "open", value, sizeof value);
-+    pthread_mutex_lock(&s_mx);
-+    if (opening && (s_text_state == 1 || s_text_state == 2)) {
-+        pthread_mutex_unlock(&s_mx);
-+        respond(fd, "409 Conflict", "text/plain", "", 0);
-+        return;
-+    }
-+    if (opening) {
-+        snprintf(s_text_value, sizeof s_text_value, "%s", value);
-+        s_text_state = 1;
-+    }
-+    int state = s_text_state;
-+    snprintf(value, sizeof value, "%s", s_text_value);
-+    pthread_mutex_unlock(&s_mx);
-+    const char *status = state == 1 || state == 2 ? "202 Accepted" :
-+        state == 3 ? "200 OK" : state == 4 ? "204 No Content" : "503 Service Unavailable";
-+    respond(fd, status, "text/plain; charset=utf-8", state == 3 ? value : "", state == 3 ? strlen(value) : 0);
-+}
-+
-+/* Browser/native keyboard session. Included after ps5-text-input.c.
-+ * Keep the loopback server alive, but never overlap the two system dialogs.
-+ * No query text enters the diagnostic log. */
-+#include <time.h>
-+#include "evo_ime_dialog.h"
-+
-+static void open_dialog(const char *url);
-+static void read_result(void);
-+static int s_text_phase;
-+static struct timespec s_text_started;
-+
-+static long text_input_elapsed(void)
-+{
-+    struct timespec now;
-+    clock_gettime(CLOCK_MONOTONIC, &now);
-+    return (now.tv_sec - s_text_started.tv_sec) * 1000L +
-+           (now.tv_nsec - s_text_started.tv_nsec) / 1000000L;
-+}
-+
-+static void text_input_phase(int phase)
-+{
-+    s_text_phase = phase;
-+    clock_gettime(CLOCK_MONOTONIC, &s_text_started);
-+    tlog("Search keyboard: phase=%d", phase);
-+}
-+
-+/* True consumes this frame and suppresses the normal browser state machine.
-+ * Phases: 1 closing browser, 2 keyboard, 4 cleanup, 5 blocked.
-+ * Only closure/cleanup have deadlines. Typing never has a timeout. */
-+static int text_input_session_pump(void)
-+{
-+    pthread_mutex_lock(&s_mx);
-+    int state = s_text_state;
-+    char initial[1024];
-+    snprintf(initial, sizeof initial, "%s", s_text_value);
-+    pthread_mutex_unlock(&s_mx);
-+    if (!s_text_phase) {
-+        if (state != 1) return 0;
-+        if (s_state != P_RUN || strcmp(s_hook_profile, "nuvio")) {
-+            pthread_mutex_lock(&s_mx);
-+            s_text_state = 5;
-+            pthread_mutex_unlock(&s_mx);
-+            return 1;
-+        }
-+        int rc = sceWebBrowserDialogClose();
-+        tlog("Search keyboard: browser Close rc=0x%08x", (unsigned)rc);
-+        if (rc != 0) {
-+            pthread_mutex_lock(&s_mx);
-+            s_text_state = 5;
-+            pthread_mutex_unlock(&s_mx);
-+            return 1;
-+        }
-+        s_closed_by_evo = 1;
-+        s_state = P_CLOSING;
-+        text_input_phase(1);
-+        return 1;
-+    }
-+    if (s_text_phase == 1) {
-+        int status = sceWebBrowserDialogUpdateStatus();
-+        if (status == CDLG_STATUS_FINISHED || status == CDLG_STATUS_NONE ||
-+            status == CDLG_STATUS_INITIALIZED) {
-+            tlog("Search keyboard: browser closed status=%d", status);
-+            if (status == CDLG_STATUS_FINISHED) read_result();
-+            s_state = P_PLAYING; /* Reserve the session without starting playback. */
-+            int opened = evo_keyboard_open_native("Search movies & series", initial, 255,
-+                                                   text_input_submit, NULL);
-+            pthread_mutex_lock(&s_mx);
-+            s_text_state = opened ? 2 : 5;
-+            pthread_mutex_unlock(&s_mx);
-+            tlog("Search keyboard: native open=%d", opened);
-+            text_input_phase(opened ? 2 : 4);
-+        } else if (text_input_elapsed() >= 10000) {
-+            tlog("Search keyboard: browser closure unconfirmed status=%d; stopping", status);
-+            text_input_phase(5);
-+        }
-+    } else if (s_text_phase == 2) {
-+        evo_keyboard_update();
-+        if (!evo_keyboard_is_open()) {
-+            pthread_mutex_lock(&s_mx);
-+            if (s_text_state == 2) s_text_state = 4;
-+            pthread_mutex_unlock(&s_mx);
-+            text_input_phase(4);
-+        }
-+    } else if (s_text_phase == 4) {
-+        int status = sceImeDialogGetStatus();
-+        if (status == SCE_IME_DIALOG_STATUS_NONE) {
-+            tlog("Search keyboard: native cleanup confirmed; reopening Search");
-+            char url[sizeof s_reopen_url];
-+            int n = snprintf(url, sizeof url, "%s%cnuvioPlaybackReturn=1&nuvioKeyboardReturn=1",
-+                             s_open_url, strchr(s_open_url, '?') ? '&' : '?');
-+            if (n < 0 || (size_t)n >= sizeof url) {
-+                text_input_phase(5);
-+                return 1;
-+            }
-+            snprintf(s_reopen_url, sizeof s_reopen_url, "%s", url);
-+            s_text_phase = 0;
-+            open_dialog(s_reopen_url);
-+        } else if (text_input_elapsed() >= 10000) {
-+            tlog("Search keyboard: native cleanup unconfirmed status=%d; stopping", status);
-+            text_input_phase(5);
-+        }
-+    }
-+    return 1;
 +}
 +
 +/* Included in evo_webui.c after progress/skip/next policy definitions. */
@@ -3931,7 +3805,6 @@
 +
  static void serve_evo(int fd, const char *path)
  {
--    if (!strncmp(path, "/evo/hook.js", 12)) {
 +    if (!strncmp(path, "/evo/skip-metadata?", 19)) {
 +        serve_skip_metadata(fd, path);
 +        return;
@@ -3940,9 +3813,7 @@
 +        playback_progress_serve(fd, path);
 +        return;
 +    }
-+    if (!strcmp(path, "/evo/text-input") || !strncmp(path, "/evo/text-input?", 16)) {
-+        text_input_serve(fd, path);
-+    } else if (!strncmp(path, "/evo/hook.js", 12)) {
+     if (!strncmp(path, "/evo/hook.js", 12)) {
          pthread_mutex_lock(&s_mx);
          s_hook_seen = 1;
          pthread_mutex_unlock(&s_mx);
@@ -3950,9 +3821,10 @@
 +    } else if (!strcmp(path, "/evo/controller")) {
 +        char body[160];
 +        pthread_mutex_lock(&s_mx);
-+        int n = snprintf(body, sizeof body, "{\"options\":%u,\"menu\":%u,\"navigation\":%u,\"direction\":%d}",
++        int n = snprintf(body, sizeof body, "{\"options\":%u,\"menu\":%u,\"navigation\":%u,\"direction\":%d,\"keyboard\":%u,\"shortcut\":%d}",
 +                         (unsigned)s_controller_options, (unsigned)s_controller_menu,
-+                         (unsigned)s_controller_navigation, s_controller_direction);
++                         (unsigned)s_controller_navigation, s_controller_direction,
++                         (unsigned)s_controller_keyboard, s_controller_shortcut);
 +        pthread_mutex_unlock(&s_mx);
 +        respond(fd, "200 OK", "application/json", body, (size_t)n);
      } else if (!strncmp(path, "/evo/close", 10)) {
@@ -3964,7 +3836,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1924,12 @@
+@@ -810,6 +1780,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3977,7 +3849,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1938,13 @@
+@@ -818,6 +1794,13 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3991,7 +3863,7 @@
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2336,25 @@
+@@ -1209,13 +2192,25 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -4019,7 +3891,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2366,14 @@
+@@ -1227,8 +2222,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -4034,7 +3906,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2395,16 @@
+@@ -1250,8 +2251,16 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -4052,7 +3924,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2412,20 @@
+@@ -1259,11 +2268,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -4075,7 +3947,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2441,7 @@
+@@ -1279,6 +2297,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -4083,7 +3955,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1318,6 +2481,7 @@
+@@ -1318,6 +2337,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -4091,7 +3963,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,6 +2506,7 @@
+@@ -1342,6 +2362,7 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -4099,7 +3971,7 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1356,6 +2521,7 @@
+@@ -1356,6 +2377,7 @@
          s_state = P_OFF;
          return;
      }
@@ -4107,16 +3979,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1405,7 +2571,7 @@
- 
- int evo_webui_active(void)
- {
--    return s_state == P_RUN || s_state == P_CLOSING;
-+    return s_text_phase || s_state == P_RUN || s_state == P_CLOSING;
- }
- 
- void evo_webui_shutdown(void)
-@@ -1505,7 +2671,9 @@
+@@ -1505,7 +2527,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4127,7 +3990,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,18 +2689,51 @@
+@@ -1521,18 +2545,51 @@
      return 0;
  }
  
@@ -4182,15 +4045,7 @@
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
      s_frames = OPEN_DELAY_FRAMES / 2;    /* ~1 s: the player screen is going away */
-@@ -1540,6 +2741,7 @@
- 
- void evo_webui_pump(void)
- {
-+    if (text_input_session_pump()) { tlog_drain(); return; }
-     if (!s_checked) {
-         s_checked = 1;
-         if (!read_trigger()) return;
-@@ -1601,6 +2803,12 @@
+@@ -1601,6 +2658,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4203,7 +4058,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2862,23 @@
+@@ -1654,3 +2717,27 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -4215,7 +4070,7 @@
 +    return result;
 +}
 +
-+void evo_webui_controller(int options, int menu, int direction) {
++void evo_webui_controller(int options, int menu, int direction, int shortcut) {
 +    pthread_mutex_lock(&s_mx);
 +    if (options) ++s_controller_options;
 +    if (menu) ++s_controller_menu;
@@ -4223,212 +4078,13 @@
 +        ++s_controller_navigation;
 +        s_controller_direction = direction;
 +    }
++    if (shortcut >= 1 && shortcut <= 4) {
++        ++s_controller_keyboard;
++        s_controller_shortcut = shortcut;
++    }
 +    pthread_mutex_unlock(&s_mx);
 +    if (options) tlog("controller: Options");
 +    if (menu) tlog("controller: Triangle");
-+}
---- a/projects/evoplayer/ui/include/evo_keyboard.h
-+++ b/projects/evoplayer/ui/include/evo_keyboard.h
-@@ -114,6 +114,8 @@
- void evo_keyboard_mark_secret(void);
- 
- /* Close the keyboard without submitting. */
-+int evo_keyboard_open_native(const char *title, const char *initial_value,
-+                             int max_len, evo_keyboard_cb callback, void *userdata);
- void evo_keyboard_close(void);
- 
- /* Check if the keyboard modal is currently active. */
---- a/projects/evoplayer/ui/src/evo_keyboard.c
-+++ b/projects/evoplayer/ui/src/evo_keyboard.c
-@@ -5,6 +5,7 @@
- #include <stdio.h>
- #include <stdlib.h>
- #include <string.h>
-+#include <time.h>
- #include <errno.h>
- 
- #include "evo_keyboard.h"
-@@ -65,6 +66,17 @@
- }
- 
- #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
-+static struct timespec s_ime_trace_start;
-+static int s_ime_trace_status, s_ime_trace_changes, s_ime_trace_checkpoint;
-+
-+static long ime_trace_ms(void)
-+{
-+    struct timespec now;
-+    clock_gettime(CLOCK_MONOTONIC, &now);
-+    return (now.tv_sec - s_ime_trace_start.tv_sec) * 1000L +
-+           (now.tv_nsec - s_ime_trace_start.tv_nsec) / 1000000L;
-+}
-+
- static uint16_t g_ime_buf[1024];
- static uint16_t g_ime_title[256];
- static uint16_t g_ime_placeholder[256];
-@@ -447,7 +459,7 @@
- }
- 
- static void kb_open(const char *title, const char *initial_value, int max_len,
--                    evo_keyboard_cb on_submit, void *userdata, int phone);
-+                    evo_keyboard_cb on_submit, void *userdata, int phone, int native_only);
- 
- void evo_keyboard_open(const char *title,
-                        const char *initial_value,
-@@ -455,7 +467,7 @@
-                        evo_keyboard_cb on_submit,
-                        void *userdata)
- {
--    kb_open(title, initial_value, max_len, on_submit, userdata, 0);
-+    kb_open(title, initial_value, max_len, on_submit, userdata, 0, 0);
- }
- 
- void evo_keyboard_open_phone(const char *title,
-@@ -464,7 +476,7 @@
-                              evo_keyboard_cb on_submit,
-                              void *userdata)
- {
--    kb_open(title, initial_value, max_len, on_submit, userdata, 1);
-+    kb_open(title, initial_value, max_len, on_submit, userdata, 1, 0);
- }
- 
- int evo_keyboard_phone_info(char *title, size_t tcap)
-@@ -523,11 +535,11 @@
-                               evo_keyboard_cb on_submit, void *userdata)
- {
-     g_open_number = 1;
--    kb_open(title, initial_value, max_len, on_submit, userdata, 0);
-+    kb_open(title, initial_value, max_len, on_submit, userdata, 0, 0);
- }
- 
- static void kb_open(const char *title, const char *initial_value, int max_len,
--                    evo_keyboard_cb on_submit, void *userdata, int phone)
-+                    evo_keyboard_cb on_submit, void *userdata, int phone, int native_only)
- {
-     memset(&g_kb, 0, sizeof(g_kb));
-     g_kb_seq++;
-@@ -544,7 +556,7 @@
-     (void)phone;   /* every prompt gets the phone link when the console has an address */
-     g_kb.number = g_open_number;
-     g_open_number = 0;
--    if (!g_kb.number) kb_setup_phone();
-+    if (!native_only && !g_kb.number) kb_setup_phone();
- 
-     if (initial_value) {
-         g_kb.cursor = -1;
-@@ -563,10 +575,11 @@
-     g_kb.userdata = userdata;
- 
- #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
--    if (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_native_ime_broken && !g_kb.phone &&
--        !g_kb.number && !g_kb.noport) {
-+    if (!g_native_ime_broken && (native_only ||
-+        (g_kb_type == EVO_KEYBOARD_TYPE_NATIVE && !g_kb.phone && !g_kb.number && !g_kb.noport))) {
-         int cd_rc = init_native_ime_subsystem();
-         if (cd_rc != 0) {
-+            if (native_only) { g_kb.is_open = 0; return; }
-             /* No CommonDialog, no IME. Don't try again this session. */
-             g_native_ime_broken = 1;
-             evo_log("ime: CommonDialog unavailable (0x%08x) - virtual keyboard",
-@@ -623,6 +636,10 @@
-         evo_log("ime: -> sceImeDialogInit (panel %ux%u)",
-                 (unsigned)width, (unsigned)height);
-         evo_log_flush();
-+        clock_gettime(CLOCK_MONOTONIC, &s_ime_trace_start);
-+        s_ime_trace_status = -1;
-+        s_ime_trace_changes = 0;
-+        s_ime_trace_checkpoint = 0;
-         int rc = sceImeDialogInit(&param, NULL);
-         evo_log("ime: sceImeDialogInit userId=0x%08x len=%u panel=%ux%u -> 0x%08x",
-                 (unsigned)userId, (unsigned)param.maxTextLength,
-@@ -640,6 +657,7 @@
- 
-         /* Latch: if the system dialog won't start once it won't start later
-          * either, and a failed toast per prompt is worse than just typing. */
-+        if (native_only) { g_kb.is_open = 0; return; }
-         g_native_ime_broken = 1;
-         char err_msg[64];
-         snprintf(err_msg, sizeof(err_msg), "ERR 0x%08X", (unsigned)rc);
-@@ -649,6 +667,7 @@
- #endif
- 
- 
-+    if (native_only) { g_kb.is_open = 0; return; }
-     g_kb.is_native_active = 0;
-     evo_feedback(EVO_FB_OPEN);
- }
-@@ -657,8 +676,12 @@
- {
- #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
-     if (g_kb.is_open && g_kb.is_native_active) {
--        sceImeDialogAbort();
--        sceImeDialogTerm();
-+        int abort_rc = sceImeDialogAbort();
-+        evo_log("ime trace: Abort rc=0x%08x elapsed_ms=%ld", (unsigned)abort_rc, ime_trace_ms());
-+        evo_log_flush();
-+        int term_rc = sceImeDialogTerm();
-+        evo_log("ime trace: Term rc=0x%08x elapsed_ms=%ld", (unsigned)term_rc, ime_trace_ms());
-+        evo_log_flush();
-         g_kb.is_native_active = 0;
-     }
- #endif
-@@ -705,10 +728,24 @@
- #if defined(EVO_TARGET_PS5) || defined(__FreeBSD__)
-     if (g_kb.is_open && g_kb.is_native_active) {
-         int status = sceImeDialogGetStatus();
-+        long elapsed = ime_trace_ms();
-+        int checkpoint = elapsed >= 10000 ? 3 : elapsed >= 5000 ? 2 : elapsed >= 1000 ? 1 : 0;
-+        if ((status != s_ime_trace_status && s_ime_trace_changes < 16) ||
-+            checkpoint > s_ime_trace_checkpoint) {
-+            evo_log("ime trace: status=%d elapsed_ms=%ld open=%d native=%d",
-+                    status, elapsed, g_kb.is_open, g_kb.is_native_active);
-+            evo_log_flush();
-+            if (status != s_ime_trace_status) ++s_ime_trace_changes;
-+        }
-+        s_ime_trace_status = status;
-+        s_ime_trace_checkpoint = checkpoint;
-         if (status == SCE_IME_DIALOG_STATUS_FINISHED) {
-             SceImeDialogResult result;
-             memset(&result, 0, sizeof(result));
--            sceImeDialogGetResult(&result);
-+            int result_rc = sceImeDialogGetResult(&result);
-+            evo_log("ime trace: GetResult rc=0x%08x end=%d elapsed_ms=%ld",
-+                    (unsigned)result_rc, result.endStatus, ime_trace_ms());
-+            evo_log_flush();
-             if (result.endStatus == SCE_IME_DIALOG_END_STATUS_OK) {
-                 utf16_to_utf8(g_ime_buf, g_kb.buffer, sizeof(g_kb.buffer));
-                 if (g_kb.callback) {
-@@ -718,11 +755,15 @@
-             } else {
-                 evo_feedback(EVO_FB_CANCEL);
-             }
--            sceImeDialogTerm();
-+            int term_rc = sceImeDialogTerm();
-+        evo_log("ime trace: Term rc=0x%08x elapsed_ms=%ld", (unsigned)term_rc, ime_trace_ms());
-+        evo_log_flush();
-             g_kb.is_open = 0;
-             g_kb.is_native_active = 0;
-         } else if (status == SCE_IME_DIALOG_STATUS_NONE) {
--            sceImeDialogTerm();
-+            int term_rc = sceImeDialogTerm();
-+        evo_log("ime trace: Term rc=0x%08x elapsed_ms=%ld", (unsigned)term_rc, ime_trace_ms());
-+        evo_log_flush();
-             g_kb.is_open = 0;
-             g_kb.is_native_active = 0;
-         }
-@@ -1151,3 +1192,13 @@
-     if (g_kb.phone && g_qr_ok) draw_phone_qr(fb);
- }
- 
-+
-+/* Browser Search must not silently replace the PS5 keyboard with EVO's UI.
-+ * A busy browser/CommonDialog refusal is not a permanent native-IME failure. */
-+int evo_keyboard_open_native(const char *title, const char *initial_value,
-+                             int max_len, evo_keyboard_cb callback, void *userdata)
-+{
-+    if (g_kb.is_open || g_native_ime_broken) return 0;
-+    kb_open(title, initial_value, max_len, callback, userdata, 0, 1);
-+    return evo_keyboard_is_native_active();
 +}
 --- a/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
 +++ b/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
@@ -4464,6 +4120,16 @@
      std::string badges_[9]; /* res hdr codec fps audio decoder upscale smooth deepblack */
      std::string audio_track_, sub_track_, music_codec_;
      std::string chapter_title_, scrub_chapter_title_, ends_at_, remaining_;   /* #150 / #151 */
+--- a/projects/evoplayer/ui_kit/include/evo_hui_screens.hpp
++++ b/projects/evoplayer/ui_kit/include/evo_hui_screens.hpp
+@@ -262,6 +262,7 @@
+     int total_ = 0;
+     int cursor_ = -1;
+     std::vector<Row> rows_;
++    bool player_skin_ = false;
+     bool empty_ = false;
+     std::string empty_title_, empty_hint_, empty_icon_;
+     std::vector<std::pair<int, std::string>> hints_; /* ui::Button, label */
 --- a/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
 +++ b/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
 @@ -64,7 +64,7 @@
@@ -4475,9 +4141,195 @@
      const char *lang;
  };
  
+--- a/projects/evoplayer/ui_kit/src/evo_hui_modals.cpp
++++ b/projects/evoplayer/ui_kit/src/evo_hui_modals.cpp
+@@ -18,18 +18,33 @@
+ using ::hui::gfx::DrawList;
+ using ::hui::gfx::Rect;
+ namespace tween = ::hui::tween;
++/* Nuvio TV 1.3.11 base.css + components-35.css. Local presentation values,
++ * never a saved EVO theme change or a browser-profile preference write. */
++static Palette nuvio_player_palette(Palette p)
++{
++    p.bg_top = p.bg_bottom = hui::gfx::Color::rgb(0x1a1a1a);
++    p.surface = hui::gfx::Color::rgb(0x242424);
++    p.surface_sel = hui::gfx::Color::rgb(0x303030);
++    p.accent = p.accent_soft = p.accent_alt = hui::gfx::Color::rgb(0xf5f5f5);
++    p.text = hui::gfx::Color::rgb(0xffffff);
++    p.text_muted = hui::gfx::Color::rgb(0xb3b3b3);
++    p.text_faint = hui::gfx::Color::rgb(0xb3b3b3);
++    p.border = hui::gfx::Color::rgb(0x333333);
++    return p;
++}
++
+ namespace ui = ::hui::ui;
+ 
+ namespace
+ {
+ 
+ const Color kWhite = Color::rgb(0xffffff);
+-const Color kInk = Color::rgb(0x0b0d16);
++const Color kInk = Color::rgb(0x111111);
+ const Color kBlack = Color::rgb(0x000000);
+ const Color kClear = Color::rgb(0x000000, 0.0f);
+ 
+-constexpr float kSheetX = 1120.0f;
+-constexpr float kSheetW = 1920.0f - kSheetX - 48.0f;
++constexpr float kSheetX = 104.0f;
++constexpr float kSheetW = 900.0f;
+ constexpr float kTrackTop = 250.0f;
+ constexpr float kTrackH = 74.0f;
+ 
+@@ -115,7 +130,7 @@
+ void SubtitlePicker::draw(DrawList &list, const Context &ctx) const
+ {
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
++    const Palette p = nuvio_player_palette(ctx.palette);
+     const float o = open_.value;
+     list.rounded_rect({0, 0, 1920, 1080}, 0, kBlack.with_alpha(0.62f * o));
+ 
+@@ -125,12 +140,12 @@
+     list.push_opacity(o);
+     const Rect sheet{kSheetX, 48, kSheetW, 1080 - 96};
+     list.shadow({sheet.x - 10, sheet.y + 20, sheet.w, sheet.h}, page::kRadiusCard, 60, kBlack.with_alpha(0.6f));
+-    list.rounded_rect(sheet, page::kRadiusCard, p.bg_top.with_alpha(0.96f));
++    list.rounded_rect(sheet, 16, kBlack.with_alpha(0.34f));
+     list.bordered_rect(sheet, page::kRadiusCard, kClear, 1.5f, kWhite.with_alpha(0.12f));
+ 
+     ui::text(list, fonts.semibold, ui::upper(eyebrow_.empty() ? "Subtitles" : eyebrow_), sheet.x + 36,
+              sheet.y + 70, 16, p.accent, Align::left, 3.0f);
+-    ui::text(list, fonts.display, fit(fonts.display, title_.empty() ? "Subtitle track" : title_, 36, sheet.w - 72),
++    ui::text(list, fonts.semibold, fit(fonts.semibold, title_.empty() ? "Subtitle track" : title_, 36, sheet.w - 72),
+              sheet.x + 34, sheet.y + 118, 36, kWhite);
+     /* Size and sync, as pills under the title. */
+     float px = sheet.x + 36;
+@@ -147,20 +162,24 @@
+     pill("SYNC", sync_);
+     pill("SYNC 2", sync2_);
+ 
+-    list.rounded_rect(ring_.value(), page::kRadiusTile, kWhite);
++    list.bordered_rect(ring_.value(), 10, kClear, 2, kWhite);
+     for (std::size_t i = 0; i < tracks_.size(); ++i)
+     {
+         const Track &t = tracks_[i];
+         const Rect r = track_rect(static_cast<int>(i));
+         list.push_opacity(t.disabled ? 0.38f : 1.0f);
+-        const Color ink = t.focused ? kInk : kWhite;
++        if (t.current)
++            list.rounded_rect(r, 10, p.accent);
++        if (t.focused)
++            list.bordered_rect(r, 10, kClear, 2, kWhite);
++        const Color ink = t.current ? kInk : kWhite;
+         if (!t.action)
+         {
+             /* Radio mark: filled when this is the track playing. */
+             const float cx = r.x + 30, cy = r.cy();
+-            list.ring(cx, cy, 11, 2.0f, t.focused ? kInk.with_alpha(0.5f) : kWhite.with_alpha(0.4f));
++            list.ring(cx, cy, 11, 2.0f, t.current ? kInk.with_alpha(0.5f) : kWhite.with_alpha(0.4f));
+             if (t.current)
+-                list.circle(cx, cy, 6, t.focused ? kInk : p.accent);
++                list.circle(cx, cy, 6, t.current ? kInk : p.accent);
+         }
+         const float tx = r.x + 60;
+         float right = r.x + r.w - 20;
+@@ -168,15 +187,15 @@
+         {
+             const float w = fonts.semibold.measure(t.tag, 14, 1.5f) + 22;
+             const Rect tag{right - w, r.cy() - 14, w, 28};
+-            list.rounded_rect(tag, 14, t.focused ? kInk.with_alpha(0.12f) : p.accent.with_alpha(0.2f));
+-            ui::text(list, fonts.semibold, t.tag, tag.cx(), tag.y + 19, 14, t.focused ? kInk : p.accent,
++            list.rounded_rect(tag, 14, t.current ? kInk.with_alpha(0.12f) : p.accent.with_alpha(0.2f));
++            ui::text(list, fonts.semibold, t.tag, tag.cx(), tag.y + 19, 14, t.current ? kInk : p.accent,
+                      Align::center, 1.5f);
+             right = tag.x - 14;
+         }
+         ui::text(list, fonts.semibold, fit(fonts.semibold, t.label, 22, right - tx), tx, t.detail.empty() ? r.cy() + 8 : r.y + 33, 22, ink);
+         if (!t.detail.empty())
+             ui::text(list, fonts.regular, fit(fonts.regular, t.detail, 16, right - tx), tx, r.y + 57, 16,
+-                     t.focused ? kInk.with_alpha(0.6f) : p.text_faint);
++                     t.current ? kInk.with_alpha(0.6f) : p.text_faint);
+         list.pop_opacity();
+     }
+ 
+@@ -192,12 +211,12 @@
+     if (!preview_.empty() && o > 0.01f)
+     {
+         const float size = preview_face_ == 0 ? 40.0f : (preview_face_ == 2 ? 60.0f : 50.0f);
+-        const float cx = kSheetX * 0.5f;
++        const float cx = 1460.0f;
+         list.push_opacity(o);
+         ui::text(list, fonts.semibold, "PREVIEW", cx, 700, 14, p.text_faint, Align::center, 3.0f);
+         /* Wrapped like a real caption (two lines at most, balanced so one word
+          * is not left alone), first line on 800 and growing down. */
+-        const float max_w = kSheetX - 120;
++        const float max_w = 700.0f;
+         std::vector<std::string> lines = fonts.semibold.font->wrap(preview_, size, max_w);
+         if (lines.size() > 1)
+         {
+@@ -212,9 +231,9 @@
+         float y = 800;
+         for (const std::string &line : lines)
+         {
+-            const float w = std::min(fonts.semibold.measure(line, size), kSheetX - 120);
++            const float w = std::min(fonts.semibold.measure(line, size), 700.0f);
+             list.rounded_rect({cx - w * 0.5f - 18, y - size * 0.95f, w + 36, line_h}, 10, kBlack.with_alpha(0.55f));
+-            ui::text(list, fonts.semibold, fit(fonts.semibold, line, size, kSheetX - 120), cx, y, size, kWhite,
++            ui::text(list, fonts.semibold, fit(fonts.semibold, line, size, 700.0f), cx, y, size, kWhite,
+                      Align::center);
+             y += line_h;
+         }
+@@ -283,7 +302,7 @@
+ void MediaInfoCard::draw(DrawList &list, const Context &ctx) const
+ {
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
++    const Palette p = nuvio_player_palette(ctx.palette);
+     const float o = open_.value;
+     list.rounded_rect({0, 0, 1920, 1080}, 0, kBlack.with_alpha(0.62f * o));
+     list.push_transform(0.96f + 0.04f * o, 960, 540, 0, 0);
 --- a/projects/evoplayer/ui_kit/src/evo_hui_osd.cpp
 +++ b/projects/evoplayer/ui_kit/src/evo_hui_osd.cpp
-@@ -180,6 +180,16 @@
+@@ -17,13 +17,28 @@
+ using ::hui::gfx::DrawList;
+ using ::hui::gfx::Rect;
+ namespace tween = ::hui::tween;
++/* Nuvio TV 1.3.11 base.css + components-35.css. Local presentation values,
++ * never a saved EVO theme change or a browser-profile preference write. */
++static Palette nuvio_player_palette(Palette p)
++{
++    p.bg_top = p.bg_bottom = hui::gfx::Color::rgb(0x1a1a1a);
++    p.surface = hui::gfx::Color::rgb(0x242424);
++    p.surface_sel = hui::gfx::Color::rgb(0x303030);
++    p.accent = p.accent_soft = p.accent_alt = hui::gfx::Color::rgb(0xf5f5f5);
++    p.text = hui::gfx::Color::rgb(0xffffff);
++    p.text_muted = hui::gfx::Color::rgb(0xb3b3b3);
++    p.text_faint = hui::gfx::Color::rgb(0xb3b3b3);
++    p.border = hui::gfx::Color::rgb(0x333333);
++    return p;
++}
++
+ namespace ui = ::hui::ui;
+ 
+ namespace
+ {
+ 
+ const Color kWhite = Color::rgb(0xffffff);
+-const Color kInk = Color::rgb(0x0b0d16);
++const Color kInk = Color::rgb(0x111111);
+ const Color kBlack = Color::rgb(0x000000);
+ const Color kClear = Color::rgb(0x000000, 0.0f);
+ const Color kCyan = Color::rgb(0x4dd8ff);
+@@ -31,7 +46,7 @@
+ const Color kGreen = Color::rgb(0x5fe39a);
+ const Color kSub2[3] = {Color::rgb(0xffe14d), Color::rgb(0x66e3ff), Color::rgb(0xffffff)};
+ 
+-constexpr float kMargin = 96.0f;
++constexpr float kMargin = 64.0f;
+ 
+ std::string fit(const ui::FontRef &font, const std::string &text, float size, float width)
+ {
+@@ -180,6 +195,16 @@
      if (skip_on_)
          skip_label_ = p.skip_label;
      raw_.skip_label = nullptr;
@@ -4494,7 +4346,7 @@
      sub_lines_ = split_lines(p.subtitle_text);
      sub2_lines_ = split_lines(p.subtitle_text2);
      raw_.title = raw_.metadata = nullptr; /* never read the copied pointers */
-@@ -264,9 +274,62 @@
+@@ -264,158 +289,192 @@
      for (const std::string &l : sub2_lines_)
          if (!font_covers(*font.font, l))
              return false;
@@ -4506,13 +4358,18 @@
      /* The title is not checked: a missing glyph there costs one blank, and
       * dropping the whole kit OSD for it would cost far more. */
      return true;
-+}
-+
+ }
+ 
+-void OsdScreen::draw_top(DrawList &list, const Context &ctx) const
+-{
 +void OsdScreen::draw_nuvio_prompts(DrawList &list, const Context &ctx) const
 +{
 +    if (!raw_.nuvio_active) return;
-+    const ui::Fonts &fonts = ctx.fonts;
-+    const Palette &p = ctx.palette;
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
+-    list.gradient_rect({0, 0, 1920, 260}, 0, kBlack.with_alpha(0.75f), kBlack.with_alpha(0.0f));
+-    ui::text(list, fonts.display, fit(fonts.display, title_, 44, 1300), kMargin, 110, 44, kWhite);
++    const Palette p = nuvio_player_palette(ctx.palette);
 +    if (skip_on_)
 +    {
 +        const Rect card{1920 - kMargin - 500, 740, 500, 76};
@@ -4554,10 +4411,210 @@
 +        layout.cy = card.y + 88;
 +        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, card.x + 24, false, layout);
 +    }
++}
++
++/* The pinned Nuvio player places metadata above the bottom timeline and
++ * leaves only its optional clock at the top. Native hints retain EVO input. */
++void OsdScreen::draw_top(DrawList &list, const Context &) const
++{
++    list.gradient_rect({0, 0, 1920, 300}, 0, kBlack.with_alpha(0.7f), kClear);
++}
++
++void OsdScreen::draw_bottom(DrawList &list, const Context &ctx) const
++{
++    const ui::Fonts &fonts = ctx.fonts;
++    const Palette p = nuvio_player_palette(ctx.palette);
++    list.gradient_rect({0, 680, 1920, 400}, 0, kClear, kBlack.with_alpha(0.8f));
++    ui::text(list, fonts.semibold, fit(fonts.semibold, title_, 48, 1160), kMargin, 784, 48, kWhite);
+     if (!meta_.empty())
+-        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 22, 1300), kMargin, 148, 22,
+-                 kWhite.with_alpha(0.7f));
+-
+-    /* Badges, right-aligned on the title line, as many as clear the title. */
+-    const float limit = kMargin + std::min(1300.0f, fonts.display.measure(title_, 44)) + 48.0f;
+-    float x = 1920.0f - kMargin;
+-    for (int i = 8; i >= 0; --i)
+-    {
+-        const std::string &b = badges_[i];
+-        if (b.empty())
+-            continue;
+-        const bool accent = (i == 6 && raw_.upscale_active) || (i == 7 && raw_.smooth_active) || i == 8 || i == 1;
+-        const float w = fonts.semibold.measure(b, 16, 1.5f) + 24.0f;
+-        if (x - w < limit)
+-            break;
+-        const Rect r{x - w, 82, w, 32};
+-        if (accent)
+-            list.rounded_rect(r, 8, p.accent);
+-        else
+-            list.bordered_rect(r, 8, kBlack.with_alpha(0.35f), 1.5f, kWhite.with_alpha(0.45f));
+-        ui::text(list, fonts.semibold, b, r.cx(), r.y + 22, 16, accent ? kInk : kWhite, Align::center, 1.5f);
+-        x -= w + 10.0f;
+-    }
+-}
+-
+-void OsdScreen::draw_bottom(DrawList &list, const Context &ctx) const
+-{
+-    const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
+-    list.gradient_rect({0, 760, 1920, 320}, 0, kBlack.with_alpha(0.0f), kBlack.with_alpha(0.82f));
+-
+-    const Rect track{kMargin, 920, 1920 - 2 * kMargin, 8};
++        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 28, 1160),
++                 kMargin, 830, 28, kWhite.with_alpha(0.68f));
++
++    float bx = kMargin;
++    for (const auto &badge : badges_)
++    {
++        if (badge.empty()) continue;
++        const float w = fonts.semibold.measure(badge, 16) + 24;
++        if (bx + w > 1160) break;
++        list.bordered_rect({bx, 852, w, 30}, 6, kBlack.with_alpha(0.34f), 1, kWhite.with_alpha(0.28f));
++        ui::text(list, fonts.semibold, badge, bx + 12, 873, 16, kWhite);
++        bx += w + 8;
++    }
++
++    const Rect track{kMargin, 920, 1920 - 2 * kMargin, 12};
+     if (raw_.is_live)
+     {
+         const Rect pill{kMargin, 900, 96, 36};
+         list.rounded_rect(pill, 18, Color::rgb(0xe5484d));
+         list.circle(pill.x + 22, pill.cy(), 5, kWhite.with_alpha(0.6f + 0.4f * ui::breathe(time_, 1.6f)));
+-        ui::text(list, fonts.semibold, "LIVE", pill.x + 36, pill.y + 25, 18, kWhite, Align::left, 2.0f);
++        ui::text(list, fonts.semibold, "LIVE", pill.x + 36, pill.y + 25, 18, kWhite);
+     }
+     else
+     {
+         const float f = progress_.value;
+-        bar_.style.color = p.accent;
+-        bar_.style.theme.surface_high = kWhite.with_alpha(0.22f);
+-        ui::Canvas canvas{list, fonts, 0, time_};
+-        bar_.draw(canvas);
+-        const float tx = track.x + track.w * f;
+-        list.glow({tx - 9, track.cy() - 9, 18, 18}, 9, 10, p.accent.with_alpha(0.5f));
+-        list.circle(tx, track.cy(), 9, kWhite);
++        list.rounded_rect(track, 6, kWhite.with_alpha(raw_.scrub_active ? 0.45f : 0.3f));
++        if (f > 0)
++            list.rounded_rect({track.x, track.y, track.w * f, track.h}, 6, p.accent);
+         if (scrub_.value > 0.01f && raw_.duration_sec > 0.0)
+         {
+-            /* Where the seek will land, ahead of (or behind) the playhead. */
+             const float t = static_cast<float>(std::clamp(raw_.scrub_target / raw_.duration_sec, 0.0, 1.0));
+             const float sx = track.x + track.w * t;
+             list.push_opacity(scrub_.value);
+-            list.rounded_rect({sx - 2, track.y - 14, 4, track.h + 28}, 2, kWhite);
++            list.rounded_rect({sx - 2, track.y - 4, 4, 20}, 2, kWhite);
+             list.pop_opacity();
+         }
+-        /* #150: a tick at each chapter start, skipping any closer than 6 px. */
+         if (raw_.duration_sec > 0.0)
+         {
+             float last = -100.0f;
+             for (const double cs : chapter_starts_)
+             {
+-                if (cs <= 1.0 || cs >= raw_.duration_sec - 1.0)
+-                    continue;
++                if (cs <= 1.0 || cs >= raw_.duration_sec - 1.0) continue;
+                 const float cx = track.x + track.w * static_cast<float>(cs / raw_.duration_sec);
+-                if (cx - last < 6.0f)
+-                    continue;
++                if (cx - last < 6.0f) continue;
+                 last = cx;
+-                list.rounded_rect({cx - 1.5f, track.y - 5, 3, track.h + 10}, 1.5f, kWhite.with_alpha(0.85f));
++                list.rounded_rect({cx - 1, track.y, 2, track.h}, 1, kBlack.with_alpha(0.65f));
+             }
+         }
+         const std::string cur = clock_text(raw_.position_sec);
+-        ui::text(list, fonts.mono, cur, track.x, 970, 24, kWhite);
+-        /* The chapter name beside the time; under the cursor while scrubbing. */
+-        const std::string &ch = (scrub_.value > 0.5f && !scrub_chapter_title_.empty()) ? scrub_chapter_title_
+-                                                                                     : chapter_title_;
++        ui::text(list, fonts.regular, cur, track.x, 970, 24, kWhite);
++        const std::string &ch = (scrub_.value > 0.5f && !scrub_chapter_title_.empty()) ? scrub_chapter_title_ : chapter_title_;
+         if (!ch.empty())
+-            ui::text(list, fonts.semibold, fit(fonts.semibold, ch, 20, 800),
+-                     track.x + fonts.mono.measure(cur, 24) + 28, 968, 20, p.accent);
+-        ui::text(list, fonts.mono, clock_text(raw_.duration_sec), track.x + track.w, 970, 24,
+-                 kWhite.with_alpha(0.7f), Align::right);
+-        /* #151: time left and the clock time it ends, centred. */
++            ui::text(list, fonts.regular, fit(fonts.regular, ch, 20, 480),
++                     track.x + fonts.regular.measure(cur, 24) + 28, 968, 20, p.text_muted);
++        ui::text(list, fonts.regular, clock_text(raw_.duration_sec), track.x + track.w, 970, 24,
++                 kWhite.with_alpha(0.9f), Align::right);
+         if (!remaining_.empty())
+         {
+             const std::string mid = ends_at_.empty() ? remaining_ : remaining_ + "   -   ends at " + ends_at_;
+-            ui::text(list, fonts.regular, mid, 960, 968, 20, kWhite.with_alpha(0.7f), Align::center);
+-        }
+-    }
+-
+-    /* Controls, one row of hints. */
++            ui::text(list, fonts.regular, mid, 960, 968, 20, p.text_muted, Align::center);
++        }
++    }
++
++    // These are shortcuts, not focusable web buttons. Do not imply a focus
++    // target or introduce an action the native controller does not implement.
+     char aspect[32];
+     std::snprintf(aspect, sizeof aspect, "Aspect: %s",
+                   raw_.view_mode == 0 ? "Fit" : (raw_.view_mode == 1 ? "Fill" : "Stretch"));
+-    const std::string audio = "Audio: " + (audio_track_.empty() ? std::string("Default") : audio_track_);
+-    const std::string subs = "Subs: " + (sub_track_.empty() ? std::string("Off") : sub_track_);
+-    ui::Hint hints[10];
++    ui::Hint hints[7];
+     int n = 0;
+     hints[n++] = {ui::Button::cross, raw_.paused ? "Play" : "Pause"};
+-    if (!raw_.is_live)
+-        hints[n++] = {ui::Button::dpad, "Seek 10s"};
+-    if (!raw_.is_live && raw_.chapter_count > 0)
+-    {
+-        hints[n++] = {ui::Button::l1, "Prev chapter"};
+-        hints[n++] = {ui::Button::r1, "Next chapter"};
+-        hints[n++] = {ui::Button::right_stick, "Chapter list"};
+-    }
+-    hints[n++] = {ui::Button::r2, audio.c_str()};
++    if (!raw_.is_live) hints[n++] = {ui::Button::dpad, "Seek 10s"};
++    hints[n++] = {ui::Button::r2, "Audio"};
+     hints[n++] = {ui::Button::square, "Info"};
+     hints[n++] = {ui::Button::triangle, aspect};
+     hints[n++] = {ui::Button::circle, "Back"};
+     ui::HintLayout layout;
+-    layout.size = 30;
+-    layout.text_size = 20;
+-    layout.cy = 1030;
+-    ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, 1920 - kMargin, true, layout);
+-    ui::text(list, fonts.regular, fit(fonts.regular, subs, 20, 520), kMargin, 1037, 20, kWhite.with_alpha(0.75f));
++    layout.size = 30; layout.text_size = 20; layout.item_gap = 30; layout.cy = 1014;
++    ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), hints, n, kMargin, false, layout);
++    if (!raw_.is_live && raw_.chapter_count > 0)
++    {
++        ui::Hint chapters[] = {{ui::Button::l1, "Prev chapter"}, {ui::Button::r1, "Next chapter"},
++                              {ui::Button::right_stick, "Chapter list"}};
++        layout.size = 26; layout.text_size = 18;
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), chapters, 3, 1920 - kMargin, true, layout);
++    }
++    std::string tracks = "Audio: " + (audio_track_.empty() ? std::string("Default") : audio_track_) +
++        "   /   Subs: " + (sub_track_.empty() ? std::string("Off") : sub_track_) + "   (Up toggle / Down select)";
+     if (raw_.sub_delay_ms != 0)
+     {
+         char sync[40];
+-        std::snprintf(sync, sizeof sync, "Sync %+d ms", raw_.sub_delay_ms);
+-        ui::text(list, fonts.mono, sync, kMargin + 540, 1037, 18, p.accent);
+-    }
++        std::snprintf(sync, sizeof sync, "   Sync %+d ms", raw_.sub_delay_ms);
++        tracks += sync;
++    }
++    ui::text(list, fonts.regular, fit(fonts.regular, tracks, 18, 1920 - 2 * kMargin),
++             kMargin, 1058, 18, p.text_muted);
  }
  
- void OsdScreen::draw_top(DrawList &list, const Context &ctx) const
-@@ -412,10 +475,12 @@
+ void OsdScreen::draw_centre(DrawList &list, const Context &ctx) const
+ {
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
++    const Palette p = nuvio_player_palette(ctx.palette);
+     if (loading_.value > 0.01f)
+     {
+         list.push_opacity(loading_.value);
          list.circle(960, 520, 64, kBlack.with_alpha(0.55f));
          list.arc(960, 520, 44, 6, 0.0f, 6.2831853f, kWhite.with_alpha(0.15f));
          list.arc(960, 520, 44, 6, std::fmod(time_ * 5.5f, 6.2831853f), 1.6f, p.accent);
@@ -4572,7 +4629,27 @@
      {
          const float s = 0.85f + 0.15f * paused_.value;
          list.push_transform(s, 960, 520, 0, 0);
-@@ -518,7 +583,7 @@
+@@ -460,7 +519,7 @@
+     const float size = caption_size(raw_.subtitle_face);
+     const float line_h = size * 1.25f;
+     /* Lifted above the timeline while the chrome is up. */
+-    const float bottom = 1000.0f - (raw_.subtitle_raised ? 150.0f * chrome : 0.0f);
++    const float bottom = 1000.0f - (raw_.subtitle_raised ? 280.0f * chrome : 0.0f);
+ 
+     const ui::FontRef &font = caption_font(fonts, raw_.subtitle_style);
+     const bool heavy = raw_.subtitle_style == 3;
+@@ -494,8 +553,8 @@
+             Rect r{static_cast<float>(raw_.subtitle_image_x) * sx, static_cast<float>(raw_.subtitle_image_y) * sy,
+                    static_cast<float>(raw_.subtitle_image_w) * sx, static_cast<float>(raw_.subtitle_image_h) * sy};
+             /* Lifted clear of the timeline while the chrome is up. */
+-            if (raw_.subtitle_raised && r.y + r.h > 850.0f)
+-                r.y -= 150.0f * chrome;
++            if (raw_.subtitle_raised && r.y + r.h > 720.0f)
++                r.y -= 280.0f * chrome;
+             list.image(tex, r, ::hui::gfx::kFullUv, kWhite);
+             top = r.y;
+         }
+@@ -518,7 +577,7 @@
   * own opacity so it shows with the controls hidden too. */
  void OsdScreen::draw_skip(DrawList &list, const Context &ctx) const
  {
@@ -4581,7 +4658,25 @@
          return;
      const ui::Fonts &fonts = ctx.fonts;
      ui::Hint hint{ui::Button::triangle, skip_label_.c_str()};
-@@ -642,6 +707,8 @@
+@@ -544,7 +603,7 @@
+ void OsdScreen::draw_music(DrawList &list, const Context &ctx) const
+ {
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
++    const Palette p = nuvio_player_palette(ctx.palette);
+     draw_backdrop(list, ctx);
+     const Rect card{960 - 520, 300, 1040, 380};
+     list.shadow({card.x, card.y + 30, card.w, card.h}, page::kRadiusCard, 60, kBlack.with_alpha(0.6f));
+@@ -578,7 +637,7 @@
+     const Rect panel{kMargin, 200, 760, 560};
+     list.rounded_rect(panel, page::kRadiusCard, kBlack.with_alpha(0.72f));
+     list.bordered_rect(panel, page::kRadiusCard, kClear, 1.0f, kWhite.with_alpha(0.12f));
+-    ui::text(list, fonts.semibold, "PLAYBACK DIAGNOSTICS", panel.x + 28, panel.y + 44, 16, ctx.palette.accent,
++    ui::text(list, fonts.semibold, "PLAYBACK DIAGNOSTICS", panel.x + 28, panel.y + 44, 16, Color::rgb(0xf5f5f5),
+              Align::left, 3.0f);
+     float y = panel.y + 84;
+     for (const std::string &l : hud_lines_)
+@@ -642,6 +701,8 @@
      {
          draw_centre(list, ctx);
          draw_captions(list, ctx, chrome);
@@ -4590,7 +4685,16 @@
          draw_skip(list, ctx);
      }
      if (hud_on_)
-@@ -664,7 +731,85 @@
+@@ -652,7 +713,7 @@
+         std::snprintf(fps, sizeof fps, "%d FPS", raw_.fps);
+         const Rect chip{1920 - 180, 40, 140, 40};
+         list.rounded_rect(chip, 20, kBlack.with_alpha(0.6f));
+-        ui::text(list, fonts.mono, fps, chip.cx(), chip.y + 28, 20, ctx.palette.accent, Align::center);
++        ui::text(list, fonts.mono, fps, chip.cx(), chip.y + 28, 20, Color::rgb(0xf5f5f5), Align::center);
+     }
+ }
+ 
+@@ -664,7 +725,85 @@
      out->text = title_;
      out->index = out->total = 1;
      out->rect = {0, 0, 1920, 1080};
@@ -4626,13 +4730,13 @@
 +        }
 +    };
 +    auto card = [&](Rect box, const std::string &heading, const std::string &body, int max_lines) {
-+        list.bordered_rect(box, 16, kInk.with_alpha(0.96f), 2, ctx.palette.accent);
-+        ui::text(list, fonts.semibold, heading, box.x + 30, box.y + 42, 26, ctx.palette.accent);
++        list.bordered_rect(box, 16, kInk.with_alpha(0.96f), 2, Color::rgb(0xf5f5f5));
++        ui::text(list, fonts.semibold, heading, box.x + 30, box.y + 42, 26, Color::rgb(0xf5f5f5));
 +        lines(body, box.x + 30, box.y + 86, box.w - 60, max_lines);
 +    };
 +    if (!nuvio_clock_.empty() && !raw_.chrome_hidden) {
 +        list.push_opacity(chrome_.value);
-+        ui::text(list, fonts.mono, nuvio_clock_, 1920 - kMargin, 175, 23, kWhite, Align::right);
++        ui::text(list, fonts.semibold, nuvio_clock_, 1920 - kMargin, 78, 26, kWhite, Align::right);
 +        list.pop_opacity();
 +    }
 +    float tag_x = 1920 - kMargin, tag_y = 210;
@@ -4677,6 +4781,72 @@
  }
  
  } // namespace evo::kit
+--- a/projects/evoplayer/ui_kit/src/evo_hui_screens.cpp
++++ b/projects/evoplayer/ui_kit/src/evo_hui_screens.cpp
+@@ -35,6 +35,21 @@
+ using ::hui::gfx::DrawList;
+ using ::hui::gfx::Rect;
+ namespace tween = ::hui::tween;
++/* Nuvio TV 1.3.11 base.css + components-35.css. Local presentation values,
++ * never a saved EVO theme change or a browser-profile preference write. */
++static Palette nuvio_player_palette(Palette p)
++{
++    p.bg_top = p.bg_bottom = hui::gfx::Color::rgb(0x1a1a1a);
++    p.surface = hui::gfx::Color::rgb(0x242424);
++    p.surface_sel = hui::gfx::Color::rgb(0x303030);
++    p.accent = p.accent_soft = p.accent_alt = hui::gfx::Color::rgb(0xf5f5f5);
++    p.text = hui::gfx::Color::rgb(0xffffff);
++    p.text_muted = hui::gfx::Color::rgb(0xb3b3b3);
++    p.text_faint = hui::gfx::Color::rgb(0xb3b3b3);
++    p.border = hui::gfx::Color::rgb(0x333333);
++    return p;
++}
++
+ namespace ui = ::hui::ui;
+ 
+ namespace
+@@ -845,6 +860,7 @@
+         age_ = 0.0f; /* a different list: run the entrance again */
+         ring_snapped_ = false;
+     }
++    player_skin_ = p.section < 0;
+     title_ = str(p.title);
+     subtitle_ = str(p.subtitle);
+     total_ = p.total_count;
+@@ -976,15 +992,21 @@
+ void ListScreen::draw(DrawList &list, const Context &ctx) const
+ {
+     const ui::Fonts &fonts = ctx.fonts;
+-    const Palette &p = ctx.palette;
+-    draw_backdrop(list, ctx);
++    const Palette p = player_skin_ ? nuvio_player_palette(ctx.palette) : ctx.palette;
++    if (player_skin_)
++        list.rounded_rect({0, 0, 1920, 1080}, 0, Color::rgb(0x000000, 0.88f));
++    else
++        draw_backdrop(list, ctx);
+ 
+     /* Header. */
+     {
+         const float in = tween::stagger(age_, 0, 0.05f, 0.45f);
+         list.push_opacity(in);
+         const float dy = 16.0f * (1.0f - in);
+-        draw_page_title(list, ctx, title_, subtitle_, kLeft, dy);
++        ui::Fonts skin_fonts = fonts;
++        if (player_skin_) skin_fonts.display = fonts.semibold;
++        const Context skin_ctx{skin_fonts, ctx.textures, p, ctx.time};
++        draw_page_title(list, skin_ctx, title_, subtitle_, kLeft, dy);
+         if (total_ > 0)
+         {
+             char counter[32];
+@@ -1016,7 +1038,7 @@
+         if (has_focus_.value > 0.01f)
+         {
+             list.push_opacity(has_focus_.value);
+-            list.glow(ring_.value(), 20, 18, p.accent.with_alpha(0.3f));
++            if (!player_skin_) list.glow(ring_.value(), 20, 18, p.accent.with_alpha(0.3f));
+             list.pop_opacity();
+         }
+         for (std::size_t i = 0; i < rows_.size(); ++i)
 --- a/projects/evoplayer/ui_rml/include/evo_rmlui_app.h
 +++ b/projects/evoplayer/ui_rml/include/evo_rmlui_app.h
 @@ -12,6 +12,16 @@
@@ -4886,8 +5056,61 @@
      m_last_state = state;
  
      /* GL-5 (#81): caption-only mode — a subtitle cue is up but the playback
-@@ -2995,7 +3082,8 @@
-             el_pause_lbl->SetProperty("color", ink_on(m_theme.accent));
+@@ -2904,9 +2991,9 @@
+             el_dec->SetProperty("display", "inline-block");
+             el_dec->SetInnerRML(state.decoder_badge);
+             bool hw = state.decoder_badge.find("Hardware") != std::string::npos;
+-            el_dec->SetProperty("background-color", hw ? to_hex_rgb(m_theme.accent)
+-                                                       : to_hex_rgba(m_theme.surface));
+-            el_dec->SetProperty("color", hw ? ink_on(m_theme.accent) : "#e2e8f0");
++            el_dec->SetProperty("background-color", hw ? "#f5f5f5"
++                                                       : "#242424");
++            el_dec->SetProperty("color", hw ? "#111111" : "#e2e8f0");
+         }
+     }
+     // #103: upscaler badge - hidden when upscaling is Off in Settings
+@@ -2958,18 +3045,18 @@
+     Rml::Element* el_fill = m_playback_doc->GetElementById("progress-fill");
+     if (el_fill) {
+         el_fill->SetProperty("width", evo_fmt("%.1f%%", pct));
+-        el_fill->SetProperty("background-color", to_hex_rgb(m_theme.accent));
++        el_fill->SetProperty("background-color", "#f5f5f5");
+     }
+ 
+     Rml::Element* el_thumb = m_playback_doc->GetElementById("progress-thumb");
+     if (el_thumb) {
+-        el_thumb->SetProperty("border-color", to_hex_rgb(m_theme.accent));
++        el_thumb->SetProperty("border-color", "#f5f5f5");
+     }
+ 
+     // 4. Scrubbing Capsule
+     Rml::Element* el_scrub = m_playback_doc->GetElementById("scrub-capsule");
+     if (el_scrub) {
+-        el_scrub->SetProperty("border-color", to_hex_rgb(m_theme.accent));
++        el_scrub->SetProperty("border-color", "#f5f5f5");
+         if (state.scrub_active) {
+             el_scrub->SetProperty("display", "flex");
+             Rml::Element* el_stime = m_playback_doc->GetElementById("scrub-time");
+@@ -2981,21 +3068,22 @@
+ 
+     Rml::Element* el_scrub_lbl = m_playback_doc->GetElementById("scrub-label");
+     if (el_scrub_lbl) {
+-        el_scrub_lbl->SetProperty("color", to_hex_rgb(m_theme.accent));
++        el_scrub_lbl->SetProperty("color", "#f5f5f5");
+     }
+ 
+     // 5. Play/Pause State
+     Rml::Element* el_pause = m_playback_doc->GetElementById("pause-badge");
+     if (el_pause) {
+-        el_pause->SetProperty("background-color", to_hex_rgb(m_theme.accent));
+-        el_pause->SetProperty("border-color", to_hex_rgb(m_theme.border_sel));
++        el_pause->SetProperty("background-color", "#f5f5f5");
++        el_pause->SetProperty("border-color", "#ffffff47");
+         /* The label carries its own colour in the stylesheet, so inheriting
+          * from the badge is not enough - set it on the span itself. */
+         if (Rml::Element* el_pause_lbl = m_playback_doc->GetElementById("pause-label"))
+-            el_pause_lbl->SetProperty("color", ink_on(m_theme.accent));
++            el_pause_lbl->SetProperty("color", "#111111");
          /* A seek raises the engine's paused flag while it runs: LOADING says
           * what is really going on, PAUSED would be wrong. */
 -        if (state.paused && !state.scrub_active && !state.loading) {
@@ -4896,6 +5119,15 @@
              el_pause->SetProperty("display", "flex");
          } else {
              el_pause->SetProperty("display", "none");
+@@ -3003,7 +3091,7 @@
+     }
+ 
+     if (Rml::Element* el_load = m_playback_doc->GetElementById("loading-badge")) {
+-        el_load->SetProperty("border-color", to_hex_rgb(m_theme.border_sel));
++        el_load->SetProperty("border-color", "#ffffff47");
+         el_load->SetProperty("display", (state.loading && !state.scrub_active) ? "flex" : "none");
+     }
+ 
 @@ -3035,7 +3123,8 @@
              "item-seek", "item-chapter", "progress-container", "time-row" };
          for (const char* id : k_vod_only)

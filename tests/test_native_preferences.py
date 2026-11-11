@@ -38,9 +38,9 @@ def frontend_dtos(directory):
     ):
         source = frontend_file(PLAYER + 'playerScreenHelpers-' + filename + '.js')
         helpers += '\n'.join(export(source, name) for name in names) + '\n'
-    helpers += 'const normalizeSubtitleLanguageAlias = (() => {\n' + frontend_file(
+    helpers += 'const { normalizeSubtitleLanguageAlias, normalizeHbsLanguageAlias } = (() => {\n' + frontend_file(
         'js/core/player/subtitleLanguageAliases.js').replace('export ', '') + \
-        '\nreturn normalizeSubtitleLanguageAlias;})();\n'
+        '\nreturn { normalizeSubtitleLanguageAlias, normalizeHbsLanguageAlias };})();\n'
     # Execute the actual methods objects (not mock preference helpers).
     for filename in ('50-scroll-subtitle-rail-node-into-view',
                      '51-get-startup-preferred-subtitle-language-targets'):
