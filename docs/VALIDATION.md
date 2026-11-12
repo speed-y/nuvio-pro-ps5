@@ -5285,3 +5285,70 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
 - Pending console verification (`[UNKNOWN]`):
   - `[UNKNOWN]` Visual spot-checks on Home, Cast Detail, Folder rows, and Poster List Picker dialogs remain unverified on TV.
 
+
+## Helper transfer half-close for older ELF loaders, 2026-11-12
+
+- Status: `[SOURCE-VERIFIED]` and host-tested. No console result for this change.
+- Observed report: a ProsperoStore user on firmware `13.60` stays on `Opening Nuvio Pro`, and `/data/nuvio` does not exist. The user's loader, HEN and jailbreak versions remain unknown.
+  - `[INFERENCE]` EVO's `EnsureDataDirectories()` creates `/data/nuvio` when the title sandbox opens. A missing folder means the jailbreak daemon did not open it, so the helper transfer did not run in that report.
+  - This change addresses a separate startup failure that the same screen hides.
+- Cause addressed: `ps5-payload-dev/elfldr` before `v0.21` (2025-08-15) reads a payload until EOF. `nuvio_bootstrap_transfer()` sent the helper without closing its write side and waited for the reply.
+  - `[SOURCE-VERIFIED]` `elfldr` `v0.20` `socksrv.c` `readsock()` loops on `read()` until it returns 0. `v0.21` `elfldr_read()` reads the ELF's own size with `MSG_WAITALL`.
+  - The expected title log is `bootstrap: promotion failed stage=transfer errno=60` (ETIMEDOUT) after 12 seconds. The browser then opens without a UI server.
+- Change: `scripts/bootstrap.c` calls `shutdown(fd, SHUT_WR)` after it sends the helper.
+  - Both `elfldr` versions pass the connection to the payload as stdin, stdout and stderr, so the helper reply still arrives. Newer loaders see EOF on payload stdin.
+  - `v0.2.0-alpha.4` `eboot.bin` already imports `shutdown` (`TUuiYS2kE8s`, `libkernel`). The change adds no system import.
+- Host checks:
+  - `tests/test_bootstrap.py` adds a fake loader that requires EOF before it replies. It passes with the change. Without it, the transfer times out after 12 seconds with `result=-1`.
+  - `bootstrap.c` compiles with SDK `v0.43` `prospero-clang` and LLVM `19.1.7` under `-Wall -Wextra -Werror`.
+  - `tests.test_compatibility` fails on this host's GCC `14.2.0` with and without this change (`promote.c:85` `-Wmisleading-indentation`).
+- Pending (`[UNKNOWN]`):
+  - Console startup with an `elfldr` older than `v0.21`, and a repeat check on the owner's `12.70` loader.
+
+## Startup failure reasons and webui check verification, 2026-11-12
+
+- Status: `[TESTED-ON-CONSOLE]`.
+- Target: Retail PS5, firmware 12.70, ELF loader on port 9021, PS5Upload HTTP on port 9180.
+- Artifacts:
+  - Initial PR 11 test build: `eboot.bin` `706c6401fb0cd64f58de60760857e9df91985f19346ed5773bc630a5d9501e45` (48634244 bytes).
+  - Fixed PR 11 build: `eboot.bin` `0dbe26d4ce346f80b4465121b9a436fcf55e68a8cbda3808f9141368e5c466a4` (48852148 bytes).
+  - Runtime: `libc.prx` `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+- Initial observed failure:
+  - Installed PR 11 build `f6e43e65-nuvio_1112-1919`.
+  - Startup halted on splash with `Nuvio Pro is missing its webui folder`.
+  - Cause: `access()` ran before `server_start()` under unprivileged real UID in the sandbox. The process lacked permissions before `nuvio_bootstrap()` promotion, so `access()` returned -1.
+- Resolution:
+  - Reordered startup to run `server_start()` first so `nuvio_bootstrap()` applies elevated capabilities.
+  - Checked `webui/index.html` with `open(..., O_RDONLY)` after loopback socket initialization.
+- Console execution results:
+  - Uploaded fixed `eboot.bin` over PS5Upload HTTP API. `control-5.elf` verified the installed hash.
+  - Launched via `control-3.elf` (`pid: 1227`, `app_id: 57368`).
+  - `/data/nuvio/evo.log` recorded successful connection accept, `status=200`, storage restoration of 1,465,177 bytes, and `page: route profileSelection`.
+  - Owner confirmed on TV that the startup screen passed and Nuvio Pro loaded successfully.
+
+## Dynamic webui storage path resolution (internal and USB storage)
+
+- Date: 2026-11-12.
+- Commit: `feat/startup-status`.
+- Status: `[TESTED-ON-CONSOLE]`.
+- Target: Retail PS5, firmware 12.70, ELF loader on port 9021, PS5Upload HTTP on port 9180.
+- Artifacts:
+  - Fixed eboot: `eboot.bin` `b4023b5bfefb1a4057b37727585c14e902c00a784cc4e8e4c230d2217a8f84b9` (48852548 bytes).
+  - Runtime: `libc.prx` `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - Helpers: `control-3.elf` `bb450faf3aea232980928cc5610e48d4f568254a80ea187ba39d6a6e10de3f08`, `control-5.elf` `4e772dc8bf59cd457be8bb0107ce46f8e0c57348449ee250aa2cab8aae804a55`.
+- Problem addressed:
+  - `scripts/build.py` hardcoded `/data/homebrew/PPSA99996/webui` for `nuvio_local_ui_send` and startup verification.
+  - Titles on USB drives (`/mnt/usb0/`, `/mnt/usb1/`) failed startup with missing folder errors.
+- Changes:
+  - Added `nuvio_local_ui_root()` to `scripts/local_ui.c` and `scripts/local_ui.h`.
+  - The runtime checks `KERN_PROC_PATHNAME` to locate the binary directory.
+  - The resolver probes standard candidate paths across internal storage, USB mounts, and extended storage.
+  - Updated `scripts/build.py` and `scripts/promote.c` to use dynamic root detection.
+  - Added unit tests in `tests/test_local_ui.py`.
+- Console verification results:
+  - Closed previous process via `/api/app/close`.
+  - Uploaded signed `eboot.bin` over PS5Upload HTTP API `:9180`.
+  - Ran `control-5.elf` over port 9021. It verified the on-console hash `b4023b5bfefb1a4057b37727585c14e902c00a784cc4e8e4c230d2217a8f84b9`.
+  - Launched title via `control-3.elf` (`pid 1243`, `app_id 8218`).
+  - Read `/data/nuvio/evo.log`: recorded `status=200`, storage restoration of 1,049,100 bytes, `route profileSelection`, and stable AGC rendering at 60 FPS (1200 frames, 0 timeouts).
+

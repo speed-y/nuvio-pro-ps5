@@ -3,6 +3,11 @@
 #define NUVIO_LOCAL_UI_H
 #include <stddef.h>
 
+/* Discover the root directory of the packaged webui assets.
+ * Checks binary location (KERN_PROC_PATHNAME), external mount candidates,
+ * and fallback locations. Returns a pointer to a static null-terminated path. */
+const char *nuvio_local_ui_root(void);
+
 /* Caller owns the socket. Return HTTP status, or -1 for an incomplete transfer.
  * root is a trusted installed title directory. Every child component is opened
  * without following symlinks. hook is inserted after the HTML head opening. */

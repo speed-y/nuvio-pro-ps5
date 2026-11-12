@@ -42,6 +42,9 @@ int nuvio_bootstrap_transfer(int fd, const unsigned char *payload, size_t length
         else if (n<0 && (errno==EINTR || errno==EAGAIN || errno==EWOULDBLOCK)) continue;
         else { if (!n) errno=EPIPE; return -1; }
     }
+    /* Loaders before ps5-payload-dev elfldr v0.21 read the payload until EOF.
+     * Newer loaders read the ELF's own size and see EOF on payload stdin. */
+    if (shutdown(fd,SHUT_WR)) return -1;
     char response[4096]; size_t used=0; response[0]='\0';
     while (used<sizeof(response)-1) {
         if (ready(fd,POLLIN,deadline)) return -1;

@@ -30,6 +30,10 @@ class LocalUITests(unittest.TestCase):
 #include <unistd.h>
 #include <string.h>
 int main(int argc, char **argv) {
+    if (argc == 2 && !strcmp(argv[1], "ROOT")) {
+        puts(nuvio_local_ui_root());
+        return 0;
+    }
     int pair[2];
     if (argc != 5 || socketpair(AF_UNIX, SOCK_STREAM, 0, pair)) return 2;
     int dropped = !strcmp(argv[2], "DROP");
@@ -147,6 +151,17 @@ int main(int argc, char **argv) {
                                  '/css/bundle.css', self.hook],
                                 capture_output=True, check=True, timeout=10)
         self.assertEqual(result.stdout, b'')
+
+    def test_default_root_resolves_without_crash(self):
+        env = {**os.environ}
+        env.pop('NUVIO_WEBUI_DIR', None)
+        out = subprocess.check_output([str(self.binary), 'ROOT'], text=True, env=env).strip()
+        self.assertTrue(out.endswith('/webui'))
+
+    def test_root_honors_env_override_when_index_exists(self):
+        env = {**os.environ, 'NUVIO_WEBUI_DIR': str(self.root)}
+        out = subprocess.check_output([str(self.binary), 'ROOT'], text=True, env=env).strip()
+        self.assertEqual(out, str(self.root))
 
 
 class TitleUIAdapterTests(unittest.TestCase):

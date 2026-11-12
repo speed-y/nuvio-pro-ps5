@@ -10,7 +10,13 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
+#if defined(__has_include)
+#if __has_include(<sys/sysctl.h>)
+#include <sys/sysctl.h>
+#endif
+#endif
 
 /* Shared with the existing payload server; no additional listener is opened. */
 int nuvio_ui_path(const char *, const char *, char *, size_t);
@@ -71,6 +77,78 @@ static int local_open(const char *root, char *relative)
         if (child < 0 || !separator) return child;
         close(child);
     }
+}
+
+static int local_file_exists(const char *dir, const char *file)
+{
+    char path[LOCAL_PATH_MAX];
+    int n = snprintf(path, sizeof path, "%s/%s", dir, file);
+    if (n < 0 || (size_t)n >= sizeof path) return 0;
+    int fd = open(path, O_RDONLY | O_NOFOLLOW);
+    if (fd < 0) return 0;
+    close(fd);
+    return 1;
+}
+
+const char *nuvio_local_ui_root(void)
+{
+    const char *env_root = getenv("NUVIO_WEBUI_DIR");
+    if (env_root && env_root[0]) {
+        static char s_env_root[LOCAL_PATH_MAX];
+        if (local_file_exists(env_root, "index.html")) {
+            snprintf(s_env_root, sizeof s_env_root, "%s", env_root);
+            return s_env_root;
+        }
+    }
+
+    static char s_root[LOCAL_PATH_MAX] = {0};
+    if (s_root[0]) return s_root;
+
+#if defined(KERN_PROC_PATHNAME)
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+    char exe[LOCAL_PATH_MAX];
+    size_t exe_len = sizeof exe;
+    if (sysctl(mib, 4, exe, &exe_len, NULL, 0) == 0 && exe_len > 0) {
+        exe[exe_len < sizeof exe ? exe_len : sizeof exe - 1] = '\0';
+        char *slash = strrchr(exe, '/');
+        if (slash) {
+            *slash = '\0';
+            char candidate[LOCAL_PATH_MAX];
+            if (snprintf(candidate, sizeof candidate, "%s/webui", exe) < (int)sizeof candidate) {
+                if (local_file_exists(candidate, "index.html")) {
+                    snprintf(s_root, sizeof s_root, "%s", candidate);
+                    return s_root;
+                }
+            }
+        }
+    }
+#endif
+
+    static const char * const candidates[] = {
+        "/data/homebrew/PPSA99996/webui",
+        "/mnt/usb0/homebrew/PPSA99996/webui",
+        "/mnt/usb0/PPSA99996/webui",
+        "/mnt/usb1/homebrew/PPSA99996/webui",
+        "/mnt/usb1/PPSA99996/webui",
+        "/mnt/usb2/homebrew/PPSA99996/webui",
+        "/mnt/usb2/PPSA99996/webui",
+        "/mnt/usb3/homebrew/PPSA99996/webui",
+        "/mnt/usb3/PPSA99996/webui",
+        "/mnt/ext0/app/PPSA99996/webui",
+        "/mnt/ext0/homebrew/PPSA99996/webui",
+        "/mnt/ext0/PPSA99996/webui",
+        "/mnt/sandbox/PPSA99996_000/app0/webui",
+        "/app0/webui",
+        NULL
+    };
+    for (size_t i = 0; candidates[i]; i++) {
+        if (local_file_exists(candidates[i], "index.html")) {
+            snprintf(s_root, sizeof s_root, "%s", candidates[i]);
+            return s_root;
+        }
+    }
+
+    return "/data/homebrew/PPSA99996/webui";
 }
 
 int nuvio_local_ui_send(int fd, const char *root, const char *method,
