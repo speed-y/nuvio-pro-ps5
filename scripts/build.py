@@ -823,21 +823,24 @@ static void nuvio_fail(const char *title, const char *detail)
         # Without a listener or the packaged page, the browser would only show
         # a dead page until the watchdog closes it. Stop here and say why.
         ('    server_start();\n    evo_mkdir(evo_data_path("webui"));\n',
+         '    if (!strcmp(s_hook_profile, "nuvio")) s_nuvio_failure[0] = \'\\0\';\n'
+         '    server_start();\n'
          '    if (!strcmp(s_hook_profile, "nuvio")) {\n'
-         '        s_nuvio_failure[0] = \'\\0\';\n'
-         '        if (access("' + index + '", F_OK) != 0) {\n'
+         '        if (s_listen_fd < 0) {\n'
+         '            if (!s_nuvio_failure[0])\n'
+         '                nuvio_fail("Nuvio Pro could not start its page server", "AGAIN See /data/nuvio/evo.log for details.");\n'
+         '            s_state = P_OFF;\n'
+         '            return;\n'
+         '        }\n'
+         '        int webui_fd = open("' + index + '", O_RDONLY);\n'
+         '        if (webui_fd < 0) {\n'
+         '            LOG("startup: webui check failed errno=%d", errno);\n'
          '            nuvio_fail("Nuvio Pro is missing its webui folder",\n'
          '                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");\n'
          '            s_state = P_OFF;\n'
          '            return;\n'
          '        }\n'
-         '    }\n'
-         '    server_start();\n'
-         '    if (!strcmp(s_hook_profile, "nuvio") && s_listen_fd < 0) {\n'
-         '        if (!s_nuvio_failure[0])\n'
-         '            nuvio_fail("Nuvio Pro could not start its page server", "AGAIN See /data/nuvio/evo.log for details.");\n'
-         '        s_state = P_OFF;\n'
-         '        return;\n'
+         '        close(webui_fd);\n'
          '    }\n'
          '    evo_mkdir(evo_data_path("webui"));\n'),
         ('    LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);\n    if (rc != 0) {\n',

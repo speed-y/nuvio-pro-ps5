@@ -4085,7 +4085,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1304,10 +2368,26 @@
+@@ -1304,10 +2368,29 @@
      int uid = pick_user();
      if (ensure_initialized() != 0) {
          LOG("NO-GO at Initialize");
@@ -4093,26 +4093,29 @@
          s_state = P_OFF;
          return;
      }
++    if (!strcmp(s_hook_profile, "nuvio")) s_nuvio_failure[0] = '\0';
+     server_start();
 +    if (!strcmp(s_hook_profile, "nuvio")) {
-+        s_nuvio_failure[0] = '\0';
-+        if (access("/data/homebrew/PPSA99996/webui/index.html", F_OK) != 0) {
++        if (s_listen_fd < 0) {
++            if (!s_nuvio_failure[0])
++                nuvio_fail("Nuvio Pro could not start its page server", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
++            s_state = P_OFF;
++            return;
++        }
++        int webui_fd = open("/data/homebrew/PPSA99996/webui/index.html", O_RDONLY);
++        if (webui_fd < 0) {
++            LOG("startup: webui check failed errno=%d", errno);
 +            nuvio_fail("Nuvio Pro is missing its webui folder",
 +                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");
 +            s_state = P_OFF;
 +            return;
 +        }
-+    }
-     server_start();
-+    if (!strcmp(s_hook_profile, "nuvio") && s_listen_fd < 0) {
-+        if (!s_nuvio_failure[0])
-+            nuvio_fail("Nuvio Pro could not start its page server", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
-+        s_state = P_OFF;
-+        return;
++        close(webui_fd);
 +    }
      evo_mkdir(evo_data_path("webui"));
      char leaf[200];
      snprintf(leaf, sizeof leaf, "webui/%s_%d.json", s_up.enabled ? s_up.host : "local",
-@@ -1318,6 +2398,7 @@
+@@ -1318,6 +2401,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -4120,7 +4123,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,10 +2423,16 @@
+@@ -1342,10 +2426,16 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -4137,7 +4140,7 @@
          if (s_cycle && s_layout + 1 < LAYOUT_COUNT) {
              s_layout++;
              s_state = P_WAIT;
-@@ -1356,6 +2443,7 @@
+@@ -1356,6 +2446,7 @@
          s_state = P_OFF;
          return;
      }
@@ -4145,7 +4148,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1452,6 +2540,8 @@
+@@ -1452,6 +2543,8 @@
  {
      snprintf(s_error, sizeof s_error, "%s", msg);
      s_error_pending = 1;
@@ -4154,7 +4157,7 @@
  }
  
  int evo_webui_take_error(char *buf, size_t cap)
-@@ -1474,6 +2564,11 @@
+@@ -1474,6 +2567,11 @@
      snprintf(s_hook_profile, sizeof s_hook_profile, "%s", hook_profile ? hook_profile : "");
      if (s_preload_rc < 0) {
          LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);
@@ -4166,7 +4169,7 @@
          return -2;
      }
      memset(&s_up, 0, sizeof s_up);
-@@ -1505,7 +2600,9 @@
+@@ -1505,7 +2603,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4177,7 +4180,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,17 +2618,50 @@
+@@ -1521,17 +2621,50 @@
      return 0;
  }
  
@@ -4231,7 +4234,7 @@
      if (s_state != P_PLAYING) return;
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-@@ -1601,6 +2731,12 @@
+@@ -1601,6 +2734,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4244,7 +4247,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2790,40 @@
+@@ -1654,3 +2793,40 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -5457,19 +5460,30 @@
  # ---------------------------------------------------------------------------
  begin "native-app dependencies"
 -eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"
-+ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"
++ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"
  need_file "${ZLIB_ARCHIVE:?}" "zlib bootstrap did not yield an archive"
  
  # ---------------------------------------------------------------------------
-@@ -196,7 +196,7 @@
+@@ -195,8 +195,8 @@
+ # ---------------------------------------------------------------------------
  begin "building host converter (ps5-native-tool)"
  TOOL="${BUILD}/host/ps5-native-tool"
- clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+-clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 -    -I "${ZLIB_INCLUDE}" \
++/usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 +     \
      "${NATIVE}/native_app_builder.cpp" "${NATIVE}/self_container.cpp" \
      "${NATIVE}/elf_object.cpp" "${NATIVE}/sce_module_writer.cpp" \
      "${ZLIB_ARCHIVE}" -o "${TOOL}"
+@@ -211,7 +211,7 @@
+     expected_signed="$(awk '{print $1}' "${NATIVE}/runtime/libc.prx.sha256")"
+     local work="${BUILD}/runtime-shim"
+     mkdir -p "${work}"
+-    clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
++    /usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+         "${NATIVE}/libc_builder.cpp" -o "${work}/libc-builder"
+     local copy
+     for copy in a b; do
 @@ -289,7 +289,7 @@
      # cached mount is caught immediately instead of costing a console session.
      # Written to a generated header to sidestep -D string quoting through the
@@ -5511,7 +5525,7 @@
  # sets it, see tools/native-app/ps5-pie.ld). At 0x4000 past one the console read
  # one 64 KB block of .rodata from the block before it.
 -RO_OFFSET="$(readelf -lW "${BUILD}/eboot.elf" | awk '$1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; exit}')"
-+RO_OFFSET="$(readelf -lW "${BUILD}/eboot.elf" | awk '!seen && $1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; seen=1}')"
++RO_OFFSET="$(llvm-readelf -lW "${BUILD}/eboot.elf" | awk '!seen && $1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; seen=1}')"
  if [[ -n "${RO_OFFSET}" ]] && (( (RO_OFFSET & 0xFFFF) != 0 )); then
      die "read-only segment at file offset ${RO_OFFSET}, not a multiple of 64 KB - the console misreads .rodata (see ps5-pie.ld)"
  fi
