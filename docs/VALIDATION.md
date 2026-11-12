@@ -5193,4 +5193,35 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
 - Pending interactive UI verification on TV (`[UNKNOWN]`):
   - Check Home row parking during fast scrolling, Hero updates, legacy CSS colors, Continue Watching Nuvio Sync, Search keyboard, and native playback handoff/return.
 
+## Detail hero action clipping, Profile PIN layout, and Square Backspace fix, 2026-11-12
+
+- Status: `[PROVEN]` install and launch on retail PS5 firmware `12.70` (`PPSA99996`). Visual TV and physical controller checks remain pending (`[UNKNOWN]`).
+- Build ID: `f6e43e65-nuvio_1112-1314`. Title identity: `PPSA99996` (`0.2.0-alpha.3`, `contentVersion` `01.000.010`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- UI and controller changes:
+  - `.series-detail-actions` adds top, left, and bottom padding (`8px 6px 4px`) with `-6px` left margin so `.performance-constrained` focus rings clear `.detail-hero-body`.
+  - `.profile-pin-*` rules replace oversized fixed `px` and `vw` sizes with `clamp()` scaling across `720p` and `1080p` viewports.
+  - `ps5GlyphSvg()` in `scripts/ps5-text-input.js` shares `GlyphStyle::dark()` button SVGs (`Dpad`, `Cross`, `Square`, `Circle`, `Triangle`, `L3`, `R2`) across Search and Profile PIN hints.
+  - Profile PIN overlay maps `Square` (`F2`/`113`) and physical `Backspace` (`8`) to digit deletion without triggering `Options` or Back, while preserving keypad focus.
+  - Profile PIN bottom bar renders `D-pad` Navigate, `Cross` Select, `Square` Backspace, and `Circle` Cancel controller hints.
+- Host checks (`make build` and `make check`):
+  - `make check` passed all `160` tests (including `test_pin_overlay_square_backspace_controls_and_layout` in headless Chromium at `1920x1080`), `make docs-check`, and `scripts/check.py`.
+  - Inspected `1920x1080` Chromium renders showed centered PIN scaling, bottom controller glyphs, and unclipped Detail hero focus rings.
+- Built artifacts and SHA-256 hashes:
+  - `eboot.bin`: `51098ddb73051750d579126cdf87e49a2a44cfdaafb6ea71189c6ddc59eb1f4b` (`48847892` bytes, signed container integrity valid).
+  - `eboot.elf`: `76119d48226112f0ddc3373a1638d47bf2b7e32975aac47138ddb96b72b49df8` (`50071340` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` (`1284674` bytes).
+  - `webui/app.bundle.js`: `cfd18cb6833f7a23bdc6ef78c29d6fbdca0c8c31d8c9097a638078eb0ef18aaa` (`3887607` bytes).
+  - `webui/css/bundle.css`: `65c531974e1e4bf65c2f134ed696f23cbfbf9e2c7a1255d19762ea07053a59d2` (`601991` bytes).
+  - `bootstrap-promote.elf`: `cee7f87a9e412c3a6fd067117d3408cb80a2edb5a10c238ad764a1362e60fe5b` (`110992` bytes).
+  - `nuvio.elf`: `7d8334238e089332adb5b66d80609a18bd1fc71b6abb0fa9f220bf66a0dc7607`.
+- Console update, verification, and launch:
+  - Closed running `PPSA99996` (`app_id: 49176`, `pid: 1119`), backed up prior `eboot.bin` (`a4e2c8a5...`) via `control-5.elf`, and kept `/data/nuvio/` intact.
+  - Uploaded the `3` changed files (`eboot.bin`, `webui/app.bundle.js`, `webui/css/bundle.css`) over PS5Upload (`port 9180`) and confirmed exact readback and `control-5.elf` hashes.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0xe018`, `app_id: 57368`, `pid: 1129`). `control-2.elf` reported `"installed":true`, `"mounted":true`, `"size_bytes":117144041`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1314`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, `web: title-ui: response status=200`, `web: storage: restored 1031817 bytes`, and `web: page: route profileSelection`.
+- Pending console verification on TV (`[UNKNOWN]`):
+  - Confirm that the Detail `+` button focus ring shows no clipping and the Profile PIN screen shows balanced proportions.
+  - Confirm that the bottom controller hints display cleanly and Square deletes PIN digits instead of opening Options.
+
 

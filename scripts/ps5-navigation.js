@@ -190,13 +190,16 @@ export function initPs5Navigation() {
     // Owner's ordered Up, Square, Down, Options diagnostic on build 1031-1013:
     // ArrowUp/38, F2/113, ArrowDown/40, F3/114. Later isolated Triangle: F1/112.
     if (!['F1', 'F2', 'F3'].includes(event.key) && ![112, 113, 114].includes(event.keyCode)) return;
+    const isTriangle = event.key === 'F1' || event.keyCode === 112;
+    const isSquare = event.key === 'F2' || event.keyCode === 113;
     // The keyboard owns Triangle/Space and Square/Delete while it is open.
-    if (document.body.classList.contains('nuvio-modal-open') &&
-        (event.key === 'F1' || event.key === 'F2' || [112, 113].includes(event.keyCode))) return;
+    if (document.body.classList.contains('nuvio-modal-open') && (isTriangle || isSquare)) return;
+    // The PIN overlay owns Square/Backspace while it is open.
+    if (isSquare && Router.getCurrentScreen()?.container?.querySelector('[data-overlay-root="pin"]')) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (!event.repeat) {
-      if (event.key === 'F1' || event.keyCode === 112) requestSearch();
+      if (isTriangle) requestSearch();
       else requestOptions();
     }
   }, true);

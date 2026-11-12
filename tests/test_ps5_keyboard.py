@@ -233,3 +233,124 @@ window.visualViewport=undefined;context.openDisplayDiagnostics();
 assert(shown.content.textContent.includes('Visual viewport: unavailable'));
 '''
         subprocess.run(['node', '-e', script, str(ROOT/'scripts/ps5-navigation.js')], check=True, timeout=10)
+
+    def test_pin_overlay_square_backspace_controls_and_layout(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        from scripts import polish
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        shared_keys = strip(polish.patch_pin_shared_keys(frontend_file('js/platform/sharedKeys.js')))
+        pin_render = strip(polish.patch_pin_render_overlay(frontend_file('js/core/profile/profileSelectionScreenMethods-03-render-pin-overlay.js')))
+        pin_input = strip(polish.patch_pin_submit_keydown(frontend_file('js/core/profile/profileSelectionScreenMethods-06-submit-completed-pin.js')))
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const LayoutPreferences = {{}};
+class NuvioDialog {{ constructor(options) {{ this.options = options; }} mount() {{ return this; }} destroy() {{}} }}
+const internals = {{
+  PROFILE_PIN_TEXT: {{ headingSet: n => n, headingUnlock: n => 'Enter your PIN to access ' + n + '.', headingConfirm: 'Confirm',
+    headingVerifyChange: n => n, headingVerifyRemove: n => n, supportSet: '', supportUnlock: 'Use your remote or keyboard to enter 4 digits.',
+    supportConfirm: '', supportVerifyChange: '', supportVerifyRemove: '', forgot: 'Forgot PIN?', back: 'Press back to cancel',
+    verifying: '...', saving: '...' }},
+  getDefaultProfileColor: () => '#fff',
+  escapeHtml: value => String(value ?? ''),
+  centerAvatarRowInScrollContainer: () => {{}},
+  findNearestByHorizontalCenter: () => null
+}};
+const ScreenUtils = {{ handleDpadNavigation: () => false }};
+const ProfileManager = {{}}, ProfilePinService = {{}};
+{shared_keys}
+{text_input}
+{pin_render}
+{pin_input}
+const methods03 = createProfileSelectionScreenMethods03();
+const methods06 = createProfileSelectionScreenMethods06();
+const host = document.getElementById('profileSelection');
+const screen = {{
+  ...methods03, ...methods06,
+  container: host,
+  pinOverlayState: {{ type: 'unlock', profileId: '1' }},
+  pinOverlayPhase: 'open',
+  pinOverlayError: '',
+  pinValue: '12',
+  isPinOperationInProgress: false,
+  focusKey: 'pin:5',
+  pendingFocusKey: '',
+  getRenderedPinOverlayState() {{ return this.pinOverlayState; }},
+  getPinOverlayProfile() {{ return {{ id: '1', name: 'Shashank' }}; }},
+  renderPinBoxes() {{ return '<span class="profile-pin-box is-filled"><span class="profile-pin-dot"></span></span>'.repeat(4); }},
+  renderPinKeypad() {{ return '<button class="profile-pin-key focusable focused" data-focus-key="pin:5">5</button>'; }},
+  restoreFocus() {{
+    const key = this.pendingFocusKey || this.getDefaultFocusKey();
+    this.pendingFocusKey = '';
+    this.lastRestoredFocus = key;
+  }},
+  render() {{
+    this.container.innerHTML = this.renderPinOverlay();
+    this.restoreFocus();
+  }}
+}};
+let optionsOpened = 0;
+screen.openControllerMenu = () => {{ optionsOpened++; }};
+const Router = {{ getCurrent: () => 'profileSelection', getCurrentScreen: () => screen }};
+{navigation}
+screen.render();
+initPs5Navigation();
+window.addEventListener('keydown', e => {{
+  if (isBackEvent(e, [27, 461, 10009])) return;
+  void screen.handlePinOverlayKeyDown(e);
+}});
+const key = (k, keyCode, target = document.querySelector('.profile-pin-key.focused')) =>
+  target.dispatchEvent(new KeyboardEvent('keydown', {{ key: k, keyCode, which: keyCode, bubbles: true, cancelable: true }}));
+(async () => {{
+  assert(document.querySelectorAll('.ps5-pin-controls .ps5-control-hint').length === 4, 'Missing 4 bottom PIN control hints');
+  assert(document.querySelectorAll('.ps5-pin-controls svg').length === 4, 'Missing controller SVGs in PIN hints');
+  assert(document.querySelector('.profile-pin-back-hint').textContent.includes('Backspace'), 'Missing Square Backspace label');
+  assert(!isBackEvent({{ key: 'Backspace', keyCode: 8, target: document.querySelector('.profile-pin-key') }}), 'Backspace inside PIN must not be Back');
+  assert(isBackEvent({{ key: 'Escape', keyCode: 27, target: document.querySelector('.profile-pin-key') }}), 'Escape inside PIN must stay Back');
+  key('F2', 113);
+  await new Promise(r => setTimeout(r, 10));
+  assert(screen.pinValue === '1', 'Square did not delete one PIN digit');
+  assert(screen.lastRestoredFocus === 'pin:5', 'Square Backspace lost keypad focus');
+  assert(optionsOpened === 0, 'Square opened Options instead of Backspace on PIN');
+  const contentRect = document.querySelector('.profile-pin-content').getBoundingClientRect();
+  const centerDelta = Math.abs((contentRect.left + contentRect.right) / 2 - window.innerWidth / 2);
+  assert(centerDelta <= 2, 'PIN content not horizontally centered: delta=' + centerDelta);
+  assert(contentRect.height < window.innerHeight - 160, 'PIN content too tall: ' + contentRect.height);
+  const heroBody = document.querySelector('.detail-hero-body').getBoundingClientRect();
+  const circleBtn = document.querySelector('.series-circle-btn.focused').getBoundingClientRect();
+  assert(circleBtn.top - 2 >= heroBody.top, 'Detail circle button focus ring clipped at top');
+  assert(circleBtn.left - 2 >= document.querySelector('.series-detail-actions').getBoundingClientRect().left, 'Detail button clipped on left');
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'pin_detail.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="profileSelection" class="screen profile-selection-shell" style="display:block;position:relative;width:100vw;height:100vh;"></div>'
+                '<div class="detail-hero-body"><div class="series-detail-actions">'
+                '<button class="series-circle-btn focusable focused">+</button>'
+                '</div></div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+

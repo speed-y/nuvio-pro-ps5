@@ -6,6 +6,43 @@ import { catalogRepository } from '../../data/repository/catalogRepository.js';
 import { buildSearchTargets } from '../screens/search/searchCatalogTargets.js';
 import { filterReleasedItems } from '../../core/util/releaseInfoUtils.js';
 
+// SVG adaptation of ps5-homebrew-ui's ui/glyphs.cpp, pinned in deps.lock.
+// Copyright (C) 2026 BlackBearReloaded. SPDX-License-Identifier: GPL-3.0-or-later.
+// Match EVO's GlyphStyle::dark(), including its face colours and trigger lip.
+const PS5_GLYPH_FACES = {
+  Triangle: '<path d="M16 7.073L24.736 22.465H7.264Z" fill="none" stroke="#46d6b0" stroke-width="3.52"/>',
+  Square: '<rect x="10.688" y="10.688" width="10.624" height="10.624" fill="none" stroke="#e98fd8" stroke-width="3.52"/>',
+  Circle: '<circle cx="16" cy="16" r="7.616" fill="none" stroke="#ff6b7d" stroke-width="3.52"/>',
+  Cross: '<path d="M9.6 9.6L22.4 22.4M9.6 22.4L22.4 9.6" fill="none" stroke="#7fa7ff" stroke-width="3.52"/>'
+};
+
+/** Return an inline SVG matching DualSense GlyphStyle::dark() for a button name. */
+export function ps5GlyphSvg(name) {
+  if (PS5_GLYPH_FACES[name]) {
+    return '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#11131f" fill-opacity=".92"/>' +
+      PS5_GLYPH_FACES[name] + '</svg>';
+  }
+  if (name === 'Dpad') {
+    return '<svg viewBox="0 0 32 32">' +
+      '<circle cx="16" cy="16" r="15" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+      '<rect x="12.8" y="6.4" width="6.4" height="19.2" rx="1.92" fill="#e4e3f5"/>' +
+      '<rect x="6.4" y="12.8" width="19.2" height="6.4" rx="1.92" fill="#e4e3f5"/>' +
+      '<circle cx="16" cy="16" r="1.4" fill="#11131f"/></svg>';
+  }
+  if (name === 'L3') {
+    return '<svg viewBox="0 0 64 64">' +
+      '<circle cx="32" cy="32" r="30" fill="#11131f"/>' +
+      '<circle cx="32" cy="32" r="27" fill="none" stroke="#f5f5f5" stroke-width="3"/>' +
+      '<circle cx="32" cy="32" r="17" fill="none" stroke="#f5f5f5" stroke-width="4"/>' +
+      '<path d="M32 8l5 8h-10zM32 56l-5-8h10zM8 32l8-5v10zM56 32l-8 5v-10z" fill="#f5f5f5"/>' +
+      '<text x="32" y="38" text-anchor="middle" font-size="16" font-weight="700" fill="#f5f5f5">L3</text></svg>';
+  }
+  return '<svg viewBox="0 0 41.6 32">' +
+    '<rect x=".75" y="2.03" width="40.1" height="27.94" rx="8.67" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+    '<rect x="4" y="5.28" width="33.6" height="7.066" rx="3.533" fill="#e4e3f5" fill-opacity=".16"/>' +
+    '<text x="20.8" y="23.608" text-anchor="middle" font-size="12.8" font-weight="600" fill="#e4e3f5">' + name + '</text></svg>';
+}
+
 let activeKeyboard = null;
 
 export function requestPs5SearchKeyboard(navigationContext = {}) {
@@ -258,34 +295,13 @@ export function requestPs5SearchKeyboard(navigationContext = {}) {
   buttons.forEach((button, index) => {
     button.addEventListener('focus', () => { selected = index; draw(); });
   });
-  // SVG adaptation of ps5-homebrew-ui's ui/glyphs.cpp, pinned in deps.lock.
-  // Copyright (C) 2026 BlackBearReloaded. SPDX-License-Identifier: GPL-3.0-or-later.
-  // Match EVO's GlyphStyle::dark(), including its face colours and trigger lip.
-  for (const [index, label, shape] of [
-    [40, 'Triangle', '<path d="M16 7.073L24.736 22.465H7.264Z" fill="none" stroke="#46d6b0" stroke-width="3.52"/>'],
-    [41, 'Square', '<rect x="10.688" y="10.688" width="10.624" height="10.624" fill="none" stroke="#e98fd8" stroke-width="3.52"/>'],
-    [43, 'L3'], [44, 'R2'], [45, 'Circle', '<circle cx="16" cy="16" r="7.616" fill="none" stroke="#ff6b7d" stroke-width="3.52"/>']
-  ]) {
+  for (const [index, label] of [[40, 'Triangle'], [41, 'Square'], [43, 'L3'], [44, 'R2'], [45, 'Circle']]) {
     const icon = document.createElement('span');
     icon.className = 'ps5-key-shortcut';
     icon.setAttribute('aria-hidden', 'true');
-    if (shape) {
-      icon.innerHTML = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#11131f" fill-opacity=".92"/>' + shape + '</svg>';
-    } else if (label === 'L3') {
-      icon.classList.add('stick');
-      icon.innerHTML = '<svg viewBox="0 0 64 64">' +
-        '<circle cx="32" cy="32" r="30" fill="#11131f"/>' +
-        '<circle cx="32" cy="32" r="27" fill="none" stroke="#f5f5f5" stroke-width="3"/>' +
-        '<circle cx="32" cy="32" r="17" fill="none" stroke="#f5f5f5" stroke-width="4"/>' +
-        '<path d="M32 8l5 8h-10zM32 56l-5-8h10zM8 32l8-5v10zM56 32l-8 5v-10z" fill="#f5f5f5"/>' +
-        '<text x="32" y="38" text-anchor="middle" font-size="16" font-weight="700" fill="#f5f5f5">L3</text></svg>';
-    } else {
-      icon.classList.add('shoulder');
-      icon.innerHTML = '<svg viewBox="0 0 41.6 32">' +
-        '<rect x=".75" y="2.03" width="40.1" height="27.94" rx="8.67" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
-        '<rect x="4" y="5.28" width="33.6" height="7.066" rx="3.533" fill="#e4e3f5" fill-opacity=".16"/>' +
-        '<text x="20.8" y="23.608" text-anchor="middle" font-size="12.8" font-weight="600" fill="#e4e3f5">' + label + '</text></svg>';
-    }
+    if (label === 'L3') icon.classList.add('stick');
+    else if (label === 'R2') icon.classList.add('shoulder');
+    icon.innerHTML = ps5GlyphSvg(label);
     buttons[index].prepend(icon);
     buttons[index].setAttribute('aria-label', keys[index].label + ' (' + label + ')');
   }

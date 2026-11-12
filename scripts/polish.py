@@ -271,6 +271,60 @@ def patch_search_back(text):
       return false;''')
 
 
+def patch_pin_shared_keys(text):
+    old = '  if (\n    isEditableTarget(target) &&\n'
+    new = '  if (\n    (isEditableTarget(target) || target?.closest?.("[data-overlay-root=\'pin\']")) &&\n'
+    if text.count(old) != 1:
+        raise RuntimeError('Pinned sharedKeys Backspace anchor changed')
+    return text.replace(old, new)
+
+
+def patch_pin_render_overlay(text):
+    imp_old = 'import * as internals from "./profileSelectionScreen.js";'
+    imp_new = (
+        'import * as internals from "./profileSelectionScreen.js";\n'
+        'import { ps5GlyphSvg } from "../../ui/navigation/ps5-text-input.js";'
+    )
+    hint_old = '<div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>'
+    hint_new = '''<div class="profile-pin-back-hint">${globalThis.__NUVIO_PS5__
+                  ? `<div class="ps5-pin-controls">${[["Dpad", "Navigate"], ["Cross", "Select"], ["Square", "Backspace"], ["Circle", "Cancel"]]
+                      .map(([glyph, label]) => `<span class="ps5-control-hint"><span class="ps5-control-glyph" aria-hidden="true">${ps5GlyphSvg(glyph)}</span><span>${label}</span></span>`)
+                      .join("")}</div>`
+                  : escapeHtml(PROFILE_PIN_TEXT.back)}</div>'''
+    if text.count(imp_old) != 1 or text.count(hint_old) != 1:
+        raise RuntimeError('Pinned PIN render anchor changed')
+    return text.replace(imp_old, imp_new).replace(hint_old, hint_new)
+
+
+def patch_pin_submit_keydown(text):
+    old = '''      if (code === 8 || code === 46 || key === "Backspace" || key === "Delete") {
+        event?.preventDefault?.();
+        if (!this.isPinOperationInProgress && this.pinValue) {
+          this.pinValue = this.pinValue.slice(0, -1);
+          this.pinOverlayError = "";
+          this.render();
+        }
+        return true;
+      }'''
+    new = '''      if (code === 8 || code === 46 || key === "Backspace" || key === "Delete" ||
+          (globalThis.__NUVIO_PS5__ && (code === 113 || key === "F2"))) {
+        event?.preventDefault?.();
+        if (event?.repeat && (code === 113 || key === "F2")) {
+          return true;
+        }
+        if (!this.isPinOperationInProgress && this.pinValue) {
+          this.pinValue = this.pinValue.slice(0, -1);
+          this.pinOverlayError = "";
+          this.pendingFocusKey = this.focusKey || this.getDefaultFocusKey();
+          this.render();
+        }
+        return true;
+      }'''
+    if text.count(old) != 1:
+        raise RuntimeError('Pinned PIN keydown anchor changed')
+    return text.replace(old, new)
+
+
 def patch_nuvio(nuvio):
     patch_stream_selection(nuvio)
     home_dom = nuvio/'js/ui/screens/home/homeDomUpdate.js'
@@ -288,6 +342,13 @@ def patch_nuvio(nuvio):
         't("profile_selection_hint", {}, "Hold to manage profile")',
         '(globalThis.__NUVIO_PS5__ ? "Press Square or Options to manage profile" : '
         't("profile_selection_hint", {}, "Hold to manage profile"))')
+    for rel, fn in (
+        ('js/platform/sharedKeys.js', patch_pin_shared_keys),
+        ('js/core/profile/profileSelectionScreenMethods-03-render-pin-overlay.js', patch_pin_render_overlay),
+        ('js/core/profile/profileSelectionScreenMethods-06-submit-completed-pin.js', patch_pin_submit_keydown),
+    ):
+        target = nuvio/rel
+        target.write_text(fn(target.read_text()))
     # Form controls otherwise retain the browser's font instead of the theme.
     replace(nuvio/'css/base.css', '\n* {\n',
         '\nbutton,\ninput,\ntextarea,\nselect {\n  font-family: inherit;\n}\n\n* {\n')
@@ -329,6 +390,93 @@ def patch_nuvio(nuvio):
   height: 1.5vw;
 }
 .series-primary-btn { overflow: visible; }
+/* Give the top/left focus ring and scale on Detail hero buttons room inside
+ * .detail-hero-body's overflow: hidden while keeping left alignment intact. */
+.series-detail-actions {
+  padding: 8px 6px 4px;
+  margin-left: -6px;
+}
+/* Upstream PIN styles target <= 760px height or oversize px for 1080p.
+ * Scale proportions smoothly across 720p/1080p and fit controller hints below. */
+.profile-pin-overlay {
+  padding: 28px 24px;
+}
+.profile-pin-heading {
+  font-size: clamp(26px, 2.2vw, 40px);
+  line-height: 1.2;
+  margin: 0;
+}
+.profile-pin-box-row {
+  gap: clamp(14px, 1.3vw, 22px);
+  margin: clamp(22px, 2.5vh, 34px) 0 0;
+}
+.profile-pin-box {
+  width: clamp(80px, 5.8vw, 108px);
+  height: clamp(80px, 5.8vw, 108px);
+  border-radius: clamp(14px, 1vw, 18px);
+}
+.profile-pin-dot {
+  width: clamp(15px, 1.15vw, 20px);
+  height: clamp(15px, 1.15vw, 20px);
+}
+.profile-pin-cursor {
+  height: clamp(32px, 2.4vw, 44px);
+}
+.profile-pin-support {
+  font-size: clamp(16px, 1.05vw, 20px);
+  min-height: clamp(22px, 1.6vw, 28px);
+  margin: clamp(16px, 1.8vh, 24px) 0 0;
+}
+.profile-pin-keypad {
+  width: clamp(256px, 18vw, 324px);
+  gap: clamp(8px, 0.6vw, 11px) clamp(10px, 0.7vw, 13px);
+  margin: clamp(16px, 1.8vh, 24px) 0 0;
+}
+.profile-pin-key {
+  width: clamp(74px, 5.2vw, 94px);
+  height: clamp(48px, 3.3vw, 62px);
+  font-size: clamp(22px, 1.5vw, 28px);
+  border-radius: 10px;
+}
+.profile-pin-delete-icon {
+  width: clamp(22px, 1.4vw, 26px);
+  height: clamp(22px, 1.4vw, 26px);
+}
+.profile-pin-forgot {
+  font-size: clamp(14px, 0.9vw, 17px);
+  margin: clamp(16px, 2vh, 24px) 0 0;
+}
+.profile-pin-back-hint {
+  margin: clamp(14px, 1.6vh, 20px) 0 0;
+  font-size: clamp(15px, 0.95vw, 18px);
+}
+.ps5-pin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 26px;
+}
+.ps5-control-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(255, 255, 255, 0.86);
+  font-weight: 500;
+}
+.ps5-control-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: clamp(22px, 1.45vw, 28px);
+  height: clamp(22px, 1.45vw, 28px);
+}
+.ps5-control-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .stream-route-shell { zoom: .72; }
 
 """)
