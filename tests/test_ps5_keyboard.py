@@ -327,10 +327,25 @@ const key = (k, keyCode, target = document.querySelector('.profile-pin-key.focus
   const centerDelta = Math.abs((contentRect.left + contentRect.right) / 2 - window.innerWidth / 2);
   assert(centerDelta <= 2, 'PIN content not horizontally centered: delta=' + centerDelta);
   assert(contentRect.height < window.innerHeight - 160, 'PIN content too tall: ' + contentRect.height);
-  const heroBody = document.querySelector('.detail-hero-body').getBoundingClientRect();
-  const circleBtn = document.querySelector('.series-circle-btn.focused').getBoundingClientRect();
+  const heroBodyEl = document.querySelector('.detail-hero-body');
+  const heroBody = heroBodyEl.getBoundingClientRect();
+  const primaryEl = document.querySelector('.series-primary-btn.focused');
+  const secondaryEl = document.querySelector('.series-secondary-btn');
+  const primaryRect = primaryEl.getBoundingClientRect();
+  const secondaryRect = secondaryEl.getBoundingClientRect();
+  const heroCs = getComputedStyle(heroBodyEl);
+  const primaryCs = getComputedStyle(primaryEl);
+  assert(heroCs.overflowX === 'visible' && heroCs.overflowY === 'visible', 'Detail hero body must not clip focus ring: ' + heroCs.overflow);
+  assert(primaryCs.transform === 'none', 'Primary button must not asymmetrically scale under performance-constrained: ' + primaryCs.transform);
+  assert(primaryCs.boxShadow.includes('inset'), 'Primary button focus ring must be inset: ' + primaryCs.boxShadow);
+  assert(Math.abs(primaryRect.height - secondaryRect.height) <= 1, 'Resume button height mismatches Play options: ' + primaryRect.height + ' vs ' + secondaryRect.height);
+  const circleBtn = document.querySelector('.series-circle-btn').getBoundingClientRect();
   assert(circleBtn.top - 2 >= heroBody.top, 'Detail circle button focus ring clipped at top');
-  assert(circleBtn.left - 2 >= document.querySelector('.series-detail-actions').getBoundingClientRect().left, 'Detail button clipped on left');
+  assert(primaryRect.left - 2 >= document.querySelector('.series-detail-actions').getBoundingClientRect().left, 'Detail button clipped on left');
+  for (const sel of ['.home-track', '.cast-credit-track', '.folder-row-track', '.detail-company-track', '.poster-list-picker-actions']) {{
+    const padTop = parseFloat(getComputedStyle(document.querySelector(sel)).paddingTop);
+    assert(padTop >= 6, sel + ' needs >= 6px top padding for focus rings, got ' + padTop);
+  }}
   document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
 }})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
 '''
@@ -340,9 +355,16 @@ const key = (k, keyCode, target = document.querySelector('.profile-pin-key.focus
                 f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
                 '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
                 '<div id="profileSelection" class="screen profile-selection-shell" style="display:block;position:relative;width:100vw;height:100vh;"></div>'
-                '<div class="detail-hero-body"><div class="series-detail-actions">'
-                '<button class="series-circle-btn focusable focused">+</button>'
-                '</div></div>'
+                '<div class="series-detail-shell"><div class="detail-hero-body"><div class="series-detail-actions">'
+                '<button class="series-primary-btn focusable focused">Resume S2E6</button>'
+                '<button class="series-secondary-btn focusable">Play options</button>'
+                '<button class="series-circle-btn focusable">+</button>'
+                '</div></div></div>'
+                '<div class="home-screen-shell"><div class="home-track"></div></div>'
+                '<div class="cast-credit-track"></div>'
+                '<div class="folder-row-track"></div>'
+                '<div class="detail-company-track"></div>'
+                '<div class="poster-list-picker-actions"></div>'
                 f'<pre id="result">pending</pre><script>{harness}</script></body>'
             )
             result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',

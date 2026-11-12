@@ -5255,3 +5255,33 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `libSceWebBrowserDialog` (`evo_webui.c`) and `ps5-payload-sdk` expose no documented cursor positioning API or synthetic `scePad` motion injection API. Sony's initial dialog pointer cannot be moved to bottom-right or hidden programmatically before physical stick movement without undocumented SDK interfaces (`AGENTS.md` restriction).
   - `[UNKNOWN]` RmlUi buffering-state 3-line shift fallback remains unverified on TV.
 
+## Detail Resume button shape and focus-ring clipping fix, 2026-11-12
+
+- Status: `[PROVEN]` install, launch, and owner TV verification of the updated Detail `Resume` button on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1513`. Title identity: `PPSA99996` (`version` `01.000.007`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- Root causes and fixes in `scripts/polish.py`:
+  - `.detail-hero-body` kept `overflow: hidden` on non-Tizen browsers, while `.series-primary-btn.focused` inherited `.performance-constrained` `tizenCardLift` (`scale(1.03)`) and an outer focus `box-shadow`. `.series-secondary-btn` omitted that scale rule, so `Resume` grew taller and clipped flat along the left border.
+  - `.series-detail-shell:not(.detail-trailer-active) .detail-hero-body` sets `overflow: visible`.
+  - `.series-primary-btn`, `.series-secondary-btn`, and `.series-circle-btn` clear native appearance and cancel `.performance-constrained` `tizenCardLift` scaling on Detail controls, using uniform inset focus rings (`4px` on pills/circles/company cards, `3px` on season/tab/comment cards).
+  - `.home-screen-shell .home-track`, `.cast-credit-track`, `.folder-row-track`, `.detail-company-track`, `.detail-morelike-track`, `.detail-comments-track`, and `.poster-list-picker-actions` add top/left padding so outer focus rings and focus scaling do not clip.
+- Host checks (`make build` and `make check`):
+  - `make build` compiled `240` objects and signed `eboot.bin` with valid integrity.
+  - `make check` passed all `165` unit tests (`62.838s`), including `test_pin_overlay_square_backspace_controls_and_layout` in headless Chromium at `1920x1080`, plus `make docs-check` and `scripts/check.py`.
+- Built artifact hashes:
+  - `eboot.bin`: `1b2b102bc0e99e081cfda0ada8da84f59dc33dfba69f7a05178c41a9aa79adf6` (`48848052` bytes, signed container integrity valid).
+  - `eboot.elf`: `cadcb1729a2c00d97f2c9618b3829d05ca00b7f19710b559fc624c5301908619` (`50071412` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - `webui/app.bundle.js`: `95a101e973c2512612deb9d30e9bd7afe926a030a0341936192825063596a0bf`.
+  - `webui/css/bundle.css`: `91852c10679effc2a90ef36db523c4ae903f96529a94934ddcbae7f4fa4f20d5` (`604656` bytes).
+  - `promote.elf`: `d7a76596a3f6878067354df4329d314f3d31ec4ef87dd4eb6ec0a846fa48b500`.
+  - `nuvio.elf`: `d45f98308eeb39e584b910b207535d65ef700d9e29ba0cc02a048d5c123f4c4a`.
+- Console update, hash verification, and observed results (`192.168.0.202`):
+  - Closed running `PPSA99996` (`pid: 1174`, `app_id: 24600`), backed up prior `eboot.bin` (`8c0a44010ff37071dc494529710576df81835cb9e459e223bf069537aa7424ec`) via `control-5.elf`, and preserved `/data/nuvio/`.
+  - Uploaded the `2` changed files (`eboot.bin` and `webui/css/bundle.css`) over PS5Upload HTTP API (`port 9180`). Readback SHA-256 and `control-5.elf` hashes matched the built files.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0x8018`, `pid: 1186`, `app_id: 32792`). `control-2.elf` reported `"installed":true`, `"mounted":true`, and `"size_bytes":117160882`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1513`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, and `web: title-ui: response status=200`.
+  - `[PROVEN]` Owner confirmed on TV that the updated Detail `Resume` button renders cleanly (`looks good.`).
+- Pending console verification (`[UNKNOWN]`):
+  - `[UNKNOWN]` Visual spot-checks on Home, Cast Detail, Folder rows, and Poster List Picker dialogs remain unverified on TV.
+

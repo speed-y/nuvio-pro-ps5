@@ -418,6 +418,8 @@ def patch_nuvio(nuvio):
         css.write('\n'+(Path(__file__).parent/'ps5-search-keyboard.css').read_text()+"""
 .series-primary-btn,
 .series-secondary-btn {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   height: auto;
   min-height: 4.2vw;
@@ -425,17 +427,75 @@ def patch_nuvio(nuvio):
   border-radius: 999px;
   line-height: 1;
 }
+.series-circle-btn {
+  appearance: none;
+  -webkit-appearance: none;
+}
 .series-primary-btn .series-btn-svg,
 .series-primary-btn .series-btn-icon svg {
   width: 1.5vw;
   height: 1.5vw;
 }
 .series-primary-btn { overflow: visible; }
-/* Give the top/left focus ring and scale on Detail hero buttons room inside
- * .detail-hero-body's overflow: hidden while keeping left alignment intact. */
+.series-detail-shell:not(.detail-trailer-active) .detail-hero-body {
+  overflow: visible;
+}
+/* Give Detail hero buttons room on top/left while keeping left visual alignment
+ * intact with the title and overview below. */
 .series-detail-actions {
   padding: 8px 6px 4px;
   margin-left: -6px;
+}
+/* Upstream .performance-constrained applies tizenCardLift scale(1.03) and outer
+ * box-shadows to .series-primary-btn/.series-circle-btn (while omitting
+ * .series-secondary-btn), making Resume/Play taller and clipping pill edges.
+ * Keep uniform inset focus rings and unscaled geometry on Detail controls. */
+.performance-constrained .series-primary-btn.focused,
+.performance-constrained .series-secondary-btn.focused,
+.performance-constrained .series-circle-btn.focused,
+.performance-constrained .detail-company-card.focused,
+.performance-constrained .detail-comment-card.focused,
+.performance-constrained .series-season-btn.focused,
+.performance-constrained .series-insight-tab.focused,
+.performance-constrained .series-episode-card.focused,
+.performance-constrained .detail-morelike-card.focused,
+.performance-constrained .movie-cast-card.focused,
+.performance-constrained .series-cast-card.focused {
+  animation: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+.performance-constrained .series-primary-btn.focused,
+.performance-constrained .series-secondary-btn.focused,
+.performance-constrained .series-circle-btn.focused,
+.performance-constrained .detail-company-card.focused {
+  box-shadow: inset 0 0 0 4px var(--detail-focus-ring, var(--focus-color, #fff)) !important;
+}
+.performance-constrained .detail-comment-card.focused,
+.performance-constrained .series-season-btn.focused,
+.performance-constrained .series-insight-tab.focused {
+  box-shadow: inset 0 0 0 3px var(--focus-color, var(--secondary-color, #fff)) !important;
+}
+/* Prevent top/left outer focus-ring or focus-scale clipping inside tight
+ * scrollable tracks across Home, Cast Detail, Folders, Detail rows, and Dialogs. */
+.home-screen-shell .home-track {
+  padding-top: 6px;
+}
+.cast-credit-track {
+  padding: 6px 6px 8px;
+  margin-left: -6px;
+}
+.folder-row-track {
+  padding: 6px 6px 8px;
+  margin-left: -2px;
+}
+.detail-company-track,
+.detail-morelike-track,
+.detail-comments-track {
+  padding-top: 6px;
+}
+.poster-list-picker-actions {
+  padding: 8px 56px;
 }
 /* Upstream PIN styles target <= 760px height or oversize px for 1080p.
  * Scale proportions smoothly across 720p/1080p and fit controller hints below. */
