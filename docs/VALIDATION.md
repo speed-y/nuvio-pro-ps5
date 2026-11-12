@@ -5172,3 +5172,25 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
 - Pending console verification on retail PS5 firmware 12.70:
   - Install and launch `PPSA99996`, then check Home row navigation, Hero updates, Continue Watching sync and native playback handoff.
 
+## Console update and launch on retail PS5 firmware 12.70 (1.4.0 / v0.2.0-alpha.3), 2026-11-12
+
+- Status: `[PROVEN]`.
+- Console execution status: `[PROVEN]` update install and launch on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1220`.
+- Transfer and verification method:
+  - Verified zero active `PPSA99996` processes via PS5Upload `/api/proc/list`, backed up prior `eboot.bin` (`48847892` bytes, SHA-256 `625a97fbb60949427ad0be6b198ddc32cd9b95bb1d1fa14ac6bcb9c62ed90e28`) via `control-5.elf`, and kept `/data/nuvio/` untouched.
+  - Verified `/data/homebrew/PPSA99996` had `274` of `274` file paths (`0` missing), uploaded the `5` changed files (`eboot.bin`, `webui/app.bundle.js`, `webui/appinfo.json`, `sce_sys/param.json`, `webui/css/bundle.css`) over PS5Upload HTTP API (`port 9180`), and saved `config/installed-build.json`.
+- Verified console hashes:
+  - `eboot.bin` via `control-5.elf`: `48847892` bytes, SHA-256 `a4e2c8a5bc077d2e6838bf0f5a2a0582d8053352f22e881e36af33bb89e57f08`.
+  - `webui/app.bundle.js` via PS5Upload readback: `3886406` bytes, SHA-256 `23093b07a9296a79c33e9c1dd2cf91d76a701e85f00b004520214203047772c8`.
+  - `webui/css/bundle.css` via PS5Upload readback: `600016` bytes, SHA-256 `c100d322c099400f5bf4255b1ee9f1188a6539dbe09ade158c2c83630bc06566`.
+  - `webui/appinfo.json` via PS5Upload readback: `802` bytes, SHA-256 `9b6b4d262ef9fbe4c059d5db78153f4a36e227afb16d43ae1f14e0da13ba3ae7`.
+  - `sce_sys/param.json` via PS5Upload readback: `915` bytes, SHA-256 `88e74d42108cdef37186ab8a2044fb5d34b46447e5eab2c74ef3089572c22f8e`.
+- Observed launch and ShadowMount state:
+  - `control-3.elf` returned `NUVIO running_big_app=-1` and `NUVIO launch_result=0x8018` (`PPSA99996` running as `app_id: 32792`, `pid: 1101`).
+  - `control-2.elf` reported `"installed":true`, `"mounted":true`, `"size_bytes":117140865`.
+  - `/data/nuvio/evo.log` startup lines recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1220`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, `web: title-ui: response status=200`, `web: storage: restored 1023834 bytes`, and `web: page: route profileSelection`.
+- Pending interactive UI verification on TV (`[UNKNOWN]`):
+  - Check Home row parking during fast scrolling, Hero updates, legacy CSS colors, Continue Watching Nuvio Sync, Search keyboard, and native playback handoff/return.
+
+
