@@ -73,7 +73,7 @@
  .legacy-tizen .detail-company-card.focused,
  .legacy-tizen .detail-comment-card.focused,
  .legacy-tizen .series-primary-btn.focused,
-@@ -393,3 +385,218 @@
+@@ -393,3 +385,258 @@
    transform: none !important;
    will-change: auto !important;
  }
@@ -290,6 +290,46 @@
 +  width: 100%;
 +  height: 100%;
 +}
++.ps5-control-glyph.wide {
++  width: clamp(32px, 2.1vw, 40px);
++}
++.ps5-control-glyph.narrow {
++  width: clamp(19px, 1.25vw, 24px);
++}
++.ps5-control-bar {
++  position: fixed;
++  left: 50%;
++  bottom: clamp(14px, 1.8vh, 22px);
++  transform: translateX(-50%);
++  z-index: 9000;
++  pointer-events: none;
++  display: flex;
++  flex-wrap: nowrap;
++  align-items: center;
++  justify-content: center;
++  gap: clamp(14px, 1.35vw, 24px);
++  padding: clamp(7px, 0.7vw, 12px) clamp(16px, 1.5vw, 26px);
++  border-radius: 999px;
++  background: rgba(12, 13, 20, 0.82);
++  border: 1px solid rgba(255, 255, 255, 0.14);
++  font-size: clamp(15px, 1.05vw, 20px);
++  white-space: nowrap;
++  max-width: 96vw;
++  overflow: hidden;
++}
++.ps5-control-bar[hidden] {
++  display: none;
++}
++.ps5-control-bar .ps5-control-glyph {
++  width: clamp(22px, 1.5vw, 29px);
++  height: clamp(22px, 1.5vw, 29px);
++}
++.ps5-control-bar .ps5-control-glyph.wide {
++  width: clamp(34px, 2.25vw, 44px);
++}
++.ps5-control-bar .ps5-control-glyph.narrow {
++  width: clamp(20px, 1.3vw, 26px);
++}
 +.stream-route-shell { zoom: .72; }
 +
 --- a/js/app.js
@@ -311,7 +351,7 @@
  import { AuthManager } from "./core/auth/authManager.js";
  import { AuthState } from "./core/auth/authState.js";
  import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
-@@ -112,6 +122,698 @@
+@@ -112,6 +122,763 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
@@ -453,6 +493,71 @@
 +  }
 +  return result;
 +}
++
++globalThis.__nuvioPlaybackTitle = function () {
++  const params = (typeof Router !== "undefined" && Router.currentParams) || {};
++  const screen = typeof Router !== "undefined" ? Router.getCurrentScreen?.() : null;
++  const skip = new Set(["", "Untitled", "Nuvio", "Nuvio Pro"]);
++  const pick = (...values) => {
++    for (const value of values) {
++      if (typeof value !== "string") continue;
++      const collapsed = value.replace(/\s+/g, " ").trim();
++      const clean = ps5GeneralText(collapsed, 120);
++      if (clean && !skip.has(clean)) return clean;
++    }
++    return "";
++  };
++  let base = pick(
++    params.playerTitle,
++    params.itemTitle,
++    params.showTitle,
++    params.metaTitle,
++    params.title,
++    params.name,
++    params.fallbackTitle,
++    screen?.meta?.name,
++    screen?.params?.playerTitle,
++    screen?.params?.itemTitle,
++    screen?.params?.fallbackTitle,
++    document.querySelector?.("#stream .stream-route-title")?.textContent,
++    document.querySelector?.("#stream .stream-route-logo")?.getAttribute?.("alt")
++  );
++  if (!base) return "";
++  const rawSeason = params.season ?? screen?.params?.season;
++  const season = rawSeason == null || rawSeason === "" ? NaN : Number(rawSeason);
++  const episode = Number(params.episode ?? screen?.params?.episode ?? 0);
++  const domCode = pick(
++    params.episodeLabel,
++    screen?.params?.episodeLabel,
++    document.querySelector?.("#stream .stream-route-episode-code")?.textContent
++  );
++  const code = Number.isInteger(season) && season >= 0 && Number.isInteger(episode) && episode > 0
++    ? `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
++    : domCode;
++  if (!code) return ps5GeneralText(base, 240);
++  const escCode = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
++  const codeRegex = Number.isInteger(season) && season >= 0 && Number.isInteger(episode) && episode > 0
++    ? new RegExp(`\\bS0?${season}\\s*E0?${episode}\\b`, "i")
++    : new RegExp(`\\b${escCode}\\b`, "i");
++  base = base.replace(new RegExp(`(?:\\s*[-·:|]\\s*|\\s+)${codeRegex.source}.*$`, "i"), "").trim() || base;
++  let epTitle = pick(
++    params.playerEpisodeTitle,
++    params.episodeTitle,
++    screen?.params?.playerEpisodeTitle,
++    screen?.params?.episodeTitle,
++    params.playerSubtitle,
++    screen?.params?.playerSubtitle,
++    document.querySelector?.("#stream .stream-route-subtitle")?.textContent
++  );
++  if (epTitle) {
++    epTitle = epTitle.replace(new RegExp(`^${codeRegex.source}(?:\\s*[-·:|]\\s*|\\s+)?`, "i"), "").trim();
++    if (!epTitle || epTitle.toLowerCase() === base.toLowerCase() || skip.has(epTitle)) {
++      epTitle = "";
++    }
++  }
++  const secondLine = ps5GeneralText(epTitle ? `${code} ${epTitle}` : code, 118);
++  return ps5GeneralText(`${base}\n${secondLine}`, 240);
++};
 +
 +// Preference identities may otherwise embed a signed URL (the upstream url:
 +// fallback). Keep only bounded non-URL identities; never cache the stream URL.
@@ -1010,7 +1115,7 @@
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -359,6 +1061,11 @@
+@@ -359,6 +1126,11 @@
  }
  
  async function shouldShowProfileSelection() {
@@ -1022,7 +1127,7 @@
    const profiles = await ProfileManager.getProfiles();
    const activeProfileId = ProfileManager.getActiveProfileId();
    const cachedPinStates = ProfileSyncService.getCachedProfileLockStates();
-@@ -383,7 +1090,7 @@
+@@ -383,7 +1155,7 @@
    }
    const activeProfileHasPin = hasProfilePin(pinStates, activeProfileId);
  
@@ -1031,7 +1136,7 @@
      return { show: false, pinStates, liveStateKnown };
    }
  
-@@ -433,13 +1140,27 @@
+@@ -433,13 +1205,27 @@
    // The startup sync fans out to about ten remote surfaces. Home paints from
    // its local cache first and refreshes when the pull completes, so starting
    // the pull after that paint keeps the first screen responsive.
@@ -1066,7 +1171,7 @@
    const storedResumeRoute =
      restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
        ? Router.consumeWebOsResumeRoute()
-@@ -823,8 +1544,10 @@
+@@ -823,8 +1609,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (

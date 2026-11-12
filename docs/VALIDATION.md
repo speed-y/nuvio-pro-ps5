@@ -5224,4 +5224,34 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Confirm that the Detail `+` button focus ring shows no clipping and the Profile PIN screen shows balanced proportions.
   - Confirm that the bottom controller hints display cleanly and Square deletes PIN digits instead of opening Options.
 
+## Two-line series playback title and WebBrowserDialog initial cursor check, 2026-11-12
+
+- Status: `[PROVEN]` install, launch, and TV verification of the two-line series playback title on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1449`. Title identity: `PPSA99996` (`version` `01.000.007`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- Changes verified in host build and `make check`:
+  - `globalThis.__nuvioPlaybackTitle()` in `scripts/ps5-general.js` and `fix_playback_title()` in `scripts/polish.py` format series playback titles as `<Series name>` followed by `\nSxxExx <Episode name>`. Movies keep a single `<Movie name>` line.
+  - `OsdScreen::draw_bottom()` in `scripts/ps5-player-skin-osd.inc` splits `title_` with `split_lines(title_.c_str())` and renders the series name (`46`dp) above `SxxExx <Episode name>` (`28`dp). It shifts both lines up when `meta_` shows a buffering or end state.
+  - `patch_rml_app_source()` in `scripts/native_skin.py` and `.media-episode` in `scripts/ps5-player-skin.rcss` apply XML escaping and two-line `#media-title` layout for RmlUi fallback builds.
+  - `make build` compiled `240` objects and signed `eboot.bin` with valid integrity.
+  - `make check` passed all `165` unit tests (`58.166s`), `make docs-check`, and `scripts/check.py` after final code and test edits.
+- Built artifact hashes:
+  - `eboot.bin`: `8c0a44010ff37071dc494529710576df81835cb9e459e223bf069537aa7424ec` (`48848052` bytes, signed container integrity valid).
+  - `eboot.elf`: `a49597bc3706b796878690aeda4bd4cc60574829fe08ee55936fb98f855bc648` (`50071412` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - `webui/app.bundle.js`: `95a101e973c2512612deb9d30e9bd7afe926a030a0341936192825063596a0bf` (`3901507` bytes).
+  - `webui/css/bundle.css`: `c055ad4b0c5b19efab21fbd1463c34ba601b49914b8df705bfe6f4cbc862957a` (`603000` bytes).
+  - `assets/rml/playback.rcss`: `81442a6b3c5eebaac5aa62d7e38abed93b83a455f84b4b1e50c7cb7e55a5aad4` (`19785` bytes).
+  - `promote.elf`: `e66a78eee6e83d94d0f917ce91551fa11f1c2ac341738ebdae7b1caad6016847`.
+  - `nuvio.elf`: `6d16f53dac6d7407d22f3fc4d654ddb6c7754ed74510f746f30186b8b1239842`.
+- Console update, hash verification, and observed results (`192.168.0.202`):
+  - Closed running `PPSA99996` (`pid: 1162`, `app_id: 16408`), backed up prior `eboot.bin` (`6868a42e1d9c506ecf8213f33fd35131bea2f4e287d3c344c3d76ca0faa7bdc1`) via `control-5.elf`, and preserved `/data/nuvio/`.
+  - Uploaded the `3` changed files (`eboot.bin`, `webui/app.bundle.js`, `assets/rml/playback.rcss`) over PS5Upload HTTP API (`port 9180`). Readback SHA-256 and `control-5.elf` hashes matched the built files.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0x6018`, `pid: 1174`, `app_id: 24600`). `control-2.elf` reported `"installed":true`, `"mounted":true`, and `"size_bytes":117159226`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1449`, `web: title-ui: response status=200`, `web: storage: restored 1021263 bytes`, and `web: page: route profileSelection`.
+  - `[PROVEN]` Owner confirmed on TV that series playback displays the two-line series title (`Yes the series title works fine`).
+  - `[PROVEN]` Owner confirmed Detail Watchlist (`Square`), Scroll to top (`L2`), Play actions, and Home Left Stick D-pad navigation on TV (`YEah they are verified.`).
+- Platform limit and pending checks (`[UNKNOWN]`):
+  - `libSceWebBrowserDialog` (`evo_webui.c`) and `ps5-payload-sdk` expose no documented cursor positioning API or synthetic `scePad` motion injection API. Sony's initial dialog pointer cannot be moved to bottom-right or hidden programmatically before physical stick movement without undocumented SDK interfaces (`AGENTS.md` restriction).
+  - `[UNKNOWN]` RmlUi buffering-state 3-line shift fallback remains unverified on TV.
 

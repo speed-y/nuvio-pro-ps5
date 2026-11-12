@@ -144,8 +144,9 @@ const body={classList:{contains:()=>modal},dispatchEvent(){}};
 const screen={container:{classList:{contains:()=>false},querySelector:s=>s.includes('overlay')?overlay:focused}};
 const listeners={};
 const document={body,addEventListener:(name,fn)=>{listeners[name]=fn;listener=fn;},querySelectorAll:()=>dialog?[dialog]:[]};
-const windowEvents={};
+const windowEvents={};let controllerDialogs=0;
 const context={window:{addEventListener:(name,fn)=>{windowEvents[name]=fn;}},document,__NUVIO_PS5__:true,
+  NuvioDialog:class{constructor(o){this.o=o;} mount(){controllerDialogs++;return this;} destroy(){}},
   initPs5SearchKeyboard(){},requestPs5SearchKeyboard(){},
   Router:{getCurrentScreen:()=>screen},KeyboardEvent:class{constructor(type,init){Object.assign(this,init);this.type=type;this.keyCode=0;this.which=0;}}};
 vm.createContext(context);
@@ -175,27 +176,29 @@ field.disabled=true;listener(e());assert.equal(field.clicks,1); // Disabled over
 overlay=null;focused.isConnected=false;listener(e());assert.equal(focused.events.length,4);
 // Cards moving beneath a stationary pointer must not replace controller focus.
 const selected=node(),underPointer=node();focused=selected;
-for(const type of ['mouseover','mouseenter','mousemove','pointerover','pointerenter','pointermove']) {
+for(const type of ['mouseover','mouseenter','mousemove','mouseout','mouseleave',
+                   'pointerover','pointerenter','pointermove','pointerout','pointerleave']) {
   let blocked=false;
   listeners[type]?.({target:underPointer,stopImmediatePropagation(){blocked=true;}});
   if(!blocked) focused=underPointer; // Screen hover handler would select this card.
   listeners.click(e());
   assert.equal(focused,selected,`${type} replaced controller focus`);
 }
-assert.equal(selected.events.length,12);assert.equal(underPointer.events.length,0);
-// Observed Square/Options events open actions without activating playback.
+assert.equal(selected.events.length,20);assert.equal(underPointer.events.length,0);
+// Observed Square events open item actions; Options (F3) always opens Controller menu even on Home cards.
 (async()=>{
+  let itemMenus=0;
   for(const target of ['continueWatching','episode','playDefault']) {
     focused=node();focused.dataset.action=target;
     screen.isHomeHoldTarget=n=>n.dataset.action==='continueWatching';
     screen.isEpisodeHoldTarget=n=>n.dataset.action==='episode';
-    const showMenu=()=>{modal=true;dialog={classList:{contains:()=>false},querySelector:()=>button};};
+    const showMenu=()=>{itemMenus++;modal=true;dialog={classList:{contains:()=>false},querySelector:()=>button};};
     screen.openHoldMenuForNode=screen.openEpisodeHoldMenu=screen.openHeroPlayMenu=showMenu;
-    for(const event of [{key:'F2',keyCode:113},{key:'F3',keyCode:114},{key:'',keyCode:113}]) {
+    for(const event of [{key:'F2',keyCode:113},{key:'',keyCode:113}]) {
       const keyEvent={...e(),...event};
       windowEvents.keydown?.({...keyEvent,repeat:true});assert.equal(modal,false);
       windowEvents.keydown?.(keyEvent);
-      assert.equal(modal,true,`${target} must offer actions on ${event.key || event.keyCode}`);
+      assert.equal(modal,true,`${target} must offer item actions on Square (${event.key || event.keyCode})`);
       assert.deepEqual(focused.events,[]); // No background playback activation.
       const previous=button.events.length;listener(e());
       assert.equal(button.events.length,previous+2); // X operates the menu.
@@ -203,6 +206,12 @@ assert.equal(selected.events.length,12);assert.equal(underPointer.events.length,
       modal=false;
     }
   }
+  focused=node();focused.dataset.action='continueWatching';
+  screen.isHomeHoldTarget=()=>true;
+  const beforeItems=itemMenus;
+  windowEvents.keydown?.({...e(),key:'F3',keyCode:114});
+  assert.equal(itemMenus,beforeItems,'Options/Menu must not open home item actions');
+  assert.equal(controllerDialogs,1,'Options/Menu must open Controller menu');
   focused=node(true);windowEvents.keydown?.({...e(),key:'F2',keyCode:113});
   assert.equal(modal,false); // Do not interrupt text entry with a page menu.
 })().catch(error=>{console.error(error);process.exitCode=1;});
@@ -269,6 +278,158 @@ response(13,3,200,28,3,7,2);assert.equal(events.length,count+2);
 response(13,3,200,28,3,8,3);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:left');
 response(13,3,200,28,3,9,4);assert.equal(events.at(-1),'nuvio:keyboard-shortcut:right');
 response(13,3,200,28,3,9,4);assert.equal(events.length,count+4); // Held R1 does not replay.
+"""
+        subprocess.run([node, '-e', script, str(APP/'ps5-navigation.js')], check=True, timeout=10)
+
+    def test_native_stick_synthesis_and_controller_shortcuts(self):
+        import polish
+        import shutil
+        import subprocess
+        import tempfile
+        compiler = shutil.which('cc')
+        if not compiler:
+            self.skipTest('No host C compiler')
+        sample_c = (
+            '/* Nuvio\'s hold-able buttons\n */\n"var nvTitle=\'\';function nvNoteTitle()"\n'
+            '"if(NUVIO){document.addEventListener(\'click\',function(e){nvNoteTitle();"'
+            '" k(\'keydown\');setTimeout(function(){k(\'keyup\');},60);},true);}"\n'
+            'static char s_hook_profile[16];\n'
+            'static void serve_evo(int fd, const char *path) {\n'
+            '    if (0) {\n'
+            '    } else if (!strncmp(path, "/evo/close", 10)) {\n'
+            '    }\n'
+            '}\n'
+        )
+        emitted = polish.patch_controller_hook(sample_c)
+        test_c = r'''
+#include <assert.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+static pthread_mutex_t s_mx = PTHREAD_MUTEX_INITIALIZER;
+static char last_body[256];
+static void respond(int fd, const char *status, const char *type, const char *body, size_t n) {
+    (void)fd; (void)type;
+    assert(!strcmp(status, "200 OK"));
+    assert(n < sizeof last_body);
+    memcpy(last_body, body, n);
+    last_body[n] = 0;
+}
+static void tlog(const char *fmt, ...) { (void)fmt; }
+static void evo_webui_controller(int options, int menu, int direction, int shortcut);
+''' + emitted.split('static char s_hook_profile[16];', 1)[1] + r'''
+int main(void) {
+    evo_webui_controller(0, 0, 2, 5);
+    serve_evo(0, "/evo/controller");
+    assert(strstr(last_body, "\"navigation\":1,\"direction\":2,\"keyboard\":1,\"shortcut\":5"));
+    evo_webui_controller(0, 0, 0, 6);
+    serve_evo(0, "/evo/controller");
+    assert(strstr(last_body, "\"navigation\":1,\"direction\":2,\"keyboard\":2,\"shortcut\":6"));
+    evo_webui_controller(0, 0, 9, 7);
+    serve_evo(0, "/evo/controller");
+    assert(strstr(last_body, "\"navigation\":1,\"direction\":2,\"keyboard\":2,\"shortcut\":6"));
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp)/'probe.c'
+            exe = Path(tmp)/'probe'
+            src.write_text(test_c)
+            subprocess.run([compiler, '-Wall', '-Wextra', '-Werror', str(src), '-lpthread', '-o', str(exe)], check=True, timeout=20)
+            subprocess.run([str(exe)], check=True, timeout=10)
+        osd_inc = (APP/'ps5-player-skin-osd.inc').read_text()
+        self.assertIn('ui::Button::touchpad, "Sub delay"', osd_inc)
+        polish_src = (APP/'polish.py').read_text()
+        self.assertIn('Pressed & PadButtons::TouchPad ? 6'.replace('Pressed', 'pressed'), polish_src)
+        self.assertIn('PadButtons::L2 ? 5', polish_src)
+        self.assertIn('const float kNativeStickThreshold = 0.48f;', polish_src)
+
+    def test_browse_sticks_and_shoulder_shortcuts(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node unavailable')
+        script = r"""
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+let request,timer,modal=false,hasFocus=false,currentRoute='detail',nowMs=1000,nowSpy;
+const events=[],keys=[],clicks=[],windowListeners={};
+function makeControl(attrs={}){
+  const classes=new Set(attrs.classes||[]);
+  return {isConnected:true,disabled:false,dataset:attrs.dataset||{},
+    classList:{contains:c=>classes.has(c),add:c=>classes.add(c),remove:c=>classes.delete(c)},
+    matches:s=>s.split(',').some(p=>classes.has(p.trim().replace(/^\./,''))),
+    getAttribute:()=>null,getClientRects:()=>[1],focus(){this.focused=true;},
+    click(){clicks.push(attrs.name);attrs.onClick?.();},
+    dispatchEvent:e=>keys.push([attrs.name,e.type,e.key,e.keyCode])};
+}
+const s1=makeControl({name:'season1',classes:['series-season-btn','focusable','focused'],onClick(){s2.classList.remove('focused');s1.classList.add('focused');}});
+const s2=makeControl({name:'season2',classes:['series-season-btn','focusable'],onClick(){s1.classList.remove('focused');s2.classList.add('focused');}});
+const playBtn=makeControl({name:'playDefault',classes:['focusable']});
+const refreshBtn=makeControl({name:'refreshStreams',classes:['focusable']});
+const sidebarBtn=makeControl({name:'toggleSidebar',classes:['focusable']});
+const screenContainer={isConnected:true,disabled:false,scrollTop:0,
+  scrollTo({top}){this.scrollTop=top;},
+  getAttribute:()=>null,getClientRects:()=>[1],
+  dispatchEvent:e=>keys.push(['container',e.type,e.key,e.keyCode]),
+  querySelector(s){
+    if(s==='[data-overlay-root], .settings-dialog-backdrop') return null;
+    if(s==='.focused') return hasFocus?s1:null;
+    if(s==='[data-action="playDefault"]') return currentRoute==='detail'?playBtn:null;
+    if(s.includes('[data-action="refreshStreams"]')) return currentRoute==='stream'?refreshBtn:null;
+    if(s.includes('[data-action="toggleSidebar"]')) return currentRoute==='home'?sidebarBtn:null;
+    return null;
+  },
+  querySelectorAll(s){return s.includes('series-season-btn')?[s1,s2]:[];}};
+const document={hidden:false,activeElement:null,
+  body:{classList:{contains:()=>modal},dispatchEvent:e=>keys.push(['body',e.type,e.key,e.keyCode])},
+  addEventListener(){},querySelector:()=>null,querySelectorAll:()=>[]};
+const RealDate=Date;
+class FakeDate extends RealDate{static now(){return nowMs;}}
+const context={__NUVIO_PS5__:true,Date:FakeDate,document,
+  Event:class{constructor(type){this.type=type;}},
+  CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail;}},
+  KeyboardEvent:class{constructor(type,init){Object.assign(this,init);this.type=type;this.keyCode=0;this.which=0;}},
+  Router:{getCurrent:()=>currentRoute,getCurrentScreen:()=>({container:screenContainer})},
+  initPs5SearchKeyboard(){},requestPs5SearchKeyboard(){},
+  window:{__evoHook:true,addEventListener:(n,fn)=>{windowListeners[n]=fn;},
+          dispatchEvent:e=>events.push(e.detail?e.type+':'+e.detail:e.type)},
+  setTimeout:fn=>{timer=fn;},XMLHttpRequest:class{constructor(){request=this;}open(){}send(){}}};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1],'utf8').replace(/^import .*$/mg,'').replace('export function','function')+'\ninitPs5Navigation();',context);
+function poll(overrides={}){
+  const payload=Object.assign({options:1,menu:1,navigation:1,direction:0,keyboard:1,shortcut:0},overrides);
+  request.status=200;request.responseText=JSON.stringify(payload);request.onload();request.onloadend();timer();
+}
+poll(); // baseline
+// Simultaneous menu + options + focusless stick movement works in a single frame.
+poll({options:2,menu:2,navigation:2,direction:3});
+assert.deepEqual(events,['nuvio:controller-menu','nuvio:options']);
+assert.deepEqual(keys.slice(-2),[['container','keydown','ArrowDown',40],['container','keyup','ArrowDown',40]]);
+// Unready modal never falls through to container or page behind modal.
+modal=true;keys.length=0;poll({options:2,menu:2,navigation:3,direction:1});
+assert.equal(keys.length,0);
+modal=false;hasFocus=true;
+// Non-modal controller shortcuts: R1=4/L1=3 switch seasons, R2=2 plays default, L2=5 scrolls top, TouchPad=6 toggles home sidebar (not duplicate stream refresh).
+poll({options:2,menu:2,navigation:3,keyboard:2,shortcut:4});
+assert.deepEqual(clicks,['season2']);
+nowMs+=250;poll({options:2,menu:2,navigation:3,keyboard:3,shortcut:3});
+assert.deepEqual(clicks,['season2','season1']);
+nowMs+=250;poll({options:2,menu:2,navigation:3,keyboard:4,shortcut:2});
+assert.deepEqual(clicks,['season2','season1','playDefault']);
+screenContainer.scrollTop=300;nowMs+=250;poll({options:2,menu:2,navigation:3,keyboard:5,shortcut:5});
+assert.equal(screenContainer.scrollTop,0);
+currentRoute='stream';nowMs+=250;poll({options:2,menu:2,navigation:3,keyboard:6,shortcut:6});
+assert.equal(clicks.length,3); // Stream relies on Square for Refresh, not duplicate TouchPad.
+currentRoute='home';nowMs+=250;poll({options:2,menu:2,navigation:3,keyboard:7,shortcut:6});
+assert.equal(clicks.at(-1),'toggleSidebar');
+// Keyboard F6 also steps tabs; duplicate within 180ms deduplicates.
+currentRoute='detail';nowMs+=250;
+windowListeners.keydown({key:'F6',keyCode:117,preventDefault(){},stopImmediatePropagation(){}});
+assert.equal(clicks.at(-1),'season2');
+windowListeners.keydown({key:'F6',keyCode:117,preventDefault(){},stopImmediatePropagation(){}});
+assert.equal(clicks.length,5);
 """
         subprocess.run([node, '-e', script, str(APP/'ps5-navigation.js')], check=True, timeout=10)
 
@@ -659,6 +820,8 @@ class UIIndexTests(unittest.TestCase):
         html=build.patch_index(source)
         self.assertIn('<title>Nuvio Pro</title>',html)
         self.assertNotIn('<title>Nuvio TV</title>',html)
+        self.assertIn('cursor:none!important',html)
+        self.assertLess(html.index('cursor:none!important'),html.index('css/bundle.css'))
         self.assertLess(html.index('background-color:#000'),html.index('css/bundle.css'))
         self.assertEqual(html.count('ps5-input.js'),1)
         self.assertLess(html.index('ps5-input.js'),html.index('</head>'))
@@ -1852,3 +2015,67 @@ assert.equal(ctx.__nuvioConsumeNextEpisode({ps5NextEpisodeSession:'session-37'})
 console.log('Next episode policy, aired check, profile gate and one-use authorization: PASS');
 '''
         subprocess.run(['node', '-e', script, str(APP/'ps5-next.js')], check=True, timeout=10)
+
+    def test_playback_title_resolves_movie_and_series_episode_without_nuvio_pro_fallback(self):
+        import polish
+        import subprocess
+        sample_c = (
+            '"function note(){if(!isPlayerUrl(location.href))good=location.href;}"\n'
+            '"window.addEventListener(\'hashchange\',note);window.addEventListener(\'popstate\',note);"\n'
+            '"[\'pushState\',\'replaceState\'].forEach(function(k){var o=history[k];"\n'
+            '" history[k]=function(s){if(s&&typeof s===\'object\'){lastState=s;if(s.route)evoLog(\'route \'+s.route);}var r=o.apply(this,arguments);note();return r;};});"\n'
+            '"function nvNoteTitle(){}"\n'
+            '"function handoff(u){"\n'
+            '" if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=[\'title\',\'name\',\'metaTitle\',\'itemTitle\',\'showTitle\'],t=\'\';"\n'
+            '"  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]===\'string\')t=pr[ks[q]];}"\n'
+            '/* The stream screen, still in the DOM under the player, has it in text. */\n'
+            '"  nvNoteTitle();if(nvTitle)t=nvTitle;"\n'
+            '"  go(t||document.title);return 1;}"\n'
+        )
+        emitted = polish.fix_playback_title(sample_c)
+        self.assertIn("lastState.params)||{},ks=['playerTitle'", emitted)
+        self.assertIn("ek=['playerEpisodeTitle','episodeTitle','playerSubtitle']", emitted)
+        self.assertIn("if(s.route&&s.route!=='stream'&&s.route!=='player')nvTitle='';", emitted)
+        self.assertIn("split_lines(title_.c_str())", (APP/'ps5-player-skin-osd.inc').read_text())
+        self.assertIn("esc_rml", (APP/'native_skin.py').read_text())
+        with self.assertRaises(RuntimeError):
+            polish.fix_playback_title('changed upstream')
+        script = r'''
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+let currentParams = {
+  playerTitle: 'Friends',
+  season: 2,
+  episode: 6,
+  playerEpisodeTitle: 'The One with the Baby on the Bus'
+};
+let currentScreen = null;
+let domMap = {};
+const ctx = {
+  __NUVIO_PS5__: true,
+  Router: { get currentParams() { return currentParams; }, getCurrentScreen: () => currentScreen },
+  document: { querySelector: (sel) => domMap[sel] || null },
+  ProfileManager: { getActiveProfileId: () => '1' },
+  PlayerSettingsStore: { get: () => ({}) },
+  LocalStore: { get: (_k, d) => d }
+};
+vm.createContext(ctx);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), ctx);
+assert.equal(ctx.__nuvioPlaybackTitle(), 'Friends\nS02E06 The One with the Baby on the Bus');
+currentParams = { playerTitle: 'The Avengers', playerSubtitle: '2012' };
+assert.equal(ctx.__nuvioPlaybackTitle(), 'The Avengers');
+currentParams = { playerTitle: 'Untitled', fallbackTitle: 'Dark', season: 1, episode: 3, episodeTitle: 'S01E03 - Past and Present' };
+assert.equal(ctx.__nuvioPlaybackTitle(), 'Dark\nS01E03 Past and Present');
+currentParams = { playerTitle: 'Nuvio Pro', itemTitle: 'Andor S01E02', season: 1, episode: 2 };
+assert.equal(ctx.__nuvioPlaybackTitle(), 'Andor\nS01E02');
+currentParams = {};
+domMap = {
+  '#stream .stream-route-title': { textContent: '  Severance  ' },
+  '#stream .stream-route-episode-code': { textContent: ' S02E01 ' },
+  '#stream .stream-route-subtitle': { textContent: ' Hello, Ms. Cobel ' }
+};
+assert.equal(ctx.__nuvioPlaybackTitle(), 'Severance\nS02E01 Hello, Ms. Cobel');
+domMap = {};
+assert.equal(ctx.__nuvioPlaybackTitle(), '');
+console.log('Playback title formatter: PASS');
+'''
+        subprocess.run(['node', '-e', script, str(APP/'ps5-general.js')], check=True, timeout=10)

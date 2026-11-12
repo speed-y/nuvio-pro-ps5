@@ -354,3 +354,220 @@ const key = (k, keyCode, target = document.querySelector('.profile-pin-key.focus
             report = json.loads(html.unescape(match[1]))
             self.assertTrue(report['passed'], report)
 
+    def test_universal_hint_bar_and_browse_shortcuts(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+class NuvioDialog {{ mount() {{ return this; }} destroy() {{}} }}
+let currentRoute = 'detail';
+const screens = {{
+  detail: document.getElementById('detailScreen'),
+  stream: document.getElementById('streamScreen'),
+  player: document.getElementById('playerScreen')
+}};
+const Router = {{
+  getCurrent: () => currentRoute,
+  getCurrentScreen: () => ({{
+    container: screens[currentRoute],
+    isHomeHoldTarget: () => false,
+    isEpisodeHoldTarget: () => false,
+    isSeasonHoldTarget: () => false,
+    isPosterHoldTarget: () => false,
+    canHoldManageProfile: () => false
+  }})
+}};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const startPs5TvRemoteDiagnostics = () => {{}};
+const requestPs5SearchKeyboardStub = null;
+let clicks = [];
+document.querySelector('[data-action="playDefault"]').addEventListener('click', () => clicks.push('playDefault'));
+document.querySelector('[data-action="refreshStreams"]').addEventListener('click', () => clicks.push('refreshStreams'));
+for (const btn of document.querySelectorAll('.series-season-btn')) {{
+  btn.addEventListener('click', () => {{
+    document.querySelectorAll('.series-season-btn').forEach(x => x.classList.remove('focused'));
+    btn.classList.add('focused');
+    clicks.push(btn.dataset.season);
+  }});
+}}
+{text_input}
+{navigation}
+Object.defineProperty(document, 'hidden', {{ configurable: true, get: () => false }});
+window.requestAnimationFrame = fn => setTimeout(fn, 0);
+initPs5Navigation();
+const pause = () => new Promise(r => setTimeout(r, 80));
+(async () => {{
+  await pause();
+  const bar = document.getElementById('ps5-control-bar');
+  assert(bar && !bar.hidden, 'Bottom hint bar must be visible on detail route');
+  const txt = bar.textContent;
+  assert(txt.includes('Season') && txt.includes('Play') && txt.includes('Menu'), 'Missing contextual detail hints: ' + txt);
+  assert(bar.querySelectorAll('svg').length >= 6, 'Missing SVG controller glyphs on bottom hint bar');
+  const barRect = bar.getBoundingClientRect();
+  assert(barRect.bottom <= window.innerHeight && barRect.height < 80, 'Hint bar geometry invalid: ' + JSON.stringify(barRect));
+  assert(parseFloat(getComputedStyle(bar).fontSize) >= 15, 'Hint bar text too small for TV viewing');
+  window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'F6', keyCode: 117, bubbles: true, cancelable: true }}));
+  assert(clicks.includes('2'), 'F6/R1 did not switch season');
+  window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'F8', keyCode: 119, bubbles: true, cancelable: true }}));
+  assert(clicks.includes('playDefault'), 'F8/R2 did not trigger Play Default on detail');
+  currentRoute = 'stream';
+  screens.detail.style.display = 'none';
+  screens.stream.style.display = 'block';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.textContent.includes('Addon') && bar.textContent.split('Refresh').length === 2, 'Stream must show single Refresh hint: ' + bar.textContent);
+  screens.detail.innerHTML = '<div data-overlay-root="pin"></div>';
+  currentRoute = 'profileSelection';
+  screens.detail.style.display = 'block';
+  screens.stream.style.display = 'none';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.hidden, 'Hint bar must hide on PIN overlay');
+  screens.detail.innerHTML = '';
+  currentRoute = 'player';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.hidden, 'Hint bar must hide during playback');
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'hint_bar.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="detailScreen" class="screen" style="display:block;">'
+                '  <button class="series-season-btn focusable focused" data-season="1">S1</button>'
+                '  <button class="series-season-btn focusable" data-season="2">S2</button>'
+                '  <button class="focusable focused" data-action="playDefault">Play</button>'
+                '  <button class="focusable" data-action="toggleLibrary">Watchlist</button>'
+                '</div>'
+                '<div id="streamScreen" class="screen" style="display:none;">'
+                '  <button class="stream-route-chip focusable selected" data-addon="a1">Addon 1</button>'
+                '  <button class="stream-route-chip focusable" data-addon="a2">Addon 2</button>'
+                '  <button class="focusable" data-action="refreshStreams">Refresh</button>'
+                '</div>'
+                '<div id="playerScreen" class="screen" style="display:none;"></div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+
+    def test_detail_watchlist_top_and_play_use_detail_activation_and_scroller(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+class NuvioDialog {{ mount() {{ return this; }} destroy() {{}} }}
+const state = {{ pointerActions: [], clicks: [] }};
+const detailScreen = document.getElementById('detailScreen');
+const scroller = document.getElementById('detailContent');
+const playBtn = detailScreen.querySelector('[data-action="playDefault"]');
+const libBtn = detailScreen.querySelector('[data-action="toggleLibrary"]');
+const castCard = detailScreen.querySelector('[data-action="openCastDetail"]');
+playBtn.addEventListener('click', () => state.clicks.push('play-click'));
+libBtn.addEventListener('click', () => state.clicks.push('lib-click'));
+const Router = {{
+  getCurrent: () => 'detail',
+  getCurrentScreen: () => ({{
+    container: detailScreen,
+    isHomeHoldTarget: () => false,
+    isEpisodeHoldTarget: () => false,
+    isSeasonHoldTarget: () => false,
+    isPosterHoldTarget: () => false,
+    canHoldManageProfile: () => false,
+    openHeroPlayMenu() {{ state.pointerActions.push('heroPlayMenu'); }},
+    onPointerActivate(target) {{
+      const action = target?.closest?.('[data-action]')?.dataset?.action || '';
+      if (!action) return false;
+      state.pointerActions.push(action);
+      return true;
+    }}
+  }})
+}};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const startPs5TvRemoteDiagnostics = () => {{}};
+{text_input}
+{navigation}
+Object.defineProperty(document, 'hidden', {{ configurable: true, get: () => false }});
+window.requestAnimationFrame = fn => setTimeout(fn, 0);
+initPs5Navigation();
+scroller.scrollTop = 900;
+const pause = () => new Promise(r => setTimeout(r, 80));
+const tap = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown', {{ key, keyCode, bubbles: true, cancelable: true }}));
+(async () => {{
+  await pause();
+  const bar = document.getElementById('ps5-control-bar');
+  assert(bar && bar.textContent.includes('Watchlist'), 'Expected Watchlist hint when focused on Cast: ' + bar?.textContent);
+  tap('F2', 113);
+  await pause();
+  assert(castCard.classList.contains('focused'), 'Watchlist toggle must not steal cast focus');
+  tap('F7', 118);
+  await pause();
+  assert(scroller.scrollTop === 0, 'L2/Top did not scroll .series-detail-content to top: ' + scroller.scrollTop);
+  assert(playBtn.classList.contains('focused'), 'L2/Top did not restore hero focus');
+  playBtn.classList.remove('focused');
+  tap('F2', 113);
+  await pause();
+  tap('F8', 119);
+  await pause();
+  assert(state.pointerActions.join(',') === 'toggleLibrary,toggleLibrary,playDefault',
+    'Unexpected pointer activations: ' + state.pointerActions.join(','));
+  assert(state.clicks.length === 0, 'Must use onPointerActivate rather than raw click: ' + state.clicks.join(','));
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'detail_actions.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="detailScreen" class="screen" style="display:block;">'
+                '  <div id="detailContent" class="series-detail-content" style="height:200px;overflow:auto;">'
+                '    <div class="series-detail-actions">'
+                '      <button class="focusable" data-action="playDefault">Play</button>'
+                '      <button class="focusable" data-action="toggleLibrary">Watchlist</button>'
+                '    </div>'
+                '    <div style="height:1200px;"></div>'
+                '    <button class="focusable focused" data-action="openCastDetail">Cast</button>'
+                '  </div>'
+                '</div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+

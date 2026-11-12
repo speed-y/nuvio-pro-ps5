@@ -10,10 +10,23 @@ void OsdScreen::draw_bottom(DrawList &list, const Context &ctx) const
     const ui::Fonts &fonts = ctx.fonts;
     const Palette p = nuvio_player_palette(ctx.palette);
     list.gradient_rect({0, 680, 1920, 400}, 0, kClear, kBlack.with_alpha(0.8f));
-    ui::text(list, fonts.semibold, fit(fonts.semibold, title_, 48, 1160), kMargin, 784, 48, kWhite);
+    const std::vector<std::string> title_lines = split_lines(title_.c_str());
+    if (title_lines.size() >= 2)
+    {
+        const float y1 = meta_.empty() ? 778.0f : 744.0f;
+        const float y2 = meta_.empty() ? 826.0f : 788.0f;
+        ui::text(list, fonts.semibold, fit(fonts.semibold, title_lines[0], 46, 1160), kMargin, y1, 46, kWhite);
+        ui::text(list, fonts.regular, fit(fonts.regular, title_lines[1], 28, 1160),
+                 kMargin, y2, 28, kWhite.with_alpha(0.9f));
+    }
+    else
+    {
+        const std::string &primary = title_lines.empty() ? title_ : title_lines[0];
+        ui::text(list, fonts.semibold, fit(fonts.semibold, primary, 48, 1160), kMargin, 784, 48, kWhite);
+    }
     if (!meta_.empty())
-        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 28, 1160),
-                 kMargin, 830, 28, kWhite.with_alpha(0.68f));
+        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 26, 1160),
+                 kMargin, 830, 26, kWhite.with_alpha(0.68f));
 
     float bx = kMargin;
     for (const auto &badge : badges_)
@@ -97,6 +110,13 @@ void OsdScreen::draw_bottom(DrawList &list, const Context &ctx) const
                               {ui::Button::right_stick, "Chapter list"}};
         layout.size = 26; layout.text_size = 18;
         ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), chapters, 3, 1920 - kMargin, true, layout);
+    }
+    else if (!raw_.is_live)
+    {
+        ui::Hint extras[] = {{ui::Button::l1, "-30s"}, {ui::Button::r1, "+30s"},
+                             {ui::Button::touchpad, "Sub delay"}};
+        layout.size = 26; layout.text_size = 18;
+        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), extras, 3, 1920 - kMargin, true, layout);
     }
     std::string tracks = "Audio: " + (audio_track_.empty() ? std::string("Default") : audio_track_) +
         "   /   Subs: " + (sub_track_.empty() ? std::string("Off") : sub_track_) + "   (Up toggle / Down select)";

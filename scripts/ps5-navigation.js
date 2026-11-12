@@ -2,7 +2,7 @@
  * owner's 12.70 console. Native counters use EVO's existing pad reader. */
 import { Router } from './routerState.js';
 import { NuvioDialog } from '../components/nuvioDialog.js';
-import { initPs5SearchKeyboard, requestPs5SearchKeyboard } from './ps5-text-input.js';
+import { initPs5HintBar, initPs5SearchKeyboard, refreshPs5HintBar, requestPs5SearchKeyboard } from './ps5-text-input.js';
 import { startPs5TvRemoteDiagnostics } from './ps5-tv-remote.js';
 
 function visible(node) {
@@ -23,11 +23,30 @@ function focusedNode() {
   const screen = Router.getCurrentScreen();
   const overlay = screen?.container?.querySelector('[data-overlay-root], .settings-dialog-backdrop');
   const root = overlay || screen?.container;
-  const node = root?.querySelector('.focused') || (root?.classList.contains('focused') ? root : null);
+  const node = root?.querySelector('.focused') || (root?.classList?.contains('focused') ? root : null);
   return visible(node) ? node : null;
 }
 
+function navigationTarget() {
+  const focused = focusedNode();
+  if (focused) return focused;
+  if (document.body.classList.contains('nuvio-modal-open')) {
+    const dialogs = document.querySelectorAll?.('.nuvio-dialog-backdrop') || [];
+    const dialog = dialogs[dialogs.length - 1];
+    if (!dialog || dialog.classList?.contains?.('nuvio-dialog-backdrop-exit')) return null;
+    // Never fall through to the page behind a modal; dispatch only to the active dialog itself.
+    return typeof dialog.dispatchEvent === 'function' ? dialog : null;
+  }
+  const screen = Router.getCurrentScreen?.();
+  if (visible(document.activeElement) && document.activeElement !== document.body) {
+    return document.activeElement;
+  }
+  if (visible(screen?.container)) return screen.container;
+  return typeof document.body?.dispatchEvent === 'function' ? document.body : null;
+}
+
 function dispatchKey(type, node, key = 'Enter', keyCode = 13) {
+  if (typeof node?.dispatchEvent !== 'function') return;
   const event = new KeyboardEvent(type, {
     key, code: key, keyCode, which: keyCode,
     bubbles: true, cancelable: true
@@ -40,30 +59,136 @@ function dispatchKey(type, node, key = 'Enter', keyCode = 13) {
   node.dispatchEvent(event);
 }
 
-async function openContextMenu() {
+const DIRECTION_KEYS = [
+  null,
+  ['ArrowUp', 38],
+  ['ArrowRight', 39],
+  ['ArrowDown', 40],
+  ['ArrowLeft', 37]
+];
+
+function dispatchDirection(direction, count = 1) {
+  const spec = DIRECTION_KEYS[direction];
+  if (!spec) return;
+  const [key, code] = spec;
+  for (let i = 0; i < count; i++) {
+    const target = navigationTarget();
+    if (!target) break;
+    dispatchKey('keydown', target, key, code);
+    dispatchKey('keyup', target.isConnected === false && document.body?.dispatchEvent ? document.body : target, key, code);
+  }
+  if (typeof refreshPs5HintBar === 'function') refreshPs5HintBar();
+}
+
+const TAB_CYCLE_CONFIG = [
+  ['detail', '.series-season-btn.focusable', '.focused, .selected', true],
+  ['stream', '.stream-route-chip.focusable[data-addon]', '.selected, .focused', true],
+  ['settings', '.settings-nav-item.focusable', '.selected, .focused', true],
+  ['folderDetail', '.folder-detail-tab.focusable', '.is-selected, .focused', true],
+  ['library', '.library-view-mode-button.focusable', '.selected, .focused', true],
+  ['discover', '.discover-filter.focusable', '.focused, .selected', false]
+];
+
+function activateControl(node, moveFocus = true) {
+  if (!visible(node)) return false;
+  if (moveFocus) node.focus?.({ preventScroll: true });
+  const screen = Router.getCurrentScreen?.();
+  const handled = typeof screen?.onPointerActivate === 'function' ? screen.onPointerActivate(node) : false;
+  if (!handled) node.click?.();
+  if (typeof refreshPs5HintBar === 'function') refreshPs5HintBar();
+  return true;
+}
+
+function stepTabGroup(delta) {
+  const modalStreamFilters = document.body.classList.contains('nuvio-modal-open')
+    ? Array.from(document.querySelectorAll?.('.nuvio-dialog-backdrop .series-stream-filter.focusable') || []).filter(visible)
+    : [];
+  if (modalStreamFilters.length > 1) {
+    const cur = Math.max(0, modalStreamFilters.findIndex(el => el.classList.contains('selected') || el.classList.contains('focused')));
+    return activateControl(modalStreamFilters[(cur + delta + modalStreamFilters.length) % modalStreamFilters.length]);
+  }
+  if (document.body.classList.contains('nuvio-modal-open')) return false;
+  const route = Router.getCurrent?.() || '';
+  const root = Router.getCurrentScreen?.()?.container;
+  if (!root || root.querySelector('[data-overlay-root], .settings-dialog-backdrop')) return false;
+  const entry = TAB_CYCLE_CONFIG.find(([r]) => r === route);
+  if (!entry) return false;
+  const [, selector, activeSel, clickAfter] = entry;
+  const items = Array.from(root.querySelectorAll(selector) || []).filter(visible);
+  if (items.length <= 1) return false;
+  const cur = Math.max(0, items.findIndex(el => el.matches(activeSel)));
+  const target = items[(cur + delta + items.length) % items.length];
+  if (clickAfter) return activateControl(target);
+  target.focus?.({ preventScroll: true });
+  return true;
+}
+
+function triggerDetailTriggerAction(direction) {
+  const route = Router.getCurrent?.() || '';
+  const root = Router.getCurrentScreen?.()?.container;
+  if (route !== 'detail' || !root || root.querySelector('[data-overlay-root], .settings-dialog-backdrop')) return false;
+  if (direction > 0) {
+    return activateControl(root.querySelector('[data-action="playDefault"]'));
+  }
+  const content = root.querySelector('.series-detail-content');
+  if (content) {
+    content.scrollTo?.({ top: 0, behavior: 'smooth' });
+    content.scrollTop = 0;
+  }
+  root.scrollTo?.({ top: 0, behavior: 'smooth' });
+  const heroBtn = root.querySelector('.series-detail-actions .focusable') || root.querySelector('[data-action="playDefault"]');
+  if (visible(heroBtn)) {
+    const prev = root.querySelector('.focused');
+    if (prev && prev !== heroBtn) prev.classList.remove('focused');
+    heroBtn.classList.add('focused');
+    heroBtn.focus?.({ preventScroll: true });
+    if (typeof refreshPs5HintBar === 'function') refreshPs5HintBar();
+    return true;
+  }
+  return false;
+}
+
+function triggerTouchPadAction() {
+  if (document.body.classList.contains('nuvio-modal-open')) return false;
+  const route = Router.getCurrent?.() || '';
+  const root = Router.getCurrentScreen?.()?.container;
+  if (!root || !['home', 'library', 'discover'].includes(route)) return false;
+  if (!root.querySelector('[data-overlay-root], .settings-dialog-backdrop')) {
+    if (activateControl(root.querySelector('[data-action="toggleSidebar"]'))) return true;
+    const sidebarItem = root.querySelector('.home-sidebar-item.focusable, .modern-sidebar-item.focusable');
+    if (visible(sidebarItem)) return activateControl(sidebarItem);
+  }
+  return false;
+}
+
+function cancelPendingHoldTimers(screen) {
+  screen?.cancelPendingHeroHold?.();
+  screen?.cancelPendingEpisodeHold?.();
+  screen?.cancelPendingSeasonHold?.();
+  screen?.cancelPendingPosterHold?.();
+  screen?.cancelPendingProfileHold?.();
+  screen?.cancelPendingContinueWatchingHold?.();
+  screen?.cancelPendingContinueWatchingEnter?.();
+}
+
+async function openItemActions() {
   const screen = Router.getCurrentScreen();
   const node = focusedNode();
-  if (!screen || !node || node.matches('input, textarea, select') ||
+  if (!screen || node?.matches?.('input, textarea, select') ||
     document.body.classList.contains('nuvio-modal-open')) return;
-  // A menu press must not leave an earlier hold timer or delayed X pending.
-  screen.cancelPendingHeroHold?.();
-  screen.cancelPendingEpisodeHold?.();
-  screen.cancelPendingSeasonHold?.();
-  screen.cancelPendingPosterHold?.();
-  screen.cancelPendingProfileHold?.();
-  screen.cancelPendingContinueWatchingHold?.();
-  screen.cancelPendingContinueWatchingEnter?.();
-  if (screen.isEpisodeHoldTarget?.(node)) screen.openEpisodeHoldMenu(node);
-  else if (screen.isSeasonHoldTarget?.(node)) screen.openSeasonHoldMenu(node);
-  else if (node.dataset.action === 'toggleLibrary' && screen.openLibraryListMenu) await screen.openLibraryListMenu();
-  else if (screen.openHeroPlayMenu && (node.closest('.series-detail-actions') ||
-    ['playDefault', 'ps5PlayOptions'].includes(node.dataset.action))) screen.openHeroPlayMenu();
-  else if (screen.canHoldManageProfile?.(node)) screen.openOptionsDialog(screen.getProfileById(node.dataset.profileId));
-  else if (screen.isHomeHoldTarget?.(node)) screen.openHoldMenuForNode(node);
-  else if (screen.isPosterHoldTarget?.(node)) await screen.openPosterOptionsMenu(node);
-  else return openControllerMenu();
-  // Existing hold menus suppress Enter until release. Options is not Enter:
-  // release that internal latch without pretending the browser emitted a key.
+  cancelPendingHoldTimers(screen);
+  if (node && screen.isEpisodeHoldTarget?.(node)) screen.openEpisodeHoldMenu(node);
+  else if (node && screen.isSeasonHoldTarget?.(node)) screen.openSeasonHoldMenu(node);
+  else if (node?.dataset?.action === 'toggleLibrary' && screen.openLibraryListMenu) await screen.openLibraryListMenu();
+  else if (node && screen.openHeroPlayMenu && ['playDefault', 'playFromBeginning', 'ps5PlayOptions'].includes(node.dataset?.action)) screen.openHeroPlayMenu();
+  else if (node && screen.canHoldManageProfile?.(node)) screen.openOptionsDialog(screen.getProfileById(node.dataset.profileId));
+  else if (node && screen.isHomeHoldTarget?.(node)) screen.openHoldMenuForNode(node);
+  else if (node && screen.isPosterHoldTarget?.(node)) await screen.openPosterOptionsMenu(node);
+  else if (Router.getCurrent?.() === 'detail' && !screen.container?.querySelector?.('[data-overlay-root], .settings-dialog-backdrop') &&
+    activateControl(screen.container?.querySelector?.('[data-action="toggleLibrary"]'), false)) return;
+  else if (Router.getCurrent?.() === 'stream' && activateControl(screen.container?.querySelector?.('[data-action="refreshStreams"]'))) return;
+  else return;
+  // Existing hold menus suppress Enter until release. Release that internal latch.
   dispatchKey('keyup', document.body);
 }
 
@@ -136,10 +261,34 @@ async function openSearch() {
 
 export function initPs5Navigation() {
   if (!globalThis.__NUVIO_PS5__) return;
+  if (typeof initPs5HintBar === 'function') initPs5HintBar();
   if (window.__evoHook && window.__NUVIO_PS5_TV_REMOTE_DIAGNOSTICS__ === true) {
     startPs5TvRemoteDiagnostics(imageDiagnostic);
   }
   initPs5SearchKeyboard();
+  const lastShortcutAt = Object.create(null);
+  function claimShortcut(name, windowMs = 180) {
+    const now = Date.now();
+    if (now - (lastShortcutAt[name] || 0) < windowMs) return false;
+    lastShortcutAt[name] = now;
+    return true;
+  }
+  function handleBrowseShortcut(name) {
+    if (name === 'l1') return stepTabGroup(-1);
+    if (name === 'r1') return stepTabGroup(1);
+    if (name === 'l2') {
+      if (triggerDetailTriggerAction(-1)) return true;
+      dispatchDirection(1, 4);
+      return true;
+    }
+    if (name === 'r2') {
+      if (triggerDetailTriggerAction(1)) return true;
+      dispatchDirection(3, 4);
+      return true;
+    }
+    if (name === 'touchpad') return triggerTouchPadAction();
+    return false;
+  }
   let redirecting = false;
   window.__nuvioPs5PointerDown = (event) => {
     const node = focusedNode();
@@ -173,11 +322,18 @@ export function initPs5Navigation() {
     } finally { redirecting = false; }
   };
   let openingOptions = false;
-  function requestOptions() {
+  function requestItemActions() {
     if (openingOptions) return;
     openingOptions = true;
-    openContextMenu().catch(error => console.warn('PS5 item actions failed', error))
+    openItemActions().catch(error => console.warn('PS5 item actions failed', error))
       .finally(() => { openingOptions = false; });
+  }
+  function requestControllerMenu() {
+    const node = focusedNode();
+    if (document.body.classList.contains('nuvio-modal-open') || node?.matches?.('input, textarea, select')) return;
+    if (!claimShortcut('controller-menu', 180)) return;
+    cancelPendingHoldTimers(Router.getCurrentScreen?.());
+    openControllerMenu();
   }
   let openingSearch = false;
   function requestSearch() {
@@ -186,7 +342,18 @@ export function initPs5Navigation() {
     openSearch().catch(error => console.warn('PS5 Search shortcut failed', error))
       .finally(() => { openingSearch = false; });
   }
+  const SHOULDER_BY_KEY = { F5: 'l1', 116: 'l1', F6: 'r1', 117: 'r1', F7: 'l2', 118: 'l2', F8: 'r2', 119: 'r2' };
   window.addEventListener('keydown', event => {
+    const shoulder = SHOULDER_BY_KEY[event.key] || SHOULDER_BY_KEY[event.keyCode];
+    if (shoulder) {
+      if (document.querySelector?.('.ps5-search-keyboard')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat || shoulder === 'l2' || shoulder === 'r2') {
+        if (claimShortcut(shoulder, event.repeat ? 90 : 180)) handleBrowseShortcut(shoulder);
+      }
+      return;
+    }
     // Owner's ordered Up, Square, Down, Options diagnostic on build 1031-1013:
     // ArrowUp/38, F2/113, ArrowDown/40, F3/114. Later isolated Triangle: F1/112.
     if (!['F1', 'F2', 'F3'].includes(event.key) && ![112, 113, 114].includes(event.keyCode)) return;
@@ -200,10 +367,11 @@ export function initPs5Navigation() {
     event.stopImmediatePropagation();
     if (!event.repeat) {
       if (isTriangle) requestSearch();
-      else requestOptions();
+      else if (isSquare) requestItemActions();
+      else requestControllerMenu();
     }
   }, true);
-  window.addEventListener('nuvio:options', requestOptions);
+  window.addEventListener('nuvio:options', requestControllerMenu);
   window.addEventListener('nuvio:controller-menu', requestSearch);
 
   // The native hook is absent in desktop previews. Do not hammer their server.
@@ -311,6 +479,7 @@ export function initPs5Navigation() {
     }
     messages.forEach(imageDiagnostic);
   }
+  const SHORTCUT_ACTION_NAMES = { 2: 'r2', 3: 'l1', 4: 'r1', 5: 'l2', 6: 'touchpad' };
   let previous = null;
   function poll() {
     if (document.hidden) { previous = null; setTimeout(poll, 250); return; }
@@ -324,24 +493,28 @@ export function initPs5Navigation() {
         if (!Number.isInteger(next.options) || !Number.isInteger(next.menu)) { previous = null; return; }
         if (previous) {
           if (next.menu !== previous.menu) window.dispatchEvent(new Event('nuvio:controller-menu'));
-          else if (next.options !== previous.options) window.dispatchEvent(new Event('nuvio:options'));
-          else if (Number.isInteger(next.navigation) && Number.isInteger(previous.navigation) &&
+          if (next.options !== previous.options) window.dispatchEvent(new Event('nuvio:options'));
+          if (Number.isInteger(next.navigation) && Number.isInteger(previous.navigation) &&
               next.navigation !== previous.navigation &&
               Number.isInteger(next.direction) && next.direction >= 1 && next.direction <= 4) {
-            const node = focusedNode();
-            if (node) {
-              const [key, code] = [null, ['ArrowUp', 38], ['ArrowRight', 39],
-                ['ArrowDown', 40], ['ArrowLeft', 37]][next.direction];
-              dispatchKey('keydown', node, key, code);
-              dispatchKey('keyup', node.isConnected ? node : document.body, key, code);
-            }
+            dispatchDirection(next.direction, 1);
           }
-          if (document.body.classList.contains('nuvio-modal-open') &&
-              Number.isInteger(next.keyboard) && Number.isInteger(previous.keyboard) &&
-              next.keyboard !== previous.keyboard && [1, 2, 3, 4].includes(next.shortcut)) {
-            window.dispatchEvent(new CustomEvent('nuvio:keyboard-shortcut', {
-              detail: ['shift', 'submit', 'left', 'right'][next.shortcut - 1]
-            }));
+          if (Number.isInteger(next.keyboard) && Number.isInteger(previous.keyboard) &&
+              next.keyboard !== previous.keyboard) {
+            if (document.body.classList.contains('nuvio-modal-open')) {
+              if ([1, 2, 3, 4].includes(next.shortcut)) {
+                window.dispatchEvent(new CustomEvent('nuvio:keyboard-shortcut', {
+                  detail: ['shift', 'submit', 'left', 'right'][next.shortcut - 1]
+                }));
+              }
+              if ([3, 4].includes(next.shortcut) && !document.querySelector?.('.ps5-search-keyboard')) {
+                const modalAction = SHORTCUT_ACTION_NAMES[next.shortcut];
+                if (claimShortcut(modalAction)) handleBrowseShortcut(modalAction);
+              }
+            } else {
+              const browseAction = SHORTCUT_ACTION_NAMES[next.shortcut];
+              if (browseAction && claimShortcut(browseAction)) handleBrowseShortcut(browseAction);
+            }
           }
         }
         previous = next;
@@ -351,7 +524,7 @@ export function initPs5Navigation() {
     request.onloadend = () => {
       // Diagnostics must not change controller delivery or run in the background.
       try { if (!document.hidden) reportImages(); } catch (_) {}
-      setTimeout(poll, 150);
+      setTimeout(poll, 50);
     };
     request.send();
   }

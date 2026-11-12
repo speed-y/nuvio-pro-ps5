@@ -149,6 +149,40 @@ def patch_rml_app_source(source):
             ('to_hex_rgba(m_theme.surface)', '"#242424"'),
         ):
             section = section.replace(old, new)
+        section = _replace(
+            section,
+            '    Rml::Element* el_title = m_playback_doc->GetElementById("media-title");\n'
+            '    if (el_title) {\n'
+            '        el_title->SetInnerRML(state.title.empty() ? "Video Playback" : state.title);\n'
+            '    }',
+            '''    Rml::Element* el_title = m_playback_doc->GetElementById("media-title");
+    if (el_title) {
+        auto esc_rml = [](const std::string& raw) {
+            std::string out;
+            out.reserve(raw.size() + 16);
+            for (char c : raw) {
+                switch (c) {
+                    case '&': out += "&amp;"; break;
+                    case '<': out += "&lt;"; break;
+                    case '>': out += "&gt;"; break;
+                    case '\\r': break;
+                    default: out += c; break;
+                }
+            }
+            return out;
+        };
+        const std::string raw_title = state.title.empty() ? "Video Playback" : state.title;
+        const size_t nl = raw_title.find('\\n');
+        if (nl == std::string::npos) {
+            el_title->SetInnerRML(esc_rml(raw_title));
+        } else {
+            const std::string first = esc_rml(raw_title.substr(0, nl));
+            std::string second = raw_title.substr(nl + 1);
+            for (char& ch : second) if (ch == '\\n') ch = ' ';
+            el_title->SetInnerRML(first + "<br/><span class=\\"media-episode\\">" + esc_rml(second) + "</span>");
+        }
+    }''',
+        )
         return section
     return _section(source, 'void EvoRmlApp::UpdatePlaybackState(',
                     'void EvoRmlApp::UpdatePerfHud(', chrome)

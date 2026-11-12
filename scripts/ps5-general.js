@@ -24,6 +24,71 @@ function ps5GeneralText(value, limit) {
   return result;
 }
 
+globalThis.__nuvioPlaybackTitle = function () {
+  const params = (typeof Router !== "undefined" && Router.currentParams) || {};
+  const screen = typeof Router !== "undefined" ? Router.getCurrentScreen?.() : null;
+  const skip = new Set(["", "Untitled", "Nuvio", "Nuvio Pro"]);
+  const pick = (...values) => {
+    for (const value of values) {
+      if (typeof value !== "string") continue;
+      const collapsed = value.replace(/\s+/g, " ").trim();
+      const clean = ps5GeneralText(collapsed, 120);
+      if (clean && !skip.has(clean)) return clean;
+    }
+    return "";
+  };
+  let base = pick(
+    params.playerTitle,
+    params.itemTitle,
+    params.showTitle,
+    params.metaTitle,
+    params.title,
+    params.name,
+    params.fallbackTitle,
+    screen?.meta?.name,
+    screen?.params?.playerTitle,
+    screen?.params?.itemTitle,
+    screen?.params?.fallbackTitle,
+    document.querySelector?.("#stream .stream-route-title")?.textContent,
+    document.querySelector?.("#stream .stream-route-logo")?.getAttribute?.("alt")
+  );
+  if (!base) return "";
+  const rawSeason = params.season ?? screen?.params?.season;
+  const season = rawSeason == null || rawSeason === "" ? NaN : Number(rawSeason);
+  const episode = Number(params.episode ?? screen?.params?.episode ?? 0);
+  const domCode = pick(
+    params.episodeLabel,
+    screen?.params?.episodeLabel,
+    document.querySelector?.("#stream .stream-route-episode-code")?.textContent
+  );
+  const code = Number.isInteger(season) && season >= 0 && Number.isInteger(episode) && episode > 0
+    ? `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`
+    : domCode;
+  if (!code) return ps5GeneralText(base, 240);
+  const escCode = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const codeRegex = Number.isInteger(season) && season >= 0 && Number.isInteger(episode) && episode > 0
+    ? new RegExp(`\\bS0?${season}\\s*E0?${episode}\\b`, "i")
+    : new RegExp(`\\b${escCode}\\b`, "i");
+  base = base.replace(new RegExp(`(?:\\s*[-·:|]\\s*|\\s+)${codeRegex.source}.*$`, "i"), "").trim() || base;
+  let epTitle = pick(
+    params.playerEpisodeTitle,
+    params.episodeTitle,
+    screen?.params?.playerEpisodeTitle,
+    screen?.params?.episodeTitle,
+    params.playerSubtitle,
+    screen?.params?.playerSubtitle,
+    document.querySelector?.("#stream .stream-route-subtitle")?.textContent
+  );
+  if (epTitle) {
+    epTitle = epTitle.replace(new RegExp(`^${codeRegex.source}(?:\\s*[-·:|]\\s*|\\s+)?`, "i"), "").trim();
+    if (!epTitle || epTitle.toLowerCase() === base.toLowerCase() || skip.has(epTitle)) {
+      epTitle = "";
+    }
+  }
+  const secondLine = ps5GeneralText(epTitle ? `${code} ${epTitle}` : code, 118);
+  return ps5GeneralText(`${base}\n${secondLine}`, 240);
+};
+
 // Preference identities may otherwise embed a signed URL (the upstream url:
 // fallback). Keep only bounded non-URL identities; never cache the stream URL.
 function ps5GeneralPreferenceText(value, limit) {
