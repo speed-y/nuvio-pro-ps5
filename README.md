@@ -41,7 +41,9 @@ Their work made this possible. This fork preserves their history, credits and li
 - **Browsing fixes.** Correct collection filters, improve Back navigation, fix focus styling and make settings actions reachable with the controller.
 - **Native download test.** Settings > Playback > Speed test measures one connection to TorBox's nearest test CDN. PS5 validation remains pending.
 - **PS5 presentation.** Custom home-screen artwork and selection music, plus PS5 naming during QR login.
-- **A self-contained install.** The PS5 serves its own browser UI and loads the bundled helper. No computer needs to host the interface.
+- **A self-contained install.** The PS5 serves its own browser UI and loads the bundled helper.
+  The title dynamically finds `webui/` beside `eboot.bin` on internal storage, an M.2 SSD or USB drives.
+  No computer needs to host the interface.
 
 The interface still uses the PS5 system browser. Playback uses native EVO code with hardware video decoding and audio output.
 Controller support is the focus, but system-pointer suppression remains unresolved and the latest combined build still needs console testing.
@@ -64,12 +66,17 @@ After a reboot, run your jailbreak again before opening Nuvio Pro.
 
 1. Download `PPSA99996.zip` when the new fork build is available, then unpack it.
 2. Start FTP on the PS5 and note its address and port.
-3. Connect with an FTP client, then copy `PPSA99996` into `/data/homebrew/`.
+3. Connect with an FTP client, then copy `PPSA99996` to your chosen storage location.
+   On internal storage, copy `PPSA99996` into `/data/homebrew/`.
+   On an M.2 SSD, place `PPSA99996` in `/mnt/ext0/app/` or `/mnt/ext0/homebrew/`.
+   On a USB drive, place `PPSA99996` in `/mnt/usb0/` or `/mnt/usb0/homebrew/`.
 4. Refresh ShadowMount's homebrew list and wait for the Nuvio Pro tile.
 5. Open Nuvio Pro. Sign in or configure your addons, then choose something to watch.
 
-The final path must be `/data/homebrew/PPSA99996/eboot.bin`, with `webui/`
-and `sce_sys/` beside it. Avoid an extra nested `PPSA99996` folder.
+Place `webui/` and `sce_sys/` directly beside `eboot.bin`. Avoid an extra nested `PPSA99996` folder.
+The app resolves its web UI path dynamically from its binary location.
+Settings, logs and profile data stay on internal storage under `/data/nuvio/`.
+Disconnecting or swapping external storage does not remove your settings.
 
 To update, close the app and replace only its matching app folder. Keep `/data/nuvio/` for settings and browser state.
 Nuvio Pro keeps `PPSA99996` and the same data path as this fork's previous builds. The rename does not require another title migration.
