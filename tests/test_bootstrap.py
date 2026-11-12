@@ -33,6 +33,8 @@ int main(int argc,char **argv) {
             for(ssize_t j=0;j<n;j++) if(block[j]!=(unsigned char)(got+(size_t)j)) _exit(7);
             got+=(size_t)n;
         }
+        /* Older elfldr reads until EOF before it starts the payload. */
+        if(!strcmp(argv[1],"eof") && read(pair[1],block,1)!=0) _exit(10);
         const char *ack="NUVIO promote verified: native network privileges applied\n";
         if(!strcmp(argv[1],"wrong")) ack="Transferred ELF; no process evidence\n";
         if(!strcmp(argv[1],"partial")) ack="NUVIO promote verified: native network privileges applied";
@@ -74,6 +76,8 @@ class BootstrapTests(unittest.TestCase):
     def test_exact_large_transfer_and_fragmented_process_response(self):
         self.assertEqual(self.run_mode('ok'),'result=0 child=0')
         self.assertEqual(self.run_mode('already'),'result=0 child=0')
+    def test_loader_that_reads_until_eof_receives_it(self):
+        self.assertEqual(self.run_mode('eof'),'result=0 child=0')
     def test_transfer_and_partial_response_are_not_process_evidence(self):
         self.assertEqual(self.run_mode('wrong'),'result=-1 child=0')
         self.assertEqual(self.run_mode('partial'),'result=-1 child=0')

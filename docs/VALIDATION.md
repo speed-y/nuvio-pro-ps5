@@ -5285,3 +5285,22 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
 - Pending console verification (`[UNKNOWN]`):
   - `[UNKNOWN]` Visual spot-checks on Home, Cast Detail, Folder rows, and Poster List Picker dialogs remain unverified on TV.
 
+
+## Helper transfer half-close for older ELF loaders, 2026-11-12
+
+- Status: `[SOURCE-VERIFIED]` and host-tested. No console result for this change.
+- Observed report: a ProsperoStore user on firmware `13.60` stays on `Opening Nuvio Pro`, and `/data/nuvio` does not exist. The user's loader, HEN and jailbreak versions remain unknown.
+  - `[INFERENCE]` EVO's `EnsureDataDirectories()` creates `/data/nuvio` when the title sandbox opens. A missing folder means the jailbreak daemon did not open it, so the helper transfer did not run in that report.
+  - This change addresses a separate startup failure that the same screen hides.
+- Cause addressed: `ps5-payload-dev/elfldr` before `v0.21` (2025-08-15) reads a payload until EOF. `nuvio_bootstrap_transfer()` sent the helper without closing its write side and waited for the reply.
+  - `[SOURCE-VERIFIED]` `elfldr` `v0.20` `socksrv.c` `readsock()` loops on `read()` until it returns 0. `v0.21` `elfldr_read()` reads the ELF's own size with `MSG_WAITALL`.
+  - The expected title log is `bootstrap: promotion failed stage=transfer errno=60` (ETIMEDOUT) after 12 seconds. The browser then opens without a UI server.
+- Change: `scripts/bootstrap.c` calls `shutdown(fd, SHUT_WR)` after it sends the helper.
+  - Both `elfldr` versions pass the connection to the payload as stdin, stdout and stderr, so the helper reply still arrives. Newer loaders see EOF on payload stdin.
+  - `v0.2.0-alpha.4` `eboot.bin` already imports `shutdown` (`TUuiYS2kE8s`, `libkernel`). The change adds no system import.
+- Host checks:
+  - `tests/test_bootstrap.py` adds a fake loader that requires EOF before it replies. It passes with the change. Without it, the transfer times out after 12 seconds with `result=-1`.
+  - `bootstrap.c` compiles with SDK `v0.43` `prospero-clang` and LLVM `19.1.7` under `-Wall -Wextra -Werror`.
+  - `tests.test_compatibility` fails on this host's GCC `14.2.0` with and without this change (`promote.c:85` `-Wmisleading-indentation`).
+- Pending (`[UNKNOWN]`):
+  - Console startup with an `elfldr` older than `v0.21`, and a repeat check on the owner's `12.70` loader.
