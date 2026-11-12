@@ -135,6 +135,8 @@ const char *nuvio_local_ui_root(void)
         "/mnt/usb3/homebrew/PPSA99996/webui",
         "/mnt/usb3/PPSA99996/webui",
         "/mnt/ext0/app/PPSA99996/webui",
+        "/mnt/ext0/homebrew/PPSA99996/webui",
+        "/mnt/ext0/PPSA99996/webui",
         "/mnt/sandbox/PPSA99996_000/app0/webui",
         "/app0/webui",
         NULL

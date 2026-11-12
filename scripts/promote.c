@@ -117,6 +117,8 @@ static const char *nuvio_ui_detect_root(void) {
         "/mnt/usb1/homebrew/PPSA99996/webui",
         "/mnt/usb1/PPSA99996/webui",
         "/mnt/ext0/app/PPSA99996/webui",
+        "/mnt/ext0/homebrew/PPSA99996/webui",
+        "/mnt/ext0/PPSA99996/webui",
         NULL
     };
     for(int i = 0; candidates[i]; i++) {
