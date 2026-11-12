@@ -758,7 +758,7 @@ def title_ui_sources(web, provider):
             char tag[96];
             size_t tag_len = is_html_entry(path) ? hook_tag(tag, sizeof tag) : 0;
             int status = nuvio_local_ui_send(fd,
-                "/data/homebrew/PPSA99996/webui", method, path, tag, tag_len);
+                nuvio_local_ui_root(), method, path, tag, tag_len);
             LOG("title-ui: response status=%d", status);
         } else
             proxy_request(fd, req, got, hl, method, path);'''),
@@ -813,9 +813,8 @@ static void nuvio_fail(const char *title, const char *detail)
 }
 """
     log = '#define LOG(...) do { evo_bt("web: " __VA_ARGS__); evo_boot_log_flush(); } while (0)\n'
-    index = '/data/homebrew/PPSA99996/webui/index.html'
     replacements = (
-        ('#include "evo_webui.h"', '#include "evo_webui.h"\n#include "evo_jailbreak.h"\n#include <time.h>'),
+        ('#include "evo_webui.h"', '#include "evo_webui.h"\n#include "local_ui.h"\n#include "evo_jailbreak.h"\n#include <time.h>'),
         (log, log + helpers),
         ('        LOG("NO-GO at Initialize");\n',
          '        LOG("NO-GO at Initialize");\n'
@@ -832,11 +831,14 @@ static void nuvio_fail(const char *title, const char *detail)
          '            s_state = P_OFF;\n'
          '            return;\n'
          '        }\n'
-         '        int webui_fd = open("' + index + '", O_RDONLY);\n'
+         '        const char *ui_root = nuvio_local_ui_root();\n'
+         '        char ui_index[512];\n'
+         '        snprintf(ui_index, sizeof ui_index, "%s/index.html", ui_root);\n'
+         '        int webui_fd = open(ui_index, O_RDONLY);\n'
          '        if (webui_fd < 0) {\n'
-         '            LOG("startup: webui check failed errno=%d", errno);\n'
+         '            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);\n'
          '            nuvio_fail("Nuvio Pro is missing its webui folder",\n'
-         '                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");\n'
+         '                       "Place webui/ beside eboot.bin on internal or USB storage.");\n'
          '            s_state = P_OFF;\n'
          '            return;\n'
          '        }\n'

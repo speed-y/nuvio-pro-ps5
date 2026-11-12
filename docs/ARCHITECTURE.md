@@ -375,7 +375,8 @@ The release packager rejects this experimental profile.
 ## Browser UI hosting
 
 The build copies the Nuvio bundle into `webui/` inside the title folder, so the
-store archive is self-contained. `nuvio.elf` serves that folder on
+store archive is self-contained. The title discovers `webui/` from its binary path
+or candidate directories on internal or USB storage. `nuvio.elf` serves that folder on
 `127.0.0.1:4173` with GET and HEAD only, confined below the folder, and writes
 `/data/nuvio/nuvio.conf` on the first boot when the file is absent. The title's
 own proxy fetches the pages through it exactly as it fetched a LAN server before,

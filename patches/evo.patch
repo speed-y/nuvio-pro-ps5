@@ -2771,11 +2771,12 @@
  #include <fcntl.h>
  #include <poll.h>
  #include <stdarg.h>
-@@ -62,6 +63,11 @@
+@@ -62,6 +63,12 @@
  #include <openssl/ssl.h>
  
  #include "evo_webui.h"
 +#include "evo_net.h"
++#include "local_ui.h"
 +#include "evo_jailbreak.h"
 +#include <time.h>
 +#include "bootstrap.h"
@@ -2783,7 +2784,7 @@
  #include "evo_boot_trace.h"
  #include "evo_provider.h"     /* evo_provider_parse_web_source */
  #include "evo_net.h"          /* evo_net_connect_addr - a connect that gives up in time */
-@@ -142,7 +148,7 @@
+@@ -142,7 +149,7 @@
  } probe_layout_t;
  
  static const probe_layout_t k_layouts[] = {
@@ -2792,7 +2793,7 @@
      { "2: beside the rail, parts=0x7 control=0",    2, 108,  0, 1812, 1080, 0x7, 0x0 },
      { "3: inset card, parts=0 control=0x1",         2, 148, 40, 1732, 1000, 0x0, 0x1 },
      { "4: inset card, parts=0xFF control=0xFF",     2, 148, 40, 1732, 1000, 0xFF, 0xFF },
-@@ -180,7 +186,10 @@
+@@ -180,7 +187,10 @@
  static int  s_hold_frames = 25 * 60;
  
  static char s_url[1024];
@@ -2804,7 +2805,7 @@
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
  
-@@ -195,12 +204,35 @@
+@@ -195,12 +205,35 @@
  static int  s_play_pending = 0;
  static char s_play_url[2048];
  static char s_play_title[256];
@@ -2840,7 +2841,7 @@
  
  /* ---- shared with the server threads (s_mx) ---- */
  
-@@ -227,6 +259,7 @@
+@@ -227,6 +260,7 @@
  static char s_h_url[2048];
  static char s_h_title[256];
  static char s_h_return[2048];
@@ -2848,7 +2849,7 @@
  
  /*
   * The page's localStorage, kept by EVO. The PS5's browser dialog starts every
-@@ -415,17 +448,34 @@
+@@ -415,17 +449,34 @@
   * save whenever it changes: every 5 s, synchronously before a handoff or Back
   * to EVO, and by beacon when the page goes away. Values over 512 KB are
   * caches, not settings, and are left out. */
@@ -2894,7 +2895,7 @@
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
-@@ -444,27 +494,22 @@
+@@ -444,27 +495,22 @@
  "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
  "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
  "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
@@ -2935,7 +2936,7 @@
  /* Where to come back to: the last page that is not the site's own player.
   * By the time the hook fires, the site has already routed to its player
   * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
-@@ -481,7 +526,7 @@
+@@ -481,7 +527,7 @@
  "function note(){if(!isPlayerUrl(location.href))good=location.href;}"
  "window.addEventListener('hashchange',note);window.addEventListener('popstate',note);"
  "['pushState','replaceState'].forEach(function(k){var o=history[k];"
@@ -2944,7 +2945,7 @@
  "function isStream(u){var l=String(u||'').toLowerCase();"
  " if(l.indexOf('blob:')==0||l.indexOf('data:')==0)return 0;"
  " if(NUVIO)return l.indexOf('http')==0||l.indexOf('/')==0;"
-@@ -493,14 +538,23 @@
+@@ -493,14 +539,23 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
@@ -2975,7 +2976,7 @@
  " setTimeout(function(){go(document.title);},1500);"
  " try{var ac=window.ApiClient;if(ac&&id){ac.getItem(ac.getCurrentUserId(),id).then(function(it){"
  "  var n=(it&&it.Name)||'';if(it&&it.SeriesName)n=it.SeriesName+' - '+n;go(n);},"
-@@ -537,9 +591,9 @@
+@@ -537,9 +592,9 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -2987,7 +2988,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +839,969 @@
+@@ -785,17 +840,969 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3957,7 +3958,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1816,12 @@
+@@ -810,6 +1817,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3970,7 +3971,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1830,14 @@
+@@ -818,6 +1831,14 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3985,7 +3986,7 @@
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2229,29 @@
+@@ -1209,13 +2230,29 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -4011,13 +4012,13 @@
 +            char tag[96];
 +            size_t tag_len = is_html_entry(path) ? hook_tag(tag, sizeof tag) : 0;
 +            int status = nuvio_local_ui_send(fd,
-+                "/data/homebrew/PPSA99996/webui", method, path, tag, tag_len);
++                nuvio_local_ui_root(), method, path, tag, tag_len);
 +            LOG("title-ui: response status=%d", status);
 +        } else
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2263,14 @@
+@@ -1227,8 +2264,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -4032,7 +4033,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2292,20 @@
+@@ -1250,8 +2293,20 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -4054,7 +4055,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2313,20 @@
+@@ -1259,11 +2314,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -4077,7 +4078,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2342,7 @@
+@@ -1279,6 +2343,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -4085,7 +4086,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1304,10 +2368,29 @@
+@@ -1304,10 +2369,32 @@
      int uid = pick_user();
      if (ensure_initialized() != 0) {
          LOG("NO-GO at Initialize");
@@ -4102,11 +4103,14 @@
 +            s_state = P_OFF;
 +            return;
 +        }
-+        int webui_fd = open("/data/homebrew/PPSA99996/webui/index.html", O_RDONLY);
++        const char *ui_root = nuvio_local_ui_root();
++        char ui_index[512];
++        snprintf(ui_index, sizeof ui_index, "%s/index.html", ui_root);
++        int webui_fd = open(ui_index, O_RDONLY);
 +        if (webui_fd < 0) {
-+            LOG("startup: webui check failed errno=%d", errno);
++            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);
 +            nuvio_fail("Nuvio Pro is missing its webui folder",
-+                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");
++                       "Place webui/ beside eboot.bin on internal or USB storage.");
 +            s_state = P_OFF;
 +            return;
 +        }
@@ -4115,7 +4119,7 @@
      evo_mkdir(evo_data_path("webui"));
      char leaf[200];
      snprintf(leaf, sizeof leaf, "webui/%s_%d.json", s_up.enabled ? s_up.host : "local",
-@@ -1318,6 +2401,7 @@
+@@ -1318,6 +2405,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -4123,7 +4127,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,10 +2426,16 @@
+@@ -1342,10 +2430,16 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -4140,7 +4144,7 @@
          if (s_cycle && s_layout + 1 < LAYOUT_COUNT) {
              s_layout++;
              s_state = P_WAIT;
-@@ -1356,6 +2446,7 @@
+@@ -1356,6 +2450,7 @@
          s_state = P_OFF;
          return;
      }
@@ -4148,7 +4152,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1452,6 +2543,8 @@
+@@ -1452,6 +2547,8 @@
  {
      snprintf(s_error, sizeof s_error, "%s", msg);
      s_error_pending = 1;
@@ -4157,7 +4161,7 @@
  }
  
  int evo_webui_take_error(char *buf, size_t cap)
-@@ -1474,6 +2567,11 @@
+@@ -1474,6 +2571,11 @@
      snprintf(s_hook_profile, sizeof s_hook_profile, "%s", hook_profile ? hook_profile : "");
      if (s_preload_rc < 0) {
          LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);
@@ -4169,7 +4173,7 @@
          return -2;
      }
      memset(&s_up, 0, sizeof s_up);
-@@ -1505,7 +2603,9 @@
+@@ -1505,7 +2607,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4180,7 +4184,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,17 +2621,50 @@
+@@ -1521,17 +2625,50 @@
      return 0;
  }
  
@@ -4234,7 +4238,7 @@
      if (s_state != P_PLAYING) return;
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-@@ -1601,6 +2734,12 @@
+@@ -1601,6 +2738,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4247,7 +4251,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2793,40 @@
+@@ -1654,3 +2797,40 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */

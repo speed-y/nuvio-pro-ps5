@@ -5326,3 +5326,29 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `/data/nuvio/evo.log` recorded successful connection accept, `status=200`, storage restoration of 1,465,177 bytes, and `page: route profileSelection`.
   - Owner confirmed on TV that the startup screen passed and Nuvio Pro loaded successfully.
 
+## Dynamic webui storage path resolution (internal and USB storage)
+
+- Date: 2026-11-12.
+- Commit: `feat/startup-status`.
+- Status: `[TESTED-ON-CONSOLE]`.
+- Target: Retail PS5, firmware 12.70, ELF loader on port 9021, PS5Upload HTTP on port 9180.
+- Artifacts:
+  - Fixed eboot: `eboot.bin` `b4023b5bfefb1a4057b37727585c14e902c00a784cc4e8e4c230d2217a8f84b9` (48852548 bytes).
+  - Runtime: `libc.prx` `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - Helpers: `control-3.elf` `bb450faf3aea232980928cc5610e48d4f568254a80ea187ba39d6a6e10de3f08`, `control-5.elf` `4e772dc8bf59cd457be8bb0107ce46f8e0c57348449ee250aa2cab8aae804a55`.
+- Problem addressed:
+  - `scripts/build.py` hardcoded `/data/homebrew/PPSA99996/webui` for `nuvio_local_ui_send` and startup verification.
+  - Titles on USB drives (`/mnt/usb0/`, `/mnt/usb1/`) failed startup with missing folder errors.
+- Changes:
+  - Added `nuvio_local_ui_root()` to `scripts/local_ui.c` and `scripts/local_ui.h`.
+  - The runtime checks `KERN_PROC_PATHNAME` to locate the binary directory.
+  - The resolver probes standard candidate paths across internal storage, USB mounts, and extended storage.
+  - Updated `scripts/build.py` and `scripts/promote.c` to use dynamic root detection.
+  - Added unit tests in `tests/test_local_ui.py`.
+- Console verification results:
+  - Closed previous process via `/api/app/close`.
+  - Uploaded signed `eboot.bin` over PS5Upload HTTP API `:9180`.
+  - Ran `control-5.elf` over port 9021. It verified the on-console hash `b4023b5bfefb1a4057b37727585c14e902c00a784cc4e8e4c230d2217a8f84b9`.
+  - Launched title via `control-3.elf` (`pid 1243`, `app_id 8218`).
+  - Read `/data/nuvio/evo.log`: recorded `status=200`, storage restoration of 1,049,100 bytes, `route profileSelection`, and stable AGC rendering at 60 FPS (1200 frames, 0 timeouts).
+

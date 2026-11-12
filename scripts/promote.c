@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include "app_info.h"
 
 /* SDK v0.43's runtime initializes firmware-specific support before main and
@@ -107,6 +108,25 @@ static void ensure_conf(void) {
     fclose(f);
     puts("NUVIO ui: wrote loopback nuvio.conf");
 }
+
+static const char *nuvio_ui_detect_root(void) {
+    static const char *candidates[] = {
+        "/data/homebrew/PPSA99996/webui",
+        "/mnt/usb0/homebrew/PPSA99996/webui",
+        "/mnt/usb0/PPSA99996/webui",
+        "/mnt/usb1/homebrew/PPSA99996/webui",
+        "/mnt/usb1/PPSA99996/webui",
+        "/mnt/ext0/app/PPSA99996/webui",
+        NULL
+    };
+    for(int i = 0; candidates[i]; i++) {
+        char index[512];
+        snprintf(index, sizeof(index), "%s/index.html", candidates[i]);
+        int fd = open(index, O_RDONLY);
+        if(fd >= 0) { close(fd); return candidates[i]; }
+    }
+    return NUVIO_UI_ROOT;
+}
 #endif
 
 int main(void) {
@@ -115,8 +135,9 @@ int main(void) {
     if(signal(SIGPIPE,SIG_IGN)==SIG_ERR) return 1;
     puts("NUVIO payload ready: PPSA99996 only, firmware support checked by SDK");
     ensure_conf();
-    if(nuvio_ui_server_open(NUVIO_UI_ROOT,NUVIO_UI_PORT)==0)
-        printf("NUVIO ui: serving %s on 127.0.0.1:%d\n",NUVIO_UI_ROOT,NUVIO_UI_PORT);
+    const char *ui_root = nuvio_ui_detect_root();
+    if(nuvio_ui_server_open(ui_root,NUVIO_UI_PORT)==0)
+        printf("NUVIO ui: serving %s on 127.0.0.1:%d\n",ui_root,NUVIO_UI_PORT);
     else
         puts("NUVIO ui: loopback bind failed");
     fflush(stdout);
