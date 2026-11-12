@@ -780,6 +780,108 @@ def title_ui_sources(web, provider):
     return web, provider
 
 
+def startup_status(web, auto_bootstrap):
+    """Give the Nuvio loading screen the reason startup stopped.
+
+    Every startup failure used to leave the same "Opening Nuvio Pro" screen.
+    Messages are fixed text plus numbers, so they are safe as RML markup.
+    """
+    again = 'Close Nuvio Pro and open it again.'
+    helpers = r"""
+static char s_nuvio_failure[384];
+static void nuvio_fail(const char *title, const char *detail)
+{
+    snprintf(s_nuvio_failure, sizeof s_nuvio_failure,
+             "%s<br/><span class=\"nuvio-detail\">%s</span>", title, detail);
+    LOG("startup: %s. %s", title, detail);
+}
+"""
+    if auto_bootstrap:
+        helpers += r"""static void nuvio_fail_bootstrap(const char *stage, int error)
+{
+    char detail[192];
+    if (!strncmp(stage, "connect", 7)) {
+        snprintf(detail, sizeof detail, "Start your jailbreak's ELF loader, then open Nuvio Pro again (%s, errno %d).", stage, error);
+        nuvio_fail("No ELF loader answered on port 9021", detail);
+    } else if (!strcmp(stage, "transfer")) {
+        snprintf(detail, sizeof detail, "Run your jailbreak again, then open Nuvio Pro again (transfer, errno %d).", error);
+        nuvio_fail("The ELF loader did not start the Nuvio helper", detail);
+    } else {
+        snprintf(detail, sizeof detail, "AGAIN (%s, errno %d)", stage, error);
+        nuvio_fail("Nuvio Pro could not start its helper", detail);
+    }
+}
+"""
+    log = '#define LOG(...) do { evo_bt("web: " __VA_ARGS__); evo_boot_log_flush(); } while (0)\n'
+    index = '/data/homebrew/PPSA99996/webui/index.html'
+    replacements = (
+        ('#include "evo_webui.h"', '#include "evo_webui.h"\n#include "evo_jailbreak.h"\n#include <time.h>'),
+        (log, log + helpers),
+        ('        LOG("NO-GO at Initialize");\n',
+         '        LOG("NO-GO at Initialize");\n'
+         '        if (!strcmp(s_hook_profile, "nuvio")) nuvio_fail("The PS5 browser did not start", "AGAIN");\n'),
+        # Without a listener or the packaged page, the browser would only show
+        # a dead page until the watchdog closes it. Stop here and say why.
+        ('    server_start();\n    evo_mkdir(evo_data_path("webui"));\n',
+         '    if (!strcmp(s_hook_profile, "nuvio")) {\n'
+         '        s_nuvio_failure[0] = \'\\0\';\n'
+         '        if (access("' + index + '", F_OK) != 0) {\n'
+         '            nuvio_fail("Nuvio Pro is missing its webui folder",\n'
+         '                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");\n'
+         '            s_state = P_OFF;\n'
+         '            return;\n'
+         '        }\n'
+         '    }\n'
+         '    server_start();\n'
+         '    if (!strcmp(s_hook_profile, "nuvio") && s_listen_fd < 0) {\n'
+         '        if (!s_nuvio_failure[0])\n'
+         '            nuvio_fail("Nuvio Pro could not start its page server", "AGAIN See /data/nuvio/evo.log for details.");\n'
+         '        s_state = P_OFF;\n'
+         '        return;\n'
+         '    }\n'
+         '    evo_mkdir(evo_data_path("webui"));\n'),
+        ('    LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);\n    if (rc != 0) {\n',
+         '    LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);\n    if (rc != 0) {\n'
+         '        if (!strcmp(s_hook_profile, "nuvio")) {\n'
+         '            char detail[96];\n'
+         '            snprintf(detail, sizeof detail, "AGAIN (0x%08x)", (unsigned)rc);\n'
+         '            nuvio_fail("The PS5 browser did not open", detail);\n'
+         '        }\n'),
+        ('        LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);\n',
+         '        LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);\n'
+         '        if (!strcmp(s_hook_profile, "nuvio")) {\n'
+         '            char detail[96];\n'
+         '            snprintf(detail, sizeof detail, "AGAIN (0x%08x)", (unsigned)s_preload_rc);\n'
+         '            nuvio_fail("The PS5 browser is not available", detail);\n'
+         '        }\n'),
+        # Page watchdog and lost-connection errors.
+        ('    snprintf(s_error, sizeof s_error, "%s", msg);\n    s_error_pending = 1;\n',
+         '    snprintf(s_error, sizeof s_error, "%s", msg);\n    s_error_pending = 1;\n'
+         '    if (!strcmp(s_hook_profile, "nuvio"))\n'
+         '        nuvio_fail("The Nuvio page did not load", "AGAIN See /data/nuvio/evo.log for details.");\n'),
+    )
+    for old, new in replacements:
+        if web.count(old) != 1:
+            raise RuntimeError('Pinned Nuvio startup status anchor changed')
+        web = web.replace(old, new.replace('AGAIN', again))
+    # Nuvio opens only after a jailbreak daemon lifts the title sandbox.
+    # Without one, say so after a delay that covers a slow but healthy start.
+    return web + r"""
+const char *evo_nuvio_startup_status(void)
+{
+    static struct timespec start;
+    if (s_nuvio_failure[0]) return s_nuvio_failure;
+    if (evo_jailbreak_is_open()) return "Opening Nuvio Pro";
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (!start.tv_sec && !start.tv_nsec) start = now;
+    if (now.tv_sec - start.tv_sec < 8) return "Opening Nuvio Pro";
+    return "Waiting for the jailbreak to unlock storage<br/><span class=\"nuvio-detail\">"
+           "Run etaHEN or another jailbreak daemon. Nuvio Pro continues when storage unlocks.</span>";
+}
+"""
+
+
 def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     """Keep the native player; open its existing Nuvio bridge at startup."""
     app = evo/'projects/evoplayer'
@@ -846,15 +948,21 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
         LOG("bootstrap: promotion requested");
         int rc = nuvio_bootstrap();
         if (rc == 0) LOG("bootstrap: promotion verified errno=0");
-        else LOG("bootstrap: promotion failed stage=%s errno=%d", nuvio_bootstrap_stage(), errno);
-        if (rc != 0) return;
+        else {
+            int error = errno;
+            LOG("bootstrap: promotion failed stage=%s errno=%d", nuvio_bootstrap_stage(), error);
+            nuvio_fail_bootstrap(nuvio_bootstrap_stage(), error);
+            return;
+        }
     }
     int fd = socket(AF_INET, SOCK_STREAM, 0);''')
         for name in ('bootstrap.c', 'bootstrap.h'):
             shutil.copyfile(ROOT/'scripts'/name, app/'src'/name)
         replace_once(app/'Makefile', 'src/local_ui.c src/nuvio_ui_files.c',
                      'src/local_ui.c src/nuvio_ui_files.c src/bootstrap.c')
-    web.write_text(web_source)
+    web.write_text(startup_status(web_source, auto_bootstrap))
+    header = app/'include/evo_webui.h'
+    header.write_text(header.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nconst char *evo_nuvio_startup_status(void);\n')
     # Provider sources intentionally have no local path. Check the demuxer,
     # and never announce an unqueued seek to the playback state machine.
     demux = app/'media/src/evo_demux.c'

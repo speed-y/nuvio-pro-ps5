@@ -696,7 +696,7 @@
 -                m_screenManager->render(m_uiScratch, DisplayWidth, DisplayHeight);
 +                if (nuvioShell)
 +                    evo_rmlui_render_nuvio(m_uiScratch, DisplayWidth, DisplayHeight,
-+                        !g_nuvio_preparing ? "Opening Nuvio Pro" :
++                        !g_nuvio_preparing ? evo_nuvio_startup_status() :
 +                        evo_webui_presentation()->active && !evo_webui_presentation()->loading ? "" :
 +                        evo_webui_presentation()->active && !evo_webui_presentation()->loading_detail ? " " :
 +                        "Preparing playback");
@@ -1520,10 +1520,15 @@
  static inline void evo_webui_playback_ended(int played) { (void)played; }
  
  #endif
-@@ -88,3 +104,18 @@
+@@ -88,3 +104,23 @@
  #endif
  
  #endif /* EVO_WEBUI_H */
++
++#ifdef __cplusplus
++extern "C"
++#endif
++const char *evo_nuvio_startup_status(void);
 +
 +#ifdef __cplusplus
 +extern "C"
@@ -2456,7 +2461,7 @@
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
-+  "contentVersion": "01.000.010",
++  "contentVersion": "01.000.011",
    "downloadDataSize": 256,
    "gameIntent": {
      "permittedIntents": [
@@ -2766,17 +2771,19 @@
  #include <fcntl.h>
  #include <poll.h>
  #include <stdarg.h>
-@@ -62,6 +63,9 @@
+@@ -62,6 +63,11 @@
  #include <openssl/ssl.h>
  
  #include "evo_webui.h"
 +#include "evo_net.h"
++#include "evo_jailbreak.h"
++#include <time.h>
 +#include "bootstrap.h"
 +#include "local_ui.h"
  #include "evo_boot_trace.h"
  #include "evo_provider.h"     /* evo_provider_parse_web_source */
  #include "evo_net.h"          /* evo_net_connect_addr - a connect that gives up in time */
-@@ -142,7 +146,7 @@
+@@ -142,7 +148,7 @@
  } probe_layout_t;
  
  static const probe_layout_t k_layouts[] = {
@@ -2785,7 +2792,7 @@
      { "2: beside the rail, parts=0x7 control=0",    2, 108,  0, 1812, 1080, 0x7, 0x0 },
      { "3: inset card, parts=0 control=0x1",         2, 148, 40, 1732, 1000, 0x0, 0x1 },
      { "4: inset card, parts=0xFF control=0xFF",     2, 148, 40, 1732, 1000, 0xFF, 0xFF },
-@@ -180,7 +184,10 @@
+@@ -180,7 +186,10 @@
  static int  s_hold_frames = 25 * 60;
  
  static char s_url[1024];
@@ -2797,7 +2804,7 @@
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
  
-@@ -195,6 +202,7 @@
+@@ -195,12 +204,35 @@
  static int  s_play_pending = 0;
  static char s_play_url[2048];
  static char s_play_title[256];
@@ -2805,7 +2812,35 @@
  
  /* Fixed address for the whole dialog: the magic is derived from the block's
   * address, and the url pointer must stay valid while the browser runs. */
-@@ -227,6 +235,7 @@
+ static evo_wbd_param_t s_param __attribute__((aligned(16)));
+ 
+ #define LOG(...) do { evo_bt("web: " __VA_ARGS__); evo_boot_log_flush(); } while (0)
++
++static char s_nuvio_failure[384];
++static void nuvio_fail(const char *title, const char *detail)
++{
++    snprintf(s_nuvio_failure, sizeof s_nuvio_failure,
++             "%s<br/><span class=\"nuvio-detail\">%s</span>", title, detail);
++    LOG("startup: %s. %s", title, detail);
++}
++static void nuvio_fail_bootstrap(const char *stage, int error)
++{
++    char detail[192];
++    if (!strncmp(stage, "connect", 7)) {
++        snprintf(detail, sizeof detail, "Start your jailbreak's ELF loader, then open Nuvio Pro again (%s, errno %d).", stage, error);
++        nuvio_fail("No ELF loader answered on port 9021", detail);
++    } else if (!strcmp(stage, "transfer")) {
++        snprintf(detail, sizeof detail, "Run your jailbreak again, then open Nuvio Pro again (transfer, errno %d).", error);
++        nuvio_fail("The ELF loader did not start the Nuvio helper", detail);
++    } else {
++        snprintf(detail, sizeof detail, "Close Nuvio Pro and open it again. (%s, errno %d)", stage, error);
++        nuvio_fail("Nuvio Pro could not start its helper", detail);
++    }
++}
+ 
+ /* ---- shared with the server threads (s_mx) ---- */
+ 
+@@ -227,6 +259,7 @@
  static char s_h_url[2048];
  static char s_h_title[256];
  static char s_h_return[2048];
@@ -2813,7 +2848,7 @@
  
  /*
   * The page's localStorage, kept by EVO. The PS5's browser dialog starts every
-@@ -415,17 +424,34 @@
+@@ -415,17 +448,34 @@
   * save whenever it changes: every 5 s, synchronously before a handoff or Back
   * to EVO, and by beacon when the page goes away. Values over 512 KB are
   * caches, not settings, and are left out. */
@@ -2859,7 +2894,7 @@
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
-@@ -444,27 +470,22 @@
+@@ -444,27 +494,22 @@
  "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
  "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
  "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
@@ -2900,7 +2935,7 @@
  /* Where to come back to: the last page that is not the site's own player.
   * By the time the hook fires, the site has already routed to its player
   * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
-@@ -481,7 +502,7 @@
+@@ -481,7 +526,7 @@
  "function note(){if(!isPlayerUrl(location.href))good=location.href;}"
  "window.addEventListener('hashchange',note);window.addEventListener('popstate',note);"
  "['pushState','replaceState'].forEach(function(k){var o=history[k];"
@@ -2909,7 +2944,7 @@
  "function isStream(u){var l=String(u||'').toLowerCase();"
  " if(l.indexOf('blob:')==0||l.indexOf('data:')==0)return 0;"
  " if(NUVIO)return l.indexOf('http')==0||l.indexOf('/')==0;"
-@@ -493,14 +514,23 @@
+@@ -493,14 +538,23 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
@@ -2940,7 +2975,7 @@
  " setTimeout(function(){go(document.title);},1500);"
  " try{var ac=window.ApiClient;if(ac&&id){ac.getItem(ac.getCurrentUserId(),id).then(function(it){"
  "  var n=(it&&it.Name)||'';if(it&&it.SeriesName)n=it.SeriesName+' - '+n;go(n);},"
-@@ -537,9 +567,9 @@
+@@ -537,9 +591,9 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -2952,7 +2987,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +815,969 @@
+@@ -785,17 +839,969 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3922,7 +3957,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1792,12 @@
+@@ -810,6 +1816,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3935,7 +3970,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1806,14 @@
+@@ -818,6 +1830,14 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3950,7 +3985,7 @@
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2205,29 @@
+@@ -1209,13 +2229,29 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -3982,7 +4017,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2239,14 @@
+@@ -1227,8 +2263,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -3997,7 +4032,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2268,16 @@
+@@ -1250,8 +2292,20 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -4005,8 +4040,12 @@
 +        LOG("bootstrap: promotion requested");
 +        int rc = nuvio_bootstrap();
 +        if (rc == 0) LOG("bootstrap: promotion verified errno=0");
-+        else LOG("bootstrap: promotion failed stage=%s errno=%d", nuvio_bootstrap_stage(), errno);
-+        if (rc != 0) return;
++        else {
++            int error = errno;
++            LOG("bootstrap: promotion failed stage=%s errno=%d", nuvio_bootstrap_stage(), error);
++            nuvio_fail_bootstrap(nuvio_bootstrap_stage(), error);
++            return;
++        }
 +    }
      int fd = socket(AF_INET, SOCK_STREAM, 0);
 -    if (fd < 0) { LOG("server: socket errno=%d", errno); return; }
@@ -4015,7 +4054,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2285,20 @@
+@@ -1259,11 +2313,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -4038,7 +4077,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2314,7 @@
+@@ -1279,6 +2342,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -4046,7 +4085,34 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1318,6 +2354,7 @@
+@@ -1304,10 +2368,26 @@
+     int uid = pick_user();
+     if (ensure_initialized() != 0) {
+         LOG("NO-GO at Initialize");
++        if (!strcmp(s_hook_profile, "nuvio")) nuvio_fail("The PS5 browser did not start", "Close Nuvio Pro and open it again.");
+         s_state = P_OFF;
+         return;
+     }
++    if (!strcmp(s_hook_profile, "nuvio")) {
++        s_nuvio_failure[0] = '\0';
++        if (access("/data/homebrew/PPSA99996/webui/index.html", F_OK) != 0) {
++            nuvio_fail("Nuvio Pro is missing its webui folder",
++                       "Install Nuvio Pro on internal storage, in /data/homebrew/PPSA99996, then open it again.");
++            s_state = P_OFF;
++            return;
++        }
++    }
+     server_start();
++    if (!strcmp(s_hook_profile, "nuvio") && s_listen_fd < 0) {
++        if (!s_nuvio_failure[0])
++            nuvio_fail("Nuvio Pro could not start its page server", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
++        s_state = P_OFF;
++        return;
++    }
+     evo_mkdir(evo_data_path("webui"));
+     char leaf[200];
+     snprintf(leaf, sizeof leaf, "webui/%s_%d.json", s_up.enabled ? s_up.host : "local",
+@@ -1318,6 +2398,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -4054,7 +4120,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,6 +2379,7 @@
+@@ -1342,10 +2423,16 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -4062,7 +4128,16 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1356,6 +2394,7 @@
+     if (rc != 0) {
++        if (!strcmp(s_hook_profile, "nuvio")) {
++            char detail[96];
++            snprintf(detail, sizeof detail, "Close Nuvio Pro and open it again. (0x%08x)", (unsigned)rc);
++            nuvio_fail("The PS5 browser did not open", detail);
++        }
+         if (s_cycle && s_layout + 1 < LAYOUT_COUNT) {
+             s_layout++;
+             s_state = P_WAIT;
+@@ -1356,6 +2443,7 @@
          s_state = P_OFF;
          return;
      }
@@ -4070,7 +4145,28 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1505,7 +2544,9 @@
+@@ -1452,6 +2540,8 @@
+ {
+     snprintf(s_error, sizeof s_error, "%s", msg);
+     s_error_pending = 1;
++    if (!strcmp(s_hook_profile, "nuvio"))
++        nuvio_fail("The Nuvio page did not load", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
+ }
+ 
+ int evo_webui_take_error(char *buf, size_t cap)
+@@ -1474,6 +2564,11 @@
+     snprintf(s_hook_profile, sizeof s_hook_profile, "%s", hook_profile ? hook_profile : "");
+     if (s_preload_rc < 0) {
+         LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);
++        if (!strcmp(s_hook_profile, "nuvio")) {
++            char detail[96];
++            snprintf(detail, sizeof detail, "Close Nuvio Pro and open it again. (0x%08x)", (unsigned)s_preload_rc);
++            nuvio_fail("The PS5 browser is not available", detail);
++        }
+         return -2;
+     }
+     memset(&s_up, 0, sizeof s_up);
+@@ -1505,7 +2600,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4081,7 +4177,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,17 +2562,50 @@
+@@ -1521,17 +2618,50 @@
      return 0;
  }
  
@@ -4135,7 +4231,7 @@
      if (s_state != P_PLAYING) return;
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-@@ -1601,6 +2675,12 @@
+@@ -1601,6 +2731,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4148,10 +4244,23 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2734,27 @@
+@@ -1654,3 +2790,40 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
++
++const char *evo_nuvio_startup_status(void)
++{
++    static struct timespec start;
++    if (s_nuvio_failure[0]) return s_nuvio_failure;
++    if (evo_jailbreak_is_open()) return "Opening Nuvio Pro";
++    struct timespec now;
++    clock_gettime(CLOCK_MONOTONIC, &now);
++    if (!start.tv_sec && !start.tv_nsec) start = now;
++    if (now.tv_sec - start.tv_sec < 8) return "Opening Nuvio Pro";
++    return "Waiting for the jailbreak to unlock storage<br/><span class=\"nuvio-detail\">"
++           "Run etaHEN or another jailbreak daemon. Nuvio Pro continues when storage unlocks.</span>";
++}
 +
 +int evo_webui_native_requested(void) {
 +    pthread_mutex_lock(&s_mx);
@@ -5280,7 +5389,7 @@
          /* #150: the chapter hint only for a file that has chapters. */
          if (Rml::Element* e = m_playback_doc->GetElementById("item-chapter"))
              e->SetProperty("display", (state.is_live || state.chapter_count == 0) ? "none" : "flex");
-@@ -4331,3 +4443,16 @@
+@@ -4331,3 +4443,21 @@
  #endif
  }
  
@@ -5292,8 +5401,13 @@
 +    m_frame_dirty = true;
 +    if (m_nav_doc) m_nav_doc->Hide();
 +    Rml::Element* status = m_nuvio_doc->GetElementById("nuvio-status");
-+    if (status && status->GetInnerRML() != (message ? message : "Opening Nuvio Pro"))
-+        status->SetInnerRML(message ? message : "Opening Nuvio Pro");
++    // Startup messages carry markup, which GetInnerRML() may not return verbatim.
++    static Rml::String shown;
++    const char* text = message ? message : "Opening Nuvio Pro";
++    if (status && shown != text) {
++        status->SetInnerRML(text);
++        shown = text;
++    }
 +    m_context->Update();
 +    RenderCachedScreen(30, framebuffer, width, height);
 +}
@@ -5343,30 +5457,19 @@
  # ---------------------------------------------------------------------------
  begin "native-app dependencies"
 -eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"
-+ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"
++ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"
  need_file "${ZLIB_ARCHIVE:?}" "zlib bootstrap did not yield an archive"
  
  # ---------------------------------------------------------------------------
-@@ -195,8 +195,8 @@
- # ---------------------------------------------------------------------------
+@@ -196,7 +196,7 @@
  begin "building host converter (ps5-native-tool)"
  TOOL="${BUILD}/host/ps5-native-tool"
--clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
+ clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 -    -I "${ZLIB_INCLUDE}" \
-+/usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
 +     \
      "${NATIVE}/native_app_builder.cpp" "${NATIVE}/self_container.cpp" \
      "${NATIVE}/elf_object.cpp" "${NATIVE}/sce_module_writer.cpp" \
      "${ZLIB_ARCHIVE}" -o "${TOOL}"
-@@ -211,7 +211,7 @@
-     expected_signed="$(awk '{print $1}' "${NATIVE}/runtime/libc.prx.sha256")"
-     local work="${BUILD}/runtime-shim"
-     mkdir -p "${work}"
--    clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
-+    /usr/bin/clang++ -std=c++20 -O2 -Wall -Wextra -Werror \
-         "${NATIVE}/libc_builder.cpp" -o "${work}/libc-builder"
-     local copy
-     for copy in a b; do
 @@ -289,7 +289,7 @@
      # cached mount is caught immediately instead of costing a console session.
      # Written to a generated header to sidestep -D string quoting through the
@@ -5408,7 +5511,7 @@
  # sets it, see tools/native-app/ps5-pie.ld). At 0x4000 past one the console read
  # one 64 KB block of .rodata from the block before it.
 -RO_OFFSET="$(readelf -lW "${BUILD}/eboot.elf" | awk '$1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; exit}')"
-+RO_OFFSET="$(llvm-readelf -lW "${BUILD}/eboot.elf" | awk '!seen && $1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; seen=1}')"
++RO_OFFSET="$(readelf -lW "${BUILD}/eboot.elf" | awk '!seen && $1=="LOAD" && $7=="R" && $8 ~ /^0x/ {print $2; seen=1}')"
  if [[ -n "${RO_OFFSET}" ]] && (( (RO_OFFSET & 0xFFFF) != 0 )); then
      die "read-only segment at file offset ${RO_OFFSET}, not a multiple of 64 KB - the console misreads .rodata (see ps5-pie.ld)"
  fi

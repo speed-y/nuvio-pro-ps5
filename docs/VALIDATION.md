@@ -5304,3 +5304,21 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `tests.test_compatibility` fails on this host's GCC `14.2.0` with and without this change (`promote.c:85` `-Wmisleading-indentation`).
 - Pending (`[UNKNOWN]`):
   - Console startup with an `elfldr` older than `v0.21`, and a repeat check on the owner's `12.70` loader.
+
+## Startup failure reasons on the loading screen, 2026-11-12
+
+- Status: `[LOCALLY BUILT]`. No console result.
+- Problem: every startup failure left the same `Opening Nuvio Pro` screen. The Nuvio shell drew it over EVO's error text, and the title did not retry a failed open.
+- Change (`scripts/build.py` `startup_status()`, rendered through `scripts/native_general.py` and `scripts/polish.py`):
+  - After 8 seconds without storage access, the screen reports that the jailbreak has not unlocked storage. It clears when a later request succeeds.
+  - Helper failures name the `connect` or `transfer` stage with its errno. The title no longer opens a browser page without a UI server.
+  - A missing `/data/homebrew/PPSA99996/webui/index.html` stops startup with an internal-storage instruction.
+  - Page-server, browser start, browser open and page watchdog failures each show their own message.
+  - The title also logs each message as `startup: <title>. <detail>`.
+- Host checks:
+  - `make build` passed on Linux x86-64 with Python `3.13.5`, from `main` `1bd25fe` plus this change, without PR #10.
+  - `eboot.bin`: `5504639efdfd3cdf3d3347dccc821ca6c69bdb39e71596fa5e5878c7c80ad43d` (`48634244` bytes). `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - A Chromium mock of `assets/nuvio.rml` at `1920x1080` used LatoLatin and the same positions. Two-line messages end at y 690, above the accent line at y 713.
+  - The mock is HTML, not the RmlUi renderer, so console layout can differ.
+- Pending (`[UNKNOWN]`):
+  - TV rendering of each message, and each failure path on a console.

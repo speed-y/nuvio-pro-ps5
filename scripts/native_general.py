@@ -110,7 +110,7 @@ extern int screen;''')
     application = app/'core/src/Application.cpp'
     replace(application, '#include "evo_webui.h"', '#include "evo_webui.h"\n#include "nuvio_presentation.h"')
     replace(application, '                        g_nuvio_preparing ? "Preparing playback" : "Opening Nuvio Pro");',
-        '''                        !g_nuvio_preparing ? "Opening Nuvio Pro" :
+        '''                        !g_nuvio_preparing ? evo_nuvio_startup_status() :
                         evo_webui_presentation()->active && !evo_webui_presentation()->loading ? "" :
                         evo_webui_presentation()->active && !evo_webui_presentation()->loading_detail ? " " :
                         "Preparing playback");''')

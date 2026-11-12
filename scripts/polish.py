@@ -51,8 +51,13 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     ShowOnlyScreen(m_nuvio_doc);
     if (m_nav_doc) m_nav_doc->Hide();
     Rml::Element* status = m_nuvio_doc->GetElementById("nuvio-status");
-    if (status && status->GetInnerRML() != (message ? message : "Opening Nuvio Pro"))
-        status->SetInnerRML(message ? message : "Opening Nuvio Pro");
+    // Startup messages carry markup, which GetInnerRML() may not return verbatim.
+    static Rml::String shown;
+    const char* text = message ? message : "Opening Nuvio Pro";
+    if (status && shown != text) {
+        status->SetInnerRML(text);
+        shown = text;
+    }
     m_context->Update();
     RenderCachedScreen(30, framebuffer, width, height);
 }

@@ -2,6 +2,18 @@
 
 ## Stuck on “Opening Nuvio”
 
+Builds after 0.2.0-alpha.4 replace the splash text with the reason startup stopped.
+
+| Message | Required action |
+|---|---|
+| Waiting for the jailbreak to unlock storage | Run etaHEN or another jailbreak daemon. Nuvio continues when storage unlocks. |
+| No ELF loader answered on port 9021 | Start the jailbreak's ELF loader, then open Nuvio again. |
+| The ELF loader did not start the Nuvio helper | Run the jailbreak again, then open Nuvio again. |
+| Nuvio Pro is missing its webui folder | Install Nuvio on internal storage in `/data/homebrew/PPSA99996`. |
+| The PS5 browser did not start, open or load the page | Close Nuvio and open it again. Then collect `/data/nuvio/evo.log`. |
+
+The first message appears after 8 seconds without storage access. Without that access, `/data/nuvio` does not exist and the title writes no log.
+
 Check the current boot's jailbreak, ShadowMount and ELF loader on port 9021.
 Check that `/data/homebrew/PPSA99996/webui/` exists for the new fork build.
 The single-install title loads its helper automatically and serves the page itself.
