@@ -30,8 +30,10 @@ It attaches the existing CI packages without rebuilding them, verifies their che
 These releases are not marked latest.
 They retain the app's content version and are test candidates, not store updates.
 The release notes explicitly state that console validation remains pending.
+The publishing job renames their store zip to `PPSA99996-pr-test.zip`, so the store catalog does not offer them.
+See [Store listing](#store-listing).
 
-Download `PPSA99996.zip` and `SHA256SUMS` for installation.
+Download `PPSA99996-pr-test.zip` and `SHA256SUMS` for installation. It unpacks to the same `PPSA99996/` folder.
 Download `nuvio-pro-ps5-<version>.zip` for source and build receipts.
 CI artifacts remain available for 14 days. GitHub Release assets do not use that expiration.
 Asset URLs use the current repository, not the upstream repository.
@@ -100,9 +102,7 @@ and the helpers. The archive manifest covers the packaged UI and source files.
 The [PS5 Homebrew Store catalog](https://github.com/darkxex/ps5-homebrew-catalog)
 lists native PS5 homebrew by title ID and pins release assets by SHA-256.
 Its existing `apps/PPSA99997.json` belongs to Bilawal Riaz's upstream port, not this fork.
-This fork selects `PPSA99996` locally. It has no submitted reservation or approved catalog listing.
-Check availability again before requesting a reservation through a catalog pull request.
-The catalog's derivative-app policy also requires substantial differences and a distinct name.
+Catalog pull request #997 added this fork as `apps/PPSA99996.json` on 2026-10-31.
 
 The catalog needs:
 
@@ -115,6 +115,12 @@ The catalog needs:
 The daily catalog job follows new releases, so keep the asset name stable and
 raise `contentVersion` each time. Submit an update only when the release changes
 the listing fields.
+
+The job reads every published release that is not a draft, including pre-releases and PR test releases.
+It proposes the asset that has the listed asset's name, or the only zip in the release.
+On 2026-11-12 it moved the listing to the PR test release `pr-6-8a62b173aef4`.
+PR test releases therefore attach `PPSA99996-pr-test.zip` beside the source zip, and the job skips them.
+Keep `PPSA99996.zip` only on `v*` releases.
 
 ## Startup helper
 

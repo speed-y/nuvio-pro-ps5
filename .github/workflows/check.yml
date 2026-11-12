@@ -109,6 +109,19 @@ jobs:
       - name: Verify release assets
         working-directory: release
         run: sha256sum --check SHA256SUMS
+      # The store catalog follows the newest release, pre-releases included, and
+      # takes the asset named like the listed PPSA99996.zip, or the only zip.
+      # A renamed store zip beside the source zip leaves it no successor.
+      - name: Rename the store zip so the store catalog skips this release
+        working-directory: release
+        run: |
+          mv PPSA99996.zip PPSA99996-pr-test.zip
+          sed -i 's/  PPSA99996\.zip$/  PPSA99996-pr-test.zip/' SHA256SUMS
+          sed -i 's#^release/PPSA99996\.zip$#release/PPSA99996-pr-test.zip#' ASSETS
+          sha256sum --check SHA256SUMS
+          grep -qx 'release/PPSA99996-pr-test.zip' ASSETS
+          if grep -q 'PPSA99996\.zip' SHA256SUMS ASSETS; then exit 1; fi
+          [[ $(grep -c '\.zip$' ASSETS) -ge 2 ]]
       - name: Publish fixed-commit prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -127,7 +140,8 @@ jobs:
           PR head: ${HEAD_SHA}
           Tested merge commit: ${GITHUB_SHA}
 
-          Download PPSA99996.zip for installation, and SHA256SUMS to verify it.
+          Download PPSA99996-pr-test.zip for installation, and SHA256SUMS to verify it.
+          It unpacks to the same PPSA99996 folder. Its name keeps the store catalog from offering this test build.
           The complete nuvio-pro-ps5 package includes source and build receipts.
           Keep your working installation and /data/nuvio settings. Close Nuvio Pro before replacing its app folder.
 

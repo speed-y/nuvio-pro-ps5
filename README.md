@@ -195,7 +195,8 @@ observed behavior. Remove account details and private stream URLs from reports.
 See [Contributing](docs/CONTRIBUTING.md).
 
 For experimental testing, open [Releases](https://github.com/speed-y/nuvio-pro-ps5/releases) and select the prerelease for your PR and tested commit.
-Download `PPSA99996.zip` and `SHA256SUMS`. The complete `nuvio-pro-ps5` package contains source and build receipts.
+Download `PPSA99996-pr-test.zip` and `SHA256SUMS`. It unpacks to the same `PPSA99996` folder.
+The complete `nuvio-pro-ps5` package contains source and build receipts.
 Same-repository PRs publish these test candidates after Host checks and native compilation pass.
 They are not console-validated or marked latest. See [Release](docs/RELEASE.md) for details.
 Documentation-only updates skip publication when they can reuse a successful native build or contain no application changes.
