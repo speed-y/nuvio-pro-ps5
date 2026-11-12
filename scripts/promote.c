@@ -84,7 +84,8 @@ static int promote_once(int quiet) {
     }
     usleep((useconds_t)NUVIO_PROMOTE_DELAY_MS * 1000);
     printf("NUVIO promote pid=%d previous_auth=%016lx caps=",(int)target,(unsigned long)auth);
-    for(size_t i=0;i<16;i++) printf("%02x",saved[i]); puts("");
+    for(size_t i=0;i<16;i++) { printf("%02x",saved[i]); }
+    puts("");
     if(kernel_set_ucred_caps(target,priv) || kernel_set_ucred_authid(target,privileged) ||
        kernel_get_ucred_caps(target,check) || memcmp(check,priv,16) ||
        kernel_get_ucred_authid(target)!=privileged) {
