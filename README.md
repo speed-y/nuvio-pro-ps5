@@ -68,8 +68,9 @@ After a reboot, run your jailbreak again before opening Nuvio Pro.
 2. Start FTP on the PS5 and note its address and port.
 3. Connect with an FTP client, then copy `PPSA99996` to your chosen storage location.
    On internal storage, copy `PPSA99996` into `/data/homebrew/`.
-   On an M.2 SSD, place `PPSA99996` in `/mnt/ext0/app/` or `/mnt/ext0/homebrew/`.
-   On a USB drive, place `PPSA99996` in `/mnt/usb0/` or `/mnt/usb0/homebrew/`.
+   On an M.2 SSD, copy `PPSA99996` into `/mnt/ext1/homebrew/`.
+   On USB extended storage, copy `PPSA99996` into `/mnt/ext0/homebrew/`.
+   On a USB drive, copy `PPSA99996` into `/mnt/usb0/homebrew/` or the drive's top folder.
 4. Refresh ShadowMount's homebrew list and wait for the Nuvio Pro tile.
 5. Open Nuvio Pro. Sign in or configure your addons, then choose something to watch.
 

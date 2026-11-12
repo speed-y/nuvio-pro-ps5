@@ -5352,3 +5352,20 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Launched title via `control-3.elf` (`pid 1243`, `app_id 8218`).
   - Read `/data/nuvio/evo.log`: recorded `status=200`, storage restoration of 1,049,100 bytes, `route profileSelection`, and stable AGC rendering at 60 FPS (1200 frames, 0 timeouts).
 
+
+## ShadowMountPlus webui roots and M.2 installs, 2026-11-12
+
+- Owner result for `v0.2.0-alpha.5`: `[OWNER-REPORTED ON 12.70]` the release opens normally. The install location and eboot hash were not recorded.
+- Problem: the owner saw `Nuvio Pro is missing its webui folder` and asked whether external storage works.
+  - `[SOURCE-VERIFIED]` `nuvio_local_ui_root()` probed no `/mnt/ext1` path. ShadowMountPlus `8b1f48e` `include/sm_paths.h` labels `/mnt/ext1` as the M.2 drive and `/mnt/ext0` as extended storage.
+  - ProsperoStore offers only folders that ShadowMountPlus scans, so an M.2 store install was at `/mnt/ext1/homebrew/PPSA99996`.
+  - The README sent M.2 users to `/mnt/ext0/app/`. ShadowMountPlus does not scan that folder by default.
+- Change: `scripts/webui_roots.h` holds ShadowMountPlus's default scan roots in their order. `local_ui.c` and `promote.c` check `<root>/PPSA99996/webui` for each root.
+  - `KERN_PROC_PATHNAME`, the sandbox `app0` path and `/app0/webui` remain fallbacks.
+  - Custom ShadowMountPlus scan paths, nested scan depth and image installs remain uncovered.
+- Host checks:
+  - A host harness with a fake `/mnt/ext1/homebrew/PPSA99996/webui/index.html` resolved that path. The previous code returned `/data/homebrew/PPSA99996/webui` for the same tree.
+  - `promote.c` (one-shot and `NUVIO_WATCH`) and `local_ui.c` compile with SDK `v0.43` `prospero-clang` under `-Wall -Wextra -Werror`.
+  - `make build` passed. `eboot.bin`: `d30203d064322aa567dfcc8d5658b4a1ccb4bb53938784d7bce586e67f6fc4b8` (`48635284` bytes), before the version bump in the same PR.
+- Pending (`[UNKNOWN]`):
+  - Startup from `/mnt/ext1/homebrew` and from a USB drive on a console.

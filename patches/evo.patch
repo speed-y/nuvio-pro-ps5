@@ -4110,7 +4110,7 @@
 +        if (webui_fd < 0) {
 +            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);
 +            nuvio_fail("Nuvio Pro is missing its webui folder",
-+                       "Place webui/ beside eboot.bin on internal or USB storage.");
++                       "Install PPSA99996 in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");
 +            s_state = P_OFF;
 +            return;
 +        }

@@ -16,6 +16,7 @@ identify locally recorded downloads and are not maintainer signatures.
 | [FFmpeg](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz) | 7.1.1 | Target libav* libraries. The build compiles this source and installs it over the sysroot copy |
 | [ps5-homebrew-ui](https://github.com/sainsaji/ps5-homebrew-ui/tree/47f4b9868c33264716b2e92922b0d2c9d0f2ab0f) | `47f4b9868c33264716b2e92922b0d2c9d0f2ab0f` | EVO v0.13.5's UI submodule. The build installs this pinned tree into `third_party/` |
 | [Official Nuvio TV package](https://github.com/NuvioMedia/NuvioTVSmart/releases/tag/1.4.0) | Tizen 1.4.0 | Selected public browser login configuration |
+| [ShadowMountPlus scan paths](https://github.com/drakmor/ShadowMountPlus/blob/8b1f48e086bed93e1ad53158d1103054e362f54d/include/sm_paths.h) | `8b1f48e086bed93e1ad53158d1103054e362f54d` | Read-only reference for the default title folders in `scripts/webui_roots.h`. Nuvio copies no code from it |
 | [klogsrv](https://github.com/ps5-payload-dev/klogsrv/releases/tag/v0.9) | v0.9 | Optional diagnostics used in the console session |
 
 The native build takes the SDK from v0.43 and does not use the older host
