@@ -13,7 +13,8 @@
     decorator: vertical-gradient(#00000000 #000000cc);
 }
 #title-block { width: 1160dp; height: 100dp; }
-#media-title { font-size: 48dp; letter-spacing: 0dp; }
+#media-title { font-size: 46dp; letter-spacing: 0dp; line-height: 1.15; }
+.media-episode { font-size: 28dp; font-weight: normal; color: #ffffffe6; }
 #media-meta { font-size: 28dp; font-weight: normal; color: #ffffffad; margin-top: 0dp; width: 1160dp; }
 #badge-rack { margin: 8dp 0dp 20dp 0dp; gap: 8dp; }
 .badge-res, .badge-hdr, .badge-codec, .badge-fps, .badge-decoder,

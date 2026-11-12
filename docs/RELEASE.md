@@ -38,21 +38,24 @@ Asset URLs use the current repository, not the upstream repository.
 
 ## Cut a release
 
-1. Raise `VERSION` and the `contentVersion` in the build template.
+1. Raise `VERSION` and `contentVersion` in `sce_sys/param.json` on your branch before merging to `main`.
 2. Run `make check`.
 3. Build the candidate with `make build` if native code changed.
 4. Test the candidate on the console and record the result in
    [Validation](VALIDATION.md).
-5. Commit the source and the documentation.
-6. Push the commit.
+5. Commit the source and the documentation, then merge the pull request into `main`.
 
-The release workflow uses the same Linux build job as PR candidates when you push a version tag.
-It runs host checks, builds the title and helpers, verifies the packages, and uploads workflow artifacts.
-A separate publishing job downloads those exact artifacts, checks their hashes again, and creates a draft GitHub release.
+Merging or pushing to `main` triggers the Release workflow automatically.
+The `verify-version` job compares `VERSION` and `contentVersion` against the latest `v*` tag and the previous `main` commit.
+If either version does not advance or the tag already exists, the release build fails before packaging.
+
+Pull request checks run `scripts/check_release_version.py` as a non-blocking warning when `VERSION` or `contentVersion` still matches `main`.
+After `verify-version` passes, the workflow calls `build.yml` to run host checks, compile the title and helpers, and package `PPSA99996.zip`, `nuvio-pro-ps5-<version>.zip`, and `SHA256SUMS`.
+The publishing job verifies `SHA256SUMS`, generates categorized release notes from `.github/release.yml` against the previous `v*` tag, creates tag `v<VERSION>`, and publishes the release.
+Versions with a prerelease suffix such as `-alpha.3` publish as prereleases, while stable versions mark the release latest.
 Reruns preserve an existing release and its assets. Release runs do not cancel an active publication.
-Download the draft assets and test those exact files on the console.
-Publish the draft after recording their hashes and results in Validation.
 
+Pushing a matching `v*` tag also triggers the Release workflow.
 Manual runs of the Release workflow upload downloadable artifacts without creating a GitHub release, even on a tag.
 Select the optional `macos` input to check macOS build compatibility alongside Linux.
 Only Linux packages enter versioned releases. Both platforms use the shared build workflow, with separate caches and artifact names.

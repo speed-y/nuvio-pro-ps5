@@ -6,6 +6,66 @@ import { catalogRepository } from '../../data/repository/catalogRepository.js';
 import { buildSearchTargets } from '../screens/search/searchCatalogTargets.js';
 import { filterReleasedItems } from '../../core/util/releaseInfoUtils.js';
 
+// SVG adaptation of ps5-homebrew-ui's ui/glyphs.cpp, pinned in deps.lock.
+// Copyright (C) 2026 BlackBearReloaded. SPDX-License-Identifier: GPL-3.0-or-later.
+// Match EVO's GlyphStyle::dark(), including its face colours and trigger lip.
+const PS5_GLYPH_FACES = {
+  Triangle: '<path d="M16 7.073L24.736 22.465H7.264Z" fill="none" stroke="#46d6b0" stroke-width="3.52"/>',
+  Square: '<rect x="10.688" y="10.688" width="10.624" height="10.624" fill="none" stroke="#e98fd8" stroke-width="3.52"/>',
+  Circle: '<circle cx="16" cy="16" r="7.616" fill="none" stroke="#ff6b7d" stroke-width="3.52"/>',
+  Cross: '<path d="M9.6 9.6L22.4 22.4M9.6 22.4L22.4 9.6" fill="none" stroke="#7fa7ff" stroke-width="3.52"/>'
+};
+
+function stickGlyphSvg(name) {
+  return '<svg viewBox="0 0 64 64">' +
+    '<circle cx="32" cy="32" r="30" fill="#11131f"/>' +
+    '<circle cx="32" cy="32" r="27" fill="none" stroke="#f5f5f5" stroke-width="3"/>' +
+    '<circle cx="32" cy="32" r="17" fill="none" stroke="#f5f5f5" stroke-width="4"/>' +
+    '<path d="M32 8l5 8h-10zM32 56l-5-8h10zM8 32l8-5v10zM56 32l-8 5v-10z" fill="#f5f5f5"/>' +
+    '<text x="32" y="38" text-anchor="middle" font-size="16" font-weight="700" fill="#f5f5f5">' + name + '</text></svg>';
+}
+
+/** Return an inline SVG matching DualSense GlyphStyle::dark() for a button name. */
+export function ps5GlyphSvg(name) {
+  if (PS5_GLYPH_FACES[name]) {
+    return '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#11131f" fill-opacity=".92"/>' +
+      PS5_GLYPH_FACES[name] + '</svg>';
+  }
+  if (name === 'Dpad') {
+    return '<svg viewBox="0 0 32 32">' +
+      '<circle cx="16" cy="16" r="15" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+      '<rect x="12.8" y="6.4" width="6.4" height="19.2" rx="1.92" fill="#e4e3f5"/>' +
+      '<rect x="6.4" y="12.8" width="19.2" height="6.4" rx="1.92" fill="#e4e3f5"/>' +
+      '<circle cx="16" cy="16" r="1.4" fill="#11131f"/></svg>';
+  }
+  if (name === 'L3' || name === 'R3') {
+    return stickGlyphSvg(name);
+  }
+  if (name === 'Options') {
+    return '<svg viewBox="0 0 28 32">' +
+      '<rect x="4" y="2" width="20" height="28" rx="10" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+      '<rect x="8.5" y="10" width="11" height="2.2" rx="1.1" fill="#e4e3f5"/>' +
+      '<rect x="8.5" y="14.9" width="11" height="2.2" rx="1.1" fill="#e4e3f5"/>' +
+      '<rect x="8.5" y="19.8" width="11" height="2.2" rx="1.1" fill="#e4e3f5"/></svg>';
+  }
+  if (name === 'TouchPad') {
+    return '<svg viewBox="0 0 46 32">' +
+      '<rect x="1.5" y="4" width="43" height="24" rx="6" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+      '<rect x="6" y="7.5" width="34" height="3.2" rx="1.6" fill="#e4e3f5" fill-opacity=".35"/>' +
+      '<text x="23" y="22.5" text-anchor="middle" font-size="9.5" font-weight="600" fill="#e4e3f5">PAD</text></svg>';
+  }
+  if (name.includes('/')) {
+    return '<svg viewBox="0 0 60 32">' +
+      '<rect x="1" y="2.03" width="58" height="27.94" rx="8.67" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+      '<rect x="5" y="5.28" width="50" height="6.8" rx="3.4" fill="#e4e3f5" fill-opacity=".16"/>' +
+      '<text x="30" y="23.4" text-anchor="middle" font-size="11.8" font-weight="600" fill="#e4e3f5">' + name + '</text></svg>';
+  }
+  return '<svg viewBox="0 0 41.6 32">' +
+    '<rect x=".75" y="2.03" width="40.1" height="27.94" rx="8.67" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
+    '<rect x="4" y="5.28" width="33.6" height="7.066" rx="3.533" fill="#e4e3f5" fill-opacity=".16"/>' +
+    '<text x="20.8" y="23.608" text-anchor="middle" font-size="12.8" font-weight="600" fill="#e4e3f5">' + name + '</text></svg>';
+}
+
 let activeKeyboard = null;
 
 export function requestPs5SearchKeyboard(navigationContext = {}) {
@@ -258,34 +318,13 @@ export function requestPs5SearchKeyboard(navigationContext = {}) {
   buttons.forEach((button, index) => {
     button.addEventListener('focus', () => { selected = index; draw(); });
   });
-  // SVG adaptation of ps5-homebrew-ui's ui/glyphs.cpp, pinned in deps.lock.
-  // Copyright (C) 2026 BlackBearReloaded. SPDX-License-Identifier: GPL-3.0-or-later.
-  // Match EVO's GlyphStyle::dark(), including its face colours and trigger lip.
-  for (const [index, label, shape] of [
-    [40, 'Triangle', '<path d="M16 7.073L24.736 22.465H7.264Z" fill="none" stroke="#46d6b0" stroke-width="3.52"/>'],
-    [41, 'Square', '<rect x="10.688" y="10.688" width="10.624" height="10.624" fill="none" stroke="#e98fd8" stroke-width="3.52"/>'],
-    [43, 'L3'], [44, 'R2'], [45, 'Circle', '<circle cx="16" cy="16" r="7.616" fill="none" stroke="#ff6b7d" stroke-width="3.52"/>']
-  ]) {
+  for (const [index, label] of [[40, 'Triangle'], [41, 'Square'], [43, 'L3'], [44, 'R2'], [45, 'Circle']]) {
     const icon = document.createElement('span');
     icon.className = 'ps5-key-shortcut';
     icon.setAttribute('aria-hidden', 'true');
-    if (shape) {
-      icon.innerHTML = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#11131f" fill-opacity=".92"/>' + shape + '</svg>';
-    } else if (label === 'L3') {
-      icon.classList.add('stick');
-      icon.innerHTML = '<svg viewBox="0 0 64 64">' +
-        '<circle cx="32" cy="32" r="30" fill="#11131f"/>' +
-        '<circle cx="32" cy="32" r="27" fill="none" stroke="#f5f5f5" stroke-width="3"/>' +
-        '<circle cx="32" cy="32" r="17" fill="none" stroke="#f5f5f5" stroke-width="4"/>' +
-        '<path d="M32 8l5 8h-10zM32 56l-5-8h10zM8 32l8-5v10zM56 32l-8 5v-10z" fill="#f5f5f5"/>' +
-        '<text x="32" y="38" text-anchor="middle" font-size="16" font-weight="700" fill="#f5f5f5">L3</text></svg>';
-    } else {
-      icon.classList.add('shoulder');
-      icon.innerHTML = '<svg viewBox="0 0 41.6 32">' +
-        '<rect x=".75" y="2.03" width="40.1" height="27.94" rx="8.67" fill="#11131f" fill-opacity=".92" stroke="#6c7196" stroke-opacity=".9" stroke-width="1.5"/>' +
-        '<rect x="4" y="5.28" width="33.6" height="7.066" rx="3.533" fill="#e4e3f5" fill-opacity=".16"/>' +
-        '<text x="20.8" y="23.608" text-anchor="middle" font-size="12.8" font-weight="600" fill="#e4e3f5">' + label + '</text></svg>';
-    }
+    if (label === 'L3') icon.classList.add('stick');
+    else if (label === 'R2') icon.classList.add('shoulder');
+    icon.innerHTML = ps5GlyphSvg(label);
     buttons[index].prepend(icon);
     buttons[index].setAttribute('aria-label', keys[index].label + ' (' + label + ')');
   }
@@ -294,6 +333,155 @@ export function requestPs5SearchKeyboard(navigationContext = {}) {
   draw();
   updateSuggestions();
   observer.observe(screen.container, { childList: true, subtree: true });
+}
+
+const HINT_NON_SEARCH_ROUTES = new Set([
+  'profileSelection', 'authQrSignIn', 'authSignIn', 'serverConnection',
+  'syncCode', 'experienceModeSelection', 'essentialAddonSetup', 'player'
+]);
+const HINT_TAB_LABELS = [
+  ['detail', '.series-season-btn.focusable', 'Season'],
+  ['stream', '.stream-route-chip.focusable[data-addon]', 'Addon'],
+  ['settings', '.settings-nav-item.focusable', 'Category'],
+  ['folderDetail', '.folder-detail-tab.focusable', 'Tab'],
+  ['library', '.library-view-mode-button.focusable', 'Tab'],
+  ['discover', '.discover-filter.focusable', 'Filter']
+];
+const HINT_SCROLL_ROUTES = new Set([
+  'home', 'detail', 'discover', 'library', 'folderDetail', 'catalogSeeAll',
+  'search', 'stream', 'settings', 'plugins', 'licensesAttributions', 'castDetail'
+]);
+
+function resolvePs5Hints() {
+  if (document.hidden) return null;
+  const route = Router.getCurrent?.() || '';
+  if (!route || route === 'player') return null;
+  if (document.querySelector('[data-overlay-root="pin"]') || document.querySelector('.ps5-search-keyboard')) return null;
+
+  if (document.body.classList.contains('nuvio-modal-open')) {
+    const hints = [['Dpad', 'Navigate'], ['Cross', 'Confirm']];
+    if (document.querySelector('.nuvio-dialog-backdrop .series-stream-filter.focusable')) {
+      hints.push(['L1/R1', 'Addon']);
+    }
+    hints.push(['Circle', 'Close']);
+    return hints;
+  }
+
+  const screen = Router.getCurrentScreen?.();
+  const root = screen?.container;
+  const hasOverlay = Boolean(root?.querySelector?.('[data-overlay-root], .settings-dialog-backdrop'));
+  const focused = root?.querySelector?.('.focused') || null;
+  const hints = [['Dpad', 'Navigate'], ['Cross', 'Select']];
+
+  const hasHoldAction = Boolean(focused && (
+    screen?.isEpisodeHoldTarget?.(focused) ||
+    screen?.isSeasonHoldTarget?.(focused) ||
+    screen?.isHomeHoldTarget?.(focused) ||
+    screen?.isPosterHoldTarget?.(focused) ||
+    screen?.canHoldManageProfile?.(focused) ||
+    (focused.dataset?.action === 'toggleLibrary' && screen?.openLibraryListMenu) ||
+    (screen?.openHeroPlayMenu && ['playDefault', 'playFromBeginning', 'ps5PlayOptions'].includes(focused.dataset?.action))
+  ));
+
+  if (hasHoldAction) {
+    hints.push(['Square', route === 'profileSelection' ? 'Manage' : 'Item options']);
+  } else if (route === 'detail' && !hasOverlay && root?.querySelector?.('[data-action="toggleLibrary"]')) {
+    hints.push(['Square', 'Watchlist']);
+  } else if (route === 'stream' && root?.querySelector?.('[data-action="refreshStreams"]')) {
+    hints.push(['Square', 'Refresh']);
+  }
+
+  if (route === 'detail' && !hasOverlay && root?.querySelector?.('[data-action="playDefault"]')) {
+    hints.push(['L2', 'Top'], ['R2', 'Play']);
+  } else if (hasOverlay || HINT_SCROLL_ROUTES.has(route)) {
+    hints.push(['L2/R2', 'Page']);
+  }
+
+  if (!hasOverlay) {
+    for (const [tabRoute, selector, label] of HINT_TAB_LABELS) {
+      const visibleCount = route === tabRoute
+        ? Array.from(root?.querySelectorAll?.(selector) || []).filter(el => !el.disabled && (el.getClientRects ? el.getClientRects().length : 1)).length
+        : 0;
+      if (visibleCount > 1) {
+        hints.push(['L1/R1', label]);
+        break;
+      }
+    }
+  }
+
+  if (!hasOverlay && ['home', 'library', 'discover'].includes(route) &&
+      root?.querySelector?.('.home-sidebar, .modern-sidebar, [data-action="toggleSidebar"]')) {
+    hints.push(['TouchPad', 'Menu']);
+  }
+
+  if (!hasOverlay && !HINT_NON_SEARCH_ROUTES.has(route)) {
+    hints.push(['Triangle', 'Search']);
+  }
+  hints.push(['Options', 'Menu']);
+  if (hasOverlay || (route !== 'home' && route !== 'profileSelection')) {
+    hints.push(['Circle', 'Back']);
+  }
+  return hints;
+}
+
+let hintBarNode = null;
+let hintBarScheduled = false;
+let hintBarSignature = '';
+
+export function refreshPs5HintBar() {
+  if (!hintBarNode || hintBarScheduled || typeof requestAnimationFrame !== 'function') return;
+  hintBarScheduled = true;
+  requestAnimationFrame(() => {
+    hintBarScheduled = false;
+    if (!hintBarNode) return;
+    const hints = resolvePs5Hints();
+    if (!hints || !hints.length) {
+      if (hintBarSignature !== '') {
+        hintBarSignature = '';
+        hintBarNode.hidden = true;
+        hintBarNode.replaceChildren();
+      }
+      return;
+    }
+    const sig = hints.map(([g, l]) => g + ':' + l).join('|');
+    if (sig === hintBarSignature && !hintBarNode.hidden) return;
+    hintBarSignature = sig;
+    hintBarNode.hidden = false;
+    hintBarNode.innerHTML = hints.map(([glyph, label]) => {
+      const cls = glyph === 'TouchPad' || glyph.includes('/') ? 'ps5-control-glyph wide' :
+        glyph === 'Options' ? 'ps5-control-glyph narrow' : 'ps5-control-glyph';
+      return '<span class="ps5-control-hint"><span class="' + cls + '" aria-hidden="true">' +
+        ps5GlyphSvg(glyph) + '</span><span>' + label + '</span></span>';
+    }).join('');
+  });
+}
+
+export function initPs5HintBar() {
+  if (!globalThis.__NUVIO_PS5__ || hintBarNode ||
+      typeof document?.createElement !== 'function' || !document.body) return;
+  hintBarNode = document.createElement('div');
+  hintBarNode.id = 'ps5-control-bar';
+  hintBarNode.className = 'ps5-control-bar';
+  hintBarNode.setAttribute('aria-hidden', 'true');
+  hintBarNode.hidden = true;
+  document.body.appendChild(hintBarNode);
+  const trigger = () => refreshPs5HintBar();
+  window.addEventListener('hashchange', trigger, true);
+  window.addEventListener('popstate', trigger, true);
+  window.addEventListener('keydown', trigger, true);
+  window.addEventListener('keyup', trigger, true);
+  window.addEventListener('focusin', trigger, true);
+  document.addEventListener('visibilitychange', trigger, true);
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(mutations => {
+      for (const m of mutations) {
+        if (m.target === hintBarNode) continue;
+        refreshPs5HintBar();
+        break;
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'data-overlay-root'] });
+  }
+  trigger();
 }
 
 export function initPs5SearchKeyboard() {

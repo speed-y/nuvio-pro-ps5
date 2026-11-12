@@ -5144,3 +5144,144 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `/data/nuvio/evo.log` startup lines recorded `EVO boot: BUILD f6e43e65-nuvio_1111-2348`, `bootstrap: promotion verified errno=0`, `server: listen ok port=8686`, `title-ui: response status=200`, and `page: route profileSelection`.
 - Observed Continue Watching Nuvio Sync verification:
   - Console owner confirmed the Continue Watching Nuvio Sync behavior worked on the TV after launch.
+
+## Nuvio TV 1.4.0 integration and v0.2.0-alpha.3 preparation, 2026-11-12
+
+- Status: `[LOCALLY BUILT]`.
+- Console execution status: `[UNKNOWN]` on retail PS5 firmware 12.70.
+- Target title identity: `PPSA99996`. Public version: `0.2.0-alpha.3`. PS5 `contentVersion`: `01.000.010`.
+- Build ID: `f6e43e65-nuvio_1112-1220`.
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0` (`ec5e15c050c7ac98ede4e201a97bc4f93b96420e`), EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`, Clang `23.1.4`.
+- Pinned input updates in `deps.lock`:
+  - `nuvio-tv-source` `1.4.0`: archive SHA-256 `a03eef675fdf44e6c603405f726efef7ed5248ebdc19d0c855d36b6b35ca77d5` (`9093888` bytes).
+  - `nuvio-official-tv-config` `1.4.0`: archive SHA-256 `69d99f91f0eb3046192dc498dbc7d82ba856dbc7ad1a20225d0bb746808529f9` (`7801680` bytes, matches GitHub release asset digest).
+- Upstream `1.4.0` source review (`[SOURCE-VERIFIED]`):
+  - `1.4.0` adds legacy `--*-rgb-legacy` CSS color tokens, adaptive TV performance tiers, `homeRowWindow` row parking and `homeDomUpdate` node source caching.
+  - It also adds TV poster rescaling, DASH MIME hints, HTTP 416 retry, Tizen audio metadata merging and tolerant MDBList ID parsing.
+  - All `scripts/polish.py` and `scripts/watch_sync.py` patch anchors and `nuvio.env.js` configuration keys apply cleanly to `1.4.0`.
+- Artifacts and SHA-256 hashes from `make build`:
+  - `eboot.bin`: `a4e2c8a5bc077d2e6838bf0f5a2a0582d8053352f22e881e36af33bb89e57f08` (`48847892` bytes, signed container integrity valid)
+  - `eboot.elf`: `bb1bfa72a7efc3be9b6acf84aa331d0376e08a286e29dbfad598f848dfb6022d` (`50071340` bytes)
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` (`1284674` bytes)
+  - `webui/app.bundle.js`: `23093b07a9296a79c33e9c1dd2cf91d76a701e85f00b004520214203047772c8` (`3886406` bytes)
+  - `bootstrap-promote.elf`: `b12dd74a69a5d04e0e07d59e33ce877b856ed7f82d569424ca59406a797428e8` (`110992` bytes)
+  - `nuvio.elf`: `56bbb88212a077fe4c7891e11d462e61e47ac2623a32d0c23d56f86f980457c8` (`112400` bytes)
+- Host verification:
+  - Upstream `npm run test:perf` passed all `109` tests plus legacy color token checks on the patched `1.4.0` tree.
+  - `make ui`, `make build` and `make check` run cleanly after the pin and patch updates.
+- Pending console verification on retail PS5 firmware 12.70:
+  - Install and launch `PPSA99996`, then check Home row navigation, Hero updates, Continue Watching sync and native playback handoff.
+
+## Console update and launch on retail PS5 firmware 12.70 (1.4.0 / v0.2.0-alpha.3), 2026-11-12
+
+- Status: `[PROVEN]`.
+- Console execution status: `[PROVEN]` update install and launch on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1220`.
+- Transfer and verification method:
+  - Verified zero active `PPSA99996` processes via PS5Upload `/api/proc/list`, backed up prior `eboot.bin` (`48847892` bytes, SHA-256 `625a97fbb60949427ad0be6b198ddc32cd9b95bb1d1fa14ac6bcb9c62ed90e28`) via `control-5.elf`, and kept `/data/nuvio/` untouched.
+  - Verified `/data/homebrew/PPSA99996` had `274` of `274` file paths (`0` missing), uploaded the `5` changed files (`eboot.bin`, `webui/app.bundle.js`, `webui/appinfo.json`, `sce_sys/param.json`, `webui/css/bundle.css`) over PS5Upload HTTP API (`port 9180`), and saved `config/installed-build.json`.
+- Verified console hashes:
+  - `eboot.bin` via `control-5.elf`: `48847892` bytes, SHA-256 `a4e2c8a5bc077d2e6838bf0f5a2a0582d8053352f22e881e36af33bb89e57f08`.
+  - `webui/app.bundle.js` via PS5Upload readback: `3886406` bytes, SHA-256 `23093b07a9296a79c33e9c1dd2cf91d76a701e85f00b004520214203047772c8`.
+  - `webui/css/bundle.css` via PS5Upload readback: `600016` bytes, SHA-256 `c100d322c099400f5bf4255b1ee9f1188a6539dbe09ade158c2c83630bc06566`.
+  - `webui/appinfo.json` via PS5Upload readback: `802` bytes, SHA-256 `9b6b4d262ef9fbe4c059d5db78153f4a36e227afb16d43ae1f14e0da13ba3ae7`.
+  - `sce_sys/param.json` via PS5Upload readback: `915` bytes, SHA-256 `88e74d42108cdef37186ab8a2044fb5d34b46447e5eab2c74ef3089572c22f8e`.
+- Observed launch and ShadowMount state:
+  - `control-3.elf` returned `NUVIO running_big_app=-1` and `NUVIO launch_result=0x8018` (`PPSA99996` running as `app_id: 32792`, `pid: 1101`).
+  - `control-2.elf` reported `"installed":true`, `"mounted":true`, `"size_bytes":117140865`.
+  - `/data/nuvio/evo.log` startup lines recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1220`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, `web: title-ui: response status=200`, `web: storage: restored 1023834 bytes`, and `web: page: route profileSelection`.
+- Pending interactive UI verification on TV (`[UNKNOWN]`):
+  - Check Home row parking during fast scrolling, Hero updates, legacy CSS colors, Continue Watching Nuvio Sync, Search keyboard, and native playback handoff/return.
+
+## Detail hero action clipping, Profile PIN layout, and Square Backspace fix, 2026-11-12
+
+- Status: `[PROVEN]` install and launch on retail PS5 firmware `12.70` (`PPSA99996`). Visual TV and physical controller checks remain pending (`[UNKNOWN]`).
+- Build ID: `f6e43e65-nuvio_1112-1314`. Title identity: `PPSA99996` (`0.2.0-alpha.3`, `contentVersion` `01.000.010`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- UI and controller changes:
+  - `.series-detail-actions` adds top, left, and bottom padding (`8px 6px 4px`) with `-6px` left margin so `.performance-constrained` focus rings clear `.detail-hero-body`.
+  - `.profile-pin-*` rules replace oversized fixed `px` and `vw` sizes with `clamp()` scaling across `720p` and `1080p` viewports.
+  - `ps5GlyphSvg()` in `scripts/ps5-text-input.js` shares `GlyphStyle::dark()` button SVGs (`Dpad`, `Cross`, `Square`, `Circle`, `Triangle`, `L3`, `R2`) across Search and Profile PIN hints.
+  - Profile PIN overlay maps `Square` (`F2`/`113`) and physical `Backspace` (`8`) to digit deletion without triggering `Options` or Back, while preserving keypad focus.
+  - Profile PIN bottom bar renders `D-pad` Navigate, `Cross` Select, `Square` Backspace, and `Circle` Cancel controller hints.
+- Host checks (`make build` and `make check`):
+  - `make check` passed all `160` tests (including `test_pin_overlay_square_backspace_controls_and_layout` in headless Chromium at `1920x1080`), `make docs-check`, and `scripts/check.py`.
+  - Inspected `1920x1080` Chromium renders showed centered PIN scaling, bottom controller glyphs, and unclipped Detail hero focus rings.
+- Built artifacts and SHA-256 hashes:
+  - `eboot.bin`: `51098ddb73051750d579126cdf87e49a2a44cfdaafb6ea71189c6ddc59eb1f4b` (`48847892` bytes, signed container integrity valid).
+  - `eboot.elf`: `76119d48226112f0ddc3373a1638d47bf2b7e32975aac47138ddb96b72b49df8` (`50071340` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` (`1284674` bytes).
+  - `webui/app.bundle.js`: `cfd18cb6833f7a23bdc6ef78c29d6fbdca0c8c31d8c9097a638078eb0ef18aaa` (`3887607` bytes).
+  - `webui/css/bundle.css`: `65c531974e1e4bf65c2f134ed696f23cbfbf9e2c7a1255d19762ea07053a59d2` (`601991` bytes).
+  - `bootstrap-promote.elf`: `cee7f87a9e412c3a6fd067117d3408cb80a2edb5a10c238ad764a1362e60fe5b` (`110992` bytes).
+  - `nuvio.elf`: `7d8334238e089332adb5b66d80609a18bd1fc71b6abb0fa9f220bf66a0dc7607`.
+- Console update, verification, and launch:
+  - Closed running `PPSA99996` (`app_id: 49176`, `pid: 1119`), backed up prior `eboot.bin` (`a4e2c8a5...`) via `control-5.elf`, and kept `/data/nuvio/` intact.
+  - Uploaded the `3` changed files (`eboot.bin`, `webui/app.bundle.js`, `webui/css/bundle.css`) over PS5Upload (`port 9180`) and confirmed exact readback and `control-5.elf` hashes.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0xe018`, `app_id: 57368`, `pid: 1129`). `control-2.elf` reported `"installed":true`, `"mounted":true`, `"size_bytes":117144041`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1314`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, `web: title-ui: response status=200`, `web: storage: restored 1031817 bytes`, and `web: page: route profileSelection`.
+- Pending console verification on TV (`[UNKNOWN]`):
+  - Confirm that the Detail `+` button focus ring shows no clipping and the Profile PIN screen shows balanced proportions.
+  - Confirm that the bottom controller hints display cleanly and Square deletes PIN digits instead of opening Options.
+
+## Two-line series playback title and WebBrowserDialog initial cursor check, 2026-11-12
+
+- Status: `[PROVEN]` install, launch, and TV verification of the two-line series playback title on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1449`. Title identity: `PPSA99996` (`version` `01.000.007`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- Changes verified in host build and `make check`:
+  - `globalThis.__nuvioPlaybackTitle()` in `scripts/ps5-general.js` and `fix_playback_title()` in `scripts/polish.py` format series playback titles as `<Series name>` followed by `\nSxxExx <Episode name>`. Movies keep a single `<Movie name>` line.
+  - `OsdScreen::draw_bottom()` in `scripts/ps5-player-skin-osd.inc` splits `title_` with `split_lines(title_.c_str())` and renders the series name (`46`dp) above `SxxExx <Episode name>` (`28`dp). It shifts both lines up when `meta_` shows a buffering or end state.
+  - `patch_rml_app_source()` in `scripts/native_skin.py` and `.media-episode` in `scripts/ps5-player-skin.rcss` apply XML escaping and two-line `#media-title` layout for RmlUi fallback builds.
+  - `make build` compiled `240` objects and signed `eboot.bin` with valid integrity.
+  - `make check` passed all `165` unit tests (`58.166s`), `make docs-check`, and `scripts/check.py` after final code and test edits.
+- Built artifact hashes:
+  - `eboot.bin`: `8c0a44010ff37071dc494529710576df81835cb9e459e223bf069537aa7424ec` (`48848052` bytes, signed container integrity valid).
+  - `eboot.elf`: `a49597bc3706b796878690aeda4bd4cc60574829fe08ee55936fb98f855bc648` (`50071412` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - `webui/app.bundle.js`: `95a101e973c2512612deb9d30e9bd7afe926a030a0341936192825063596a0bf` (`3901507` bytes).
+  - `webui/css/bundle.css`: `c055ad4b0c5b19efab21fbd1463c34ba601b49914b8df705bfe6f4cbc862957a` (`603000` bytes).
+  - `assets/rml/playback.rcss`: `81442a6b3c5eebaac5aa62d7e38abed93b83a455f84b4b1e50c7cb7e55a5aad4` (`19785` bytes).
+  - `promote.elf`: `e66a78eee6e83d94d0f917ce91551fa11f1c2ac341738ebdae7b1caad6016847`.
+  - `nuvio.elf`: `6d16f53dac6d7407d22f3fc4d654ddb6c7754ed74510f746f30186b8b1239842`.
+- Console update, hash verification, and observed results (`192.168.0.202`):
+  - Closed running `PPSA99996` (`pid: 1162`, `app_id: 16408`), backed up prior `eboot.bin` (`6868a42e1d9c506ecf8213f33fd35131bea2f4e287d3c344c3d76ca0faa7bdc1`) via `control-5.elf`, and preserved `/data/nuvio/`.
+  - Uploaded the `3` changed files (`eboot.bin`, `webui/app.bundle.js`, `assets/rml/playback.rcss`) over PS5Upload HTTP API (`port 9180`). Readback SHA-256 and `control-5.elf` hashes matched the built files.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0x6018`, `pid: 1174`, `app_id: 24600`). `control-2.elf` reported `"installed":true`, `"mounted":true`, and `"size_bytes":117159226`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1449`, `web: title-ui: response status=200`, `web: storage: restored 1021263 bytes`, and `web: page: route profileSelection`.
+  - `[PROVEN]` Owner confirmed on TV that series playback displays the two-line series title (`Yes the series title works fine`).
+  - `[PROVEN]` Owner confirmed Detail Watchlist (`Square`), Scroll to top (`L2`), Play actions, and Home Left Stick D-pad navigation on TV (`YEah they are verified.`).
+- Platform limit and pending checks (`[UNKNOWN]`):
+  - `libSceWebBrowserDialog` (`evo_webui.c`) and `ps5-payload-sdk` expose no documented cursor positioning API or synthetic `scePad` motion injection API. Sony's initial dialog pointer cannot be moved to bottom-right or hidden programmatically before physical stick movement without undocumented SDK interfaces (`AGENTS.md` restriction).
+  - `[UNKNOWN]` RmlUi buffering-state 3-line shift fallback remains unverified on TV.
+
+## Detail Resume button shape and focus-ring clipping fix, 2026-11-12
+
+- Status: `[PROVEN]` install, launch, and owner TV verification of the updated Detail `Resume` button on retail PS5 firmware `12.70` (`PPSA99996`).
+- Build ID: `f6e43e65-nuvio_1112-1513`. Title identity: `PPSA99996` (`version` `01.000.007`).
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0`, EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`.
+- Root causes and fixes in `scripts/polish.py`:
+  - `.detail-hero-body` kept `overflow: hidden` on non-Tizen browsers, while `.series-primary-btn.focused` inherited `.performance-constrained` `tizenCardLift` (`scale(1.03)`) and an outer focus `box-shadow`. `.series-secondary-btn` omitted that scale rule, so `Resume` grew taller and clipped flat along the left border.
+  - `.series-detail-shell:not(.detail-trailer-active) .detail-hero-body` sets `overflow: visible`.
+  - `.series-primary-btn`, `.series-secondary-btn`, and `.series-circle-btn` clear native appearance and cancel `.performance-constrained` `tizenCardLift` scaling on Detail controls, using uniform inset focus rings (`4px` on pills/circles/company cards, `3px` on season/tab/comment cards).
+  - `.home-screen-shell .home-track`, `.cast-credit-track`, `.folder-row-track`, `.detail-company-track`, `.detail-morelike-track`, `.detail-comments-track`, and `.poster-list-picker-actions` add top/left padding so outer focus rings and focus scaling do not clip.
+- Host checks (`make build` and `make check`):
+  - `make build` compiled `240` objects and signed `eboot.bin` with valid integrity.
+  - `make check` passed all `165` unit tests (`62.838s`), including `test_pin_overlay_square_backspace_controls_and_layout` in headless Chromium at `1920x1080`, plus `make docs-check` and `scripts/check.py`.
+- Built artifact hashes:
+  - `eboot.bin`: `1b2b102bc0e99e081cfda0ada8da84f59dc33dfba69f7a05178c41a9aa79adf6` (`48848052` bytes, signed container integrity valid).
+  - `eboot.elf`: `cadcb1729a2c00d97f2c9618b3829d05ca00b7f19710b559fc624c5301908619` (`50071412` bytes).
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - `webui/app.bundle.js`: `95a101e973c2512612deb9d30e9bd7afe926a030a0341936192825063596a0bf`.
+  - `webui/css/bundle.css`: `91852c10679effc2a90ef36db523c4ae903f96529a94934ddcbae7f4fa4f20d5` (`604656` bytes).
+  - `promote.elf`: `d7a76596a3f6878067354df4329d314f3d31ec4ef87dd4eb6ec0a846fa48b500`.
+  - `nuvio.elf`: `d45f98308eeb39e584b910b207535d65ef700d9e29ba0cc02a048d5c123f4c4a`.
+- Console update, hash verification, and observed results (`192.168.0.202`):
+  - Closed running `PPSA99996` (`pid: 1174`, `app_id: 24600`), backed up prior `eboot.bin` (`8c0a44010ff37071dc494529710576df81835cb9e459e223bf069537aa7424ec`) via `control-5.elf`, and preserved `/data/nuvio/`.
+  - Uploaded the `2` changed files (`eboot.bin` and `webui/css/bundle.css`) over PS5Upload HTTP API (`port 9180`). Readback SHA-256 and `control-5.elf` hashes matched the built files.
+  - Launched via `control-3.elf` (`NUVIO launch_result=0x8018`, `pid: 1186`, `app_id: 32792`). `control-2.elf` reported `"installed":true`, `"mounted":true`, and `"size_bytes":117160882`.
+  - `/data/nuvio/evo.log` recorded `EVO boot: BUILD f6e43e65-nuvio_1112-1513`, `web: bootstrap: promotion verified errno=0`, `web: server: listen ok port=8686`, and `web: title-ui: response status=200`.
+  - `[PROVEN]` Owner confirmed on TV that the updated Detail `Resume` button renders cleanly (`looks good.`).
+- Pending console verification (`[UNKNOWN]`):
+  - `[UNKNOWN]` Visual spot-checks on Home, Cast Detail, Folder rows, and Poster List Picker dialogs remain unverified on TV.
+

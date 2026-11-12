@@ -233,3 +233,363 @@ window.visualViewport=undefined;context.openDisplayDiagnostics();
 assert(shown.content.textContent.includes('Visual viewport: unavailable'));
 '''
         subprocess.run(['node', '-e', script, str(ROOT/'scripts/ps5-navigation.js')], check=True, timeout=10)
+
+    def test_pin_overlay_square_backspace_controls_and_layout(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        from scripts import polish
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        shared_keys = strip(polish.patch_pin_shared_keys(frontend_file('js/platform/sharedKeys.js')))
+        pin_render = strip(polish.patch_pin_render_overlay(frontend_file('js/core/profile/profileSelectionScreenMethods-03-render-pin-overlay.js')))
+        pin_input = strip(polish.patch_pin_submit_keydown(frontend_file('js/core/profile/profileSelectionScreenMethods-06-submit-completed-pin.js')))
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const LayoutPreferences = {{}};
+class NuvioDialog {{ constructor(options) {{ this.options = options; }} mount() {{ return this; }} destroy() {{}} }}
+const internals = {{
+  PROFILE_PIN_TEXT: {{ headingSet: n => n, headingUnlock: n => 'Enter your PIN to access ' + n + '.', headingConfirm: 'Confirm',
+    headingVerifyChange: n => n, headingVerifyRemove: n => n, supportSet: '', supportUnlock: 'Use your remote or keyboard to enter 4 digits.',
+    supportConfirm: '', supportVerifyChange: '', supportVerifyRemove: '', forgot: 'Forgot PIN?', back: 'Press back to cancel',
+    verifying: '...', saving: '...' }},
+  getDefaultProfileColor: () => '#fff',
+  escapeHtml: value => String(value ?? ''),
+  centerAvatarRowInScrollContainer: () => {{}},
+  findNearestByHorizontalCenter: () => null
+}};
+const ScreenUtils = {{ handleDpadNavigation: () => false }};
+const ProfileManager = {{}}, ProfilePinService = {{}};
+{shared_keys}
+{text_input}
+{pin_render}
+{pin_input}
+const methods03 = createProfileSelectionScreenMethods03();
+const methods06 = createProfileSelectionScreenMethods06();
+const host = document.getElementById('profileSelection');
+const screen = {{
+  ...methods03, ...methods06,
+  container: host,
+  pinOverlayState: {{ type: 'unlock', profileId: '1' }},
+  pinOverlayPhase: 'open',
+  pinOverlayError: '',
+  pinValue: '12',
+  isPinOperationInProgress: false,
+  focusKey: 'pin:5',
+  pendingFocusKey: '',
+  getRenderedPinOverlayState() {{ return this.pinOverlayState; }},
+  getPinOverlayProfile() {{ return {{ id: '1', name: 'Shashank' }}; }},
+  renderPinBoxes() {{ return '<span class="profile-pin-box is-filled"><span class="profile-pin-dot"></span></span>'.repeat(4); }},
+  renderPinKeypad() {{ return '<button class="profile-pin-key focusable focused" data-focus-key="pin:5">5</button>'; }},
+  restoreFocus() {{
+    const key = this.pendingFocusKey || this.getDefaultFocusKey();
+    this.pendingFocusKey = '';
+    this.lastRestoredFocus = key;
+  }},
+  render() {{
+    this.container.innerHTML = this.renderPinOverlay();
+    this.restoreFocus();
+  }}
+}};
+let optionsOpened = 0;
+screen.openControllerMenu = () => {{ optionsOpened++; }};
+const Router = {{ getCurrent: () => 'profileSelection', getCurrentScreen: () => screen }};
+{navigation}
+screen.render();
+initPs5Navigation();
+window.addEventListener('keydown', e => {{
+  if (isBackEvent(e, [27, 461, 10009])) return;
+  void screen.handlePinOverlayKeyDown(e);
+}});
+const key = (k, keyCode, target = document.querySelector('.profile-pin-key.focused')) =>
+  target.dispatchEvent(new KeyboardEvent('keydown', {{ key: k, keyCode, which: keyCode, bubbles: true, cancelable: true }}));
+(async () => {{
+  assert(document.querySelectorAll('.ps5-pin-controls .ps5-control-hint').length === 4, 'Missing 4 bottom PIN control hints');
+  assert(document.querySelectorAll('.ps5-pin-controls svg').length === 4, 'Missing controller SVGs in PIN hints');
+  assert(document.querySelector('.profile-pin-back-hint').textContent.includes('Backspace'), 'Missing Square Backspace label');
+  assert(!isBackEvent({{ key: 'Backspace', keyCode: 8, target: document.querySelector('.profile-pin-key') }}), 'Backspace inside PIN must not be Back');
+  assert(isBackEvent({{ key: 'Escape', keyCode: 27, target: document.querySelector('.profile-pin-key') }}), 'Escape inside PIN must stay Back');
+  key('F2', 113);
+  await new Promise(r => setTimeout(r, 10));
+  assert(screen.pinValue === '1', 'Square did not delete one PIN digit');
+  assert(screen.lastRestoredFocus === 'pin:5', 'Square Backspace lost keypad focus');
+  assert(optionsOpened === 0, 'Square opened Options instead of Backspace on PIN');
+  const contentRect = document.querySelector('.profile-pin-content').getBoundingClientRect();
+  const centerDelta = Math.abs((contentRect.left + contentRect.right) / 2 - window.innerWidth / 2);
+  assert(centerDelta <= 2, 'PIN content not horizontally centered: delta=' + centerDelta);
+  assert(contentRect.height < window.innerHeight - 160, 'PIN content too tall: ' + contentRect.height);
+  const heroBodyEl = document.querySelector('.detail-hero-body');
+  const heroBody = heroBodyEl.getBoundingClientRect();
+  const primaryEl = document.querySelector('.series-primary-btn.focused');
+  const secondaryEl = document.querySelector('.series-secondary-btn');
+  const primaryRect = primaryEl.getBoundingClientRect();
+  const secondaryRect = secondaryEl.getBoundingClientRect();
+  const heroCs = getComputedStyle(heroBodyEl);
+  const primaryCs = getComputedStyle(primaryEl);
+  assert(heroCs.overflowX === 'visible' && heroCs.overflowY === 'visible', 'Detail hero body must not clip focus ring: ' + heroCs.overflow);
+  assert(primaryCs.transform === 'none', 'Primary button must not asymmetrically scale under performance-constrained: ' + primaryCs.transform);
+  assert(primaryCs.boxShadow.includes('inset'), 'Primary button focus ring must be inset: ' + primaryCs.boxShadow);
+  assert(Math.abs(primaryRect.height - secondaryRect.height) <= 1, 'Resume button height mismatches Play options: ' + primaryRect.height + ' vs ' + secondaryRect.height);
+  const circleBtn = document.querySelector('.series-circle-btn').getBoundingClientRect();
+  assert(circleBtn.top - 2 >= heroBody.top, 'Detail circle button focus ring clipped at top');
+  assert(primaryRect.left - 2 >= document.querySelector('.series-detail-actions').getBoundingClientRect().left, 'Detail button clipped on left');
+  for (const sel of ['.home-track', '.cast-credit-track', '.folder-row-track', '.detail-company-track', '.poster-list-picker-actions']) {{
+    const padTop = parseFloat(getComputedStyle(document.querySelector(sel)).paddingTop);
+    assert(padTop >= 6, sel + ' needs >= 6px top padding for focus rings, got ' + padTop);
+  }}
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'pin_detail.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="profileSelection" class="screen profile-selection-shell" style="display:block;position:relative;width:100vw;height:100vh;"></div>'
+                '<div class="series-detail-shell"><div class="detail-hero-body"><div class="series-detail-actions">'
+                '<button class="series-primary-btn focusable focused">Resume S2E6</button>'
+                '<button class="series-secondary-btn focusable">Play options</button>'
+                '<button class="series-circle-btn focusable">+</button>'
+                '</div></div></div>'
+                '<div class="home-screen-shell"><div class="home-track"></div></div>'
+                '<div class="cast-credit-track"></div>'
+                '<div class="folder-row-track"></div>'
+                '<div class="detail-company-track"></div>'
+                '<div class="poster-list-picker-actions"></div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+
+    def test_universal_hint_bar_and_browse_shortcuts(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+class NuvioDialog {{ mount() {{ return this; }} destroy() {{}} }}
+let currentRoute = 'detail';
+const screens = {{
+  detail: document.getElementById('detailScreen'),
+  stream: document.getElementById('streamScreen'),
+  player: document.getElementById('playerScreen')
+}};
+const Router = {{
+  getCurrent: () => currentRoute,
+  getCurrentScreen: () => ({{
+    container: screens[currentRoute],
+    isHomeHoldTarget: () => false,
+    isEpisodeHoldTarget: () => false,
+    isSeasonHoldTarget: () => false,
+    isPosterHoldTarget: () => false,
+    canHoldManageProfile: () => false
+  }})
+}};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const startPs5TvRemoteDiagnostics = () => {{}};
+const requestPs5SearchKeyboardStub = null;
+let clicks = [];
+document.querySelector('[data-action="playDefault"]').addEventListener('click', () => clicks.push('playDefault'));
+document.querySelector('[data-action="refreshStreams"]').addEventListener('click', () => clicks.push('refreshStreams'));
+for (const btn of document.querySelectorAll('.series-season-btn')) {{
+  btn.addEventListener('click', () => {{
+    document.querySelectorAll('.series-season-btn').forEach(x => x.classList.remove('focused'));
+    btn.classList.add('focused');
+    clicks.push(btn.dataset.season);
+  }});
+}}
+{text_input}
+{navigation}
+Object.defineProperty(document, 'hidden', {{ configurable: true, get: () => false }});
+window.requestAnimationFrame = fn => setTimeout(fn, 0);
+initPs5Navigation();
+const pause = () => new Promise(r => setTimeout(r, 80));
+(async () => {{
+  await pause();
+  const bar = document.getElementById('ps5-control-bar');
+  assert(bar && !bar.hidden, 'Bottom hint bar must be visible on detail route');
+  const txt = bar.textContent;
+  assert(txt.includes('Season') && txt.includes('Play') && txt.includes('Menu'), 'Missing contextual detail hints: ' + txt);
+  assert(bar.querySelectorAll('svg').length >= 6, 'Missing SVG controller glyphs on bottom hint bar');
+  const barRect = bar.getBoundingClientRect();
+  assert(barRect.bottom <= window.innerHeight && barRect.height < 80, 'Hint bar geometry invalid: ' + JSON.stringify(barRect));
+  assert(parseFloat(getComputedStyle(bar).fontSize) >= 15, 'Hint bar text too small for TV viewing');
+  window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'F6', keyCode: 117, bubbles: true, cancelable: true }}));
+  assert(clicks.includes('2'), 'F6/R1 did not switch season');
+  window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'F8', keyCode: 119, bubbles: true, cancelable: true }}));
+  assert(clicks.includes('playDefault'), 'F8/R2 did not trigger Play Default on detail');
+  currentRoute = 'stream';
+  screens.detail.style.display = 'none';
+  screens.stream.style.display = 'block';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.textContent.includes('Addon') && bar.textContent.split('Refresh').length === 2, 'Stream must show single Refresh hint: ' + bar.textContent);
+  screens.detail.innerHTML = '<div data-overlay-root="pin"></div>';
+  currentRoute = 'profileSelection';
+  screens.detail.style.display = 'block';
+  screens.stream.style.display = 'none';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.hidden, 'Hint bar must hide on PIN overlay');
+  screens.detail.innerHTML = '';
+  currentRoute = 'player';
+  refreshPs5HintBar();
+  await pause();
+  assert(bar.hidden, 'Hint bar must hide during playback');
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'hint_bar.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="detailScreen" class="screen" style="display:block;">'
+                '  <button class="series-season-btn focusable focused" data-season="1">S1</button>'
+                '  <button class="series-season-btn focusable" data-season="2">S2</button>'
+                '  <button class="focusable focused" data-action="playDefault">Play</button>'
+                '  <button class="focusable" data-action="toggleLibrary">Watchlist</button>'
+                '</div>'
+                '<div id="streamScreen" class="screen" style="display:none;">'
+                '  <button class="stream-route-chip focusable selected" data-addon="a1">Addon 1</button>'
+                '  <button class="stream-route-chip focusable" data-addon="a2">Addon 2</button>'
+                '  <button class="focusable" data-action="refreshStreams">Refresh</button>'
+                '</div>'
+                '<div id="playerScreen" class="screen" style="display:none;"></div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+
+    def test_detail_watchlist_top_and_play_use_detail_activation_and_scroller(self):
+        chrome = next((shutil.which(name) for name in ('google-chrome', 'chromium', 'chromium-browser')
+                       if shutil.which(name)), None)
+        if not chrome:
+            chrome = next(iter(sorted((Path.home()/'.agent-browser/browsers').glob('chrome-*/chrome'))), None)
+        if not chrome:
+            self.skipTest('Chromium unavailable')
+        css_file = ROOT/'build/ui/css/bundle.css'
+        if not css_file.exists():
+            self.skipTest('Built CSS bundle unavailable')
+        strip = lambda text: re.sub(r'^import .*?;\s*$', '', text, flags=re.M).replace('export ', '')
+        text_input = strip((ROOT/'scripts/ps5-text-input.js').read_text())
+        navigation = strip((ROOT/'scripts/ps5-navigation.js').read_text())
+        harness = f'''
+globalThis.__NUVIO_PS5__ = true;
+const assert = (value, message) => {{ if (!value) throw new Error(message); }};
+class NuvioDialog {{ mount() {{ return this; }} destroy() {{}} }}
+const state = {{ pointerActions: [], clicks: [] }};
+const detailScreen = document.getElementById('detailScreen');
+const scroller = document.getElementById('detailContent');
+const playBtn = detailScreen.querySelector('[data-action="playDefault"]');
+const libBtn = detailScreen.querySelector('[data-action="toggleLibrary"]');
+const castCard = detailScreen.querySelector('[data-action="openCastDetail"]');
+playBtn.addEventListener('click', () => state.clicks.push('play-click'));
+libBtn.addEventListener('click', () => state.clicks.push('lib-click'));
+const Router = {{
+  getCurrent: () => 'detail',
+  getCurrentScreen: () => ({{
+    container: detailScreen,
+    isHomeHoldTarget: () => false,
+    isEpisodeHoldTarget: () => false,
+    isSeasonHoldTarget: () => false,
+    isPosterHoldTarget: () => false,
+    canHoldManageProfile: () => false,
+    openHeroPlayMenu() {{ state.pointerActions.push('heroPlayMenu'); }},
+    onPointerActivate(target) {{
+      const action = target?.closest?.('[data-action]')?.dataset?.action || '';
+      if (!action) return false;
+      state.pointerActions.push(action);
+      return true;
+    }}
+  }})
+}};
+const addonRepository = {{}}, catalogRepository = {{}}, buildSearchTargets = x => x, filterReleasedItems = x => x;
+const startPs5TvRemoteDiagnostics = () => {{}};
+{text_input}
+{navigation}
+Object.defineProperty(document, 'hidden', {{ configurable: true, get: () => false }});
+window.requestAnimationFrame = fn => setTimeout(fn, 0);
+initPs5Navigation();
+scroller.scrollTop = 900;
+const pause = () => new Promise(r => setTimeout(r, 80));
+const tap = (key, keyCode) => window.dispatchEvent(new KeyboardEvent('keydown', {{ key, keyCode, bubbles: true, cancelable: true }}));
+(async () => {{
+  await pause();
+  const bar = document.getElementById('ps5-control-bar');
+  assert(bar && bar.textContent.includes('Watchlist'), 'Expected Watchlist hint when focused on Cast: ' + bar?.textContent);
+  tap('F2', 113);
+  await pause();
+  assert(castCard.classList.contains('focused'), 'Watchlist toggle must not steal cast focus');
+  tap('F7', 118);
+  await pause();
+  assert(scroller.scrollTop === 0, 'L2/Top did not scroll .series-detail-content to top: ' + scroller.scrollTop);
+  assert(playBtn.classList.contains('focused'), 'L2/Top did not restore hero focus');
+  playBtn.classList.remove('focused');
+  tap('F2', 113);
+  await pause();
+  tap('F8', 119);
+  await pause();
+  assert(state.pointerActions.join(',') === 'toggleLibrary,toggleLibrary,playDefault',
+    'Unexpected pointer activations: ' + state.pointerActions.join(','));
+  assert(state.clicks.length === 0, 'Must use onPointerActivate rather than raw click: ' + state.clicks.join(','));
+  document.getElementById('result').textContent = JSON.stringify({{ passed: true }});
+}})().catch(error => {{ document.getElementById('result').textContent = JSON.stringify({{ passed: false, error: error.message }}); }});
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp)/'detail_actions.html'
+            page.write_text(
+                f'<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="{css_file.resolve().as_uri()}">'
+                '<body class="performance-constrained" style="margin:0;width:1920px;height:1080px;">'
+                '<div id="detailScreen" class="screen" style="display:block;">'
+                '  <div id="detailContent" class="series-detail-content" style="height:200px;overflow:auto;">'
+                '    <div class="series-detail-actions">'
+                '      <button class="focusable" data-action="playDefault">Play</button>'
+                '      <button class="focusable" data-action="toggleLibrary">Watchlist</button>'
+                '    </div>'
+                '    <div style="height:1200px;"></div>'
+                '    <button class="focusable focused" data-action="openCastDetail">Cast</button>'
+                '  </div>'
+                '</div>'
+                f'<pre id="result">pending</pre><script>{harness}</script></body>'
+            )
+            result = subprocess.run([str(chrome), '--headless=new', '--no-sandbox', '--disable-gpu',
+                '--window-size=1920,1080', '--virtual-time-budget=8000', '--dump-dom',
+                '--user-data-dir='+str(Path(tmp)/'profile'), page.as_uri()],
+                capture_output=True, text=True, check=True, timeout=30)
+            match = re.search(r'<pre id="result">(.*?)</pre>', result.stdout, re.S)
+            self.assertIsNotNone(match, result.stdout[-1000:])
+            report = json.loads(html.unescape(match[1]))
+            self.assertTrue(report['passed'], report)
+

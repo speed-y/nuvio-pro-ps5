@@ -580,7 +580,52 @@
              /*
               * Synthetic presses from the dev remote (`key <button>`), OR'd in
               * before anything reads the mask so they are indistinguishable
-@@ -1532,7 +1704,7 @@
+@@ -1419,29 +1591,21 @@
+             m_rightStickX = (std::abs(rawRx) > kStickDeadzone) ? rawRx : 0.0f;
+             m_rightStickY = (std::abs(rawRy) > kStickDeadzone) ? rawRy : 0.0f;
+ 
+-            // Synthesize stick tilt events into directional pad masks
+-            static bool s_stickLeft = false, s_stickRight = false, s_stickUp = false, s_stickDown = false;
+-            bool curStickLeft  = (rawLx < -0.55f);
+-            bool curStickRight = (rawLx >  0.55f);
+-            bool curStickUp    = (rawLy < -0.55f);
+-            bool curStickDown  = (rawLy >  0.55f);
+-
+-            if (curStickLeft && !s_stickLeft)   pressed |= PadButtons::Left;
+-            if (curStickRight && !s_stickRight) pressed |= PadButtons::Right;
+-            if (curStickUp && !s_stickUp)       pressed |= PadButtons::Up;
+-            if (curStickDown && !s_stickDown)   pressed |= PadButtons::Down;
+-
+-            if (curStickLeft)  held |= PadButtons::Left;
+-            if (curStickRight) held |= PadButtons::Right;
+-            if (curStickUp)    held |= PadButtons::Up;
+-            if (curStickDown)  held |= PadButtons::Down;
+-
+-            s_stickLeft = curStickLeft;
+-            s_stickRight = curStickRight;
+-            s_stickUp = curStickUp;
+-            s_stickDown = curStickDown;
+-
+-            evo_input_update(&evo_pad_state, padData.buttons, static_cast<uint64_t>(now_ms()));
++            // Synthesize Left OR Right Stick tilts into D-pad masks + auto-repeat
++            const float kNativeStickThreshold = 0.48f;
++            const float magL = std::max(std::abs(rawLx), std::abs(rawLy));
++            const float magR = std::max(std::abs(rawRx), std::abs(rawRy));
++            const float useX = (magR > magL && magR > kNativeStickThreshold) ? rawRx : rawLx;
++            const float useY = (magR > magL && magR > kNativeStickThreshold) ? rawRy : rawLy;
++            uint32_t stickPadMask = 0;
++            if (std::abs(useX) > kNativeStickThreshold || std::abs(useY) > kNativeStickThreshold) {
++                if (std::abs(useX) >= std::abs(useY))
++                    stickPadMask = (useX < 0.0f) ? PadButtons::Left : PadButtons::Right;
++                else
++                    stickPadMask = (useY < 0.0f) ? PadButtons::Up : PadButtons::Down;
++            }
++            held |= stickPadMask;
++            evo_input_update(&evo_pad_state, padData.buttons | stickPadMask, static_cast<uint64_t>(now_ms()));
+ 
+             // Synthesize directional repeat events into pressed mask
+             if (evo_input_fired(&evo_pad_state, EVO_ACT_UP))    pressed |= PadButtons::Up;
+@@ -1532,7 +1696,7 @@
                  r3IsChapters = true;
              /* #227: on the keyboard's PHONE LINK OFF card, R3 is Set port. */
              const bool r3ToKeyboard = (pressed & PadButtons::R3) && evo_keyboard_wants_r3();
@@ -589,21 +634,23 @@
                  EVO_LOGI("screenshot", "stick click pressed=%#010x", pressed);
                  evo_boot_log_flush();
                  std::string shotPath;
-@@ -1576,7 +1748,31 @@
+@@ -1576,7 +1740,34 @@
              }
  
              if (evo_webui_active()) {
 -                /* #101: the system browser is up and owns the controller. */
-+                /* Keep physical D-pad/X/Circle with the browser. Either stick
-+                 * supplies one dominant direction through the native bridge. */
-+                int x = static_cast<int>(padData.leftStick.x) - 128;
-+                int y = static_cast<int>(padData.leftStick.y) - 128;
-+                if (std::abs(x) <= 70 && std::abs(y) <= 70) {
-+                    x = static_cast<int>(padData.rightStick.x) - 128;
-+                    y = static_cast<int>(padData.rightStick.y) - 128;
-+                }
++                /* Keep physical D-pad/X/Circle with the browser. Stronger of Left or
++                 * Right stick supplies one dominant direction through the native bridge. */
++                int lx = static_cast<int>(padData.leftStick.x) - 128;
++                int ly = static_cast<int>(padData.leftStick.y) - 128;
++                int rx = static_cast<int>(padData.rightStick.x) - 128;
++                int ry = static_cast<int>(padData.rightStick.y) - 128;
++                int magL = std::max(std::abs(lx), std::abs(ly));
++                int magR = std::max(std::abs(rx), std::abs(ry));
++                int x = (magR > magL && magR > 56) ? rx : lx;
++                int y = (magR > magL && magR > 56) ? ry : ly;
 +                uint32_t stick = 0;
-+                if (std::abs(x) > 70 || std::abs(y) > 70) {
++                if (std::abs(x) > 56 || std::abs(y) > 56) {
 +                    if (std::abs(x) >= std::abs(y))
 +                        stick = x < 0 ? PadButtons::Left : PadButtons::Right;
 +                    else
@@ -618,11 +665,12 @@
 +                evo_webui_controller(pressed & PadButtons::Options,
 +                                     pressed & PadButtons::Triangle, direction,
 +                                     pressed & PadButtons::R2 ? 2 : (pressed & PadButtons::L3 ? 1 :
-+                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 : 0))));
++                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 :
++                                     (pressed & PadButtons::L2 ? 5 : (pressed & PadButtons::TouchPad ? 6 : 0))))));
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1622,6 +1818,9 @@
+@@ -1622,6 +1813,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -632,7 +680,7 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1734,7 +1933,7 @@
+@@ -1734,7 +1928,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -641,7 +689,7 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1961,7 +2160,14 @@
+@@ -1961,7 +2155,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -2408,7 +2456,7 @@
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
-+  "contentVersion": "01.000.009",
++  "contentVersion": "01.000.010",
    "downloadDataSize": 256,
    "gameIntent": {
      "permittedIntents": [
@@ -2811,7 +2859,7 @@
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
-@@ -444,11 +470,8 @@
+@@ -444,27 +470,22 @@
  "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
  "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
  "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
@@ -2820,12 +2868,21 @@
 - * key-up. A click - which is what the PS5 browser's X is - never sends one,
 - * so Play did nothing (reproduced in desktop Chromium too; Enter works). On
 - * those, turn the click into Enter down + up on the focused element. */
+-"var nvTitle='';function nvNoteTitle(){var tt=document.querySelector('#stream .stream-route-title'),"
+-" lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code');"
+-" var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').trim();"
+-" if(t){if(ep&&ep.textContent)t=t+' - '+String(ep.textContent).trim();nvTitle=t;}}"
 +/* The PS5 frontend adapter owns focused activation and item menus.
 + * Preserve title capture for the native stream handoff. */
- "var nvTitle='';function nvNoteTitle(){var tt=document.querySelector('#stream .stream-route-title'),"
- " lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code');"
- " var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').trim();"
-@@ -456,15 +479,8 @@
++"var nvTitle='';function nvNoteTitle(){var wt=window.__nuvioPlaybackTitle?window.__nuvioPlaybackTitle():'';"
++" if(wt){nvTitle=wt;return;}"
++" var tt=document.querySelector('#stream .stream-route-title'),"
++"  lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code'),"
++"  sb=document.querySelector('#stream .stream-route-subtitle');"
++" var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').replace(/\\s+/g,' ').trim();"
++" var e=ep&&ep.textContent?String(ep.textContent).replace(/\\s+/g,' ').trim():'';"
++" var s=sb&&sb.textContent?String(sb.textContent).replace(/\\s+/g,' ').trim():'';"
++" if(t){if(e)t=t+String.fromCharCode(10)+e+(s&&s!==t&&s!==e?' '+s:'');nvTitle=t;}}"
  /* Picking a stream (click or Enter) is the last moment the stream screen,
   * and so the title, is on the page: Nuvio clears it while the player mounts. */
  "if(NUVIO){document.addEventListener('keydown',function(e){if(e.keyCode===13)nvNoteTitle();},true);}"
@@ -2843,7 +2900,16 @@
  /* Where to come back to: the last page that is not the site's own player.
   * By the time the hook fires, the site has already routed to its player
   * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
-@@ -493,9 +509,13 @@
+@@ -481,7 +502,7 @@
+ "function note(){if(!isPlayerUrl(location.href))good=location.href;}"
+ "window.addEventListener('hashchange',note);window.addEventListener('popstate',note);"
+ "['pushState','replaceState'].forEach(function(k){var o=history[k];"
+-" history[k]=function(s){if(s&&typeof s==='object'){lastState=s;if(s.route)evoLog('route '+s.route);}var r=o.apply(this,arguments);note();return r;};});"
++" history[k]=function(s){if(s&&typeof s==='object'){lastState=s;if(s.route&&s.route!=='stream'&&s.route!=='player')nvTitle='';if(s.route)evoLog('route '+s.route);}var r=o.apply(this,arguments);note();return r;};});"
+ "function isStream(u){var l=String(u||'').toLowerCase();"
+ " if(l.indexOf('blob:')==0||l.indexOf('data:')==0)return 0;"
+ " if(NUVIO)return l.indexOf('http')==0||l.indexOf('/')==0;"
+@@ -493,14 +514,23 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
@@ -2855,11 +2921,26 @@
 +" var ret=new URL(good,location.href);ret.searchParams.set(\"nuvioPlaybackReturn\",\"1\");back=ret.href;}saveNow(1);function launch(){"
  "  fetch('/evo/play?url='+encodeURIComponent(abs)+'&title='+encodeURIComponent(t||'')+"
 -"   '&return='+encodeURIComponent(good));}"
+-" if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=['title','name','metaTitle','itemTitle','showTitle'],t='';"
+-"  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]==='string')t=pr[ks[q]];}"
+-/* The stream screen, still in the DOM under the player, has it in text. */
+-"  nvNoteTitle();if(nvTitle)t=nvTitle;"
+-"  go(t||document.title);return 1;}"
 +"   '&return='+encodeURIComponent(back)+'&start='+encodeURIComponent(start)+'&session='+encodeURIComponent(session)+'&skip='+encodeURIComponent(skip||'')+'&next='+encodeURIComponent(next));}if(NUVIO&&window.__nuvioSendPresentation){window.__nuvioSendPresentation(session).then(function(ok){if(ok&&window.__nuvioSendSubtitles){window.__nuvioSendSubtitles(session).then(function(sent){if(sent)launch();else done=0;});}else if(ok)launch();else done=0;},function(){done=0;});}else launch();}if(NUVIO){Promise.all([window.__nuvioPlaybackSkipSegments?window.__nuvioPlaybackSkipSegments():Promise.resolve(''),window.__nuvioPreparePresentation?window.__nuvioPreparePresentation():Promise.resolve(true),window.__nuvioPrepareSubtitles?window.__nuvioPrepareSubtitles():Promise.resolve(true)]).then(function(v){if(v[1]!==null&&v[2]!==null)play(v[0]);},function(){done=0;});}else play('');}"
- " if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=['title','name','metaTitle','itemTitle','showTitle'],t='';"
- "  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]==='string')t=pr[ks[q]];}"
- /* The stream screen, still in the DOM under the player, has it in text. */
-@@ -537,9 +557,9 @@
++" if(NUVIO){var wt=window.__nuvioPlaybackTitle?window.__nuvioPlaybackTitle():'';"
++"  if(!wt){var pr=(lastState&&lastState.params)||{},ks=['playerTitle','title','name','metaTitle','itemTitle','showTitle','fallbackTitle'],t='';"
++"   for(var q=0;q<ks.length&&!t;q++){var v=typeof pr[ks[q]]==='string'?pr[ks[q]].trim():'';if(v&&v!=='Untitled'&&v!=='Nuvio'&&v!=='Nuvio Pro')t=v;}"
++"   var ek=['playerEpisodeTitle','episodeTitle','playerSubtitle'],et='';"
++"   for(var q=0;q<ek.length&&!et;q++){var ev=typeof pr[ek[q]]==='string'?pr[ek[q]].trim():'';if(ev&&ev!==t&&ev!=='Untitled'&&ev!=='Nuvio'&&ev!=='Nuvio Pro')et=ev;}"
++"   var sn=pr.season==null?NaN:Number(pr.season),en=Number(pr.episode);"
++"   if(t&&Number.isInteger(sn)&&sn>=0&&Number.isInteger(en)&&en>0){var p2=function(n){return n<10?'0'+n:''+n;};"
++"    var sc='S'+p2(sn)+'E'+p2(en);t=t+String.fromCharCode(10)+sc+(et?' '+et:'');}"
++"   nvNoteTitle();wt=t||nvTitle;}"
++"  go(wt||document.title);return 1;}"
+ " setTimeout(function(){go(document.title);},1500);"
+ " try{var ac=window.ApiClient;if(ac&&id){ac.getItem(ac.getCurrentUserId(),id).then(function(it){"
+ "  var n=(it&&it.Name)||'';if(it&&it.SeriesName)n=it.SeriesName+' - '+n;go(n);},"
+@@ -537,9 +567,9 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -2871,7 +2952,7 @@
  "border:2px solid rgba(255,255,255,.55)');"
  " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +805,969 @@
+@@ -785,17 +815,969 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3841,7 +3922,7 @@
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1782,12 @@
+@@ -810,6 +1792,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3854,7 +3935,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1796,14 @@
+@@ -818,6 +1806,14 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3869,7 +3950,7 @@
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2195,29 @@
+@@ -1209,13 +2205,29 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -3901,7 +3982,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2229,14 @@
+@@ -1227,8 +2239,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -3916,7 +3997,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2258,16 @@
+@@ -1250,8 +2268,16 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -3934,7 +4015,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2275,20 @@
+@@ -1259,11 +2285,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -3957,7 +4038,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2304,7 @@
+@@ -1279,6 +2314,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -3965,7 +4046,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1318,6 +2344,7 @@
+@@ -1318,6 +2354,7 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
@@ -3973,7 +4054,7 @@
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,6 +2369,7 @@
+@@ -1342,6 +2379,7 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -3981,7 +4062,7 @@
      LOG("Open url=%s ...", url);
      int rc = sceWebBrowserDialogOpen(&s_param);
      LOG("sceWebBrowserDialogOpen -> 0x%08x", (unsigned)rc);
-@@ -1356,6 +2384,7 @@
+@@ -1356,6 +2394,7 @@
          s_state = P_OFF;
          return;
      }
@@ -3989,7 +4070,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1505,7 +2534,9 @@
+@@ -1505,7 +2544,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4000,7 +4081,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,17 +2552,50 @@
+@@ -1521,17 +2562,50 @@
      return 0;
  }
  
@@ -4054,7 +4135,7 @@
      if (s_state != P_PLAYING) return;
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-@@ -1601,6 +2665,12 @@
+@@ -1601,6 +2675,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4067,7 +4148,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2724,27 @@
+@@ -1654,3 +2734,27 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -4087,7 +4168,7 @@
 +        ++s_controller_navigation;
 +        s_controller_direction = direction;
 +    }
-+    if (shortcut >= 1 && shortcut <= 4) {
++    if (shortcut >= 1 && shortcut <= 6) {
 +        ++s_controller_keyboard;
 +        s_controller_shortcut = shortcut;
 +    }
@@ -4355,7 +4436,7 @@
      sub_lines_ = split_lines(p.subtitle_text);
      sub2_lines_ = split_lines(p.subtitle_text2);
      raw_.title = raw_.metadata = nullptr; /* never read the copied pointers */
-@@ -264,158 +289,192 @@
+@@ -264,158 +289,212 @@
      for (const std::string &l : sub2_lines_)
          if (!font_covers(*font.font, l))
              return false;
@@ -4434,7 +4515,20 @@
 +    const ui::Fonts &fonts = ctx.fonts;
 +    const Palette p = nuvio_player_palette(ctx.palette);
 +    list.gradient_rect({0, 680, 1920, 400}, 0, kClear, kBlack.with_alpha(0.8f));
-+    ui::text(list, fonts.semibold, fit(fonts.semibold, title_, 48, 1160), kMargin, 784, 48, kWhite);
++    const std::vector<std::string> title_lines = split_lines(title_.c_str());
++    if (title_lines.size() >= 2)
++    {
++        const float y1 = meta_.empty() ? 778.0f : 744.0f;
++        const float y2 = meta_.empty() ? 826.0f : 788.0f;
++        ui::text(list, fonts.semibold, fit(fonts.semibold, title_lines[0], 46, 1160), kMargin, y1, 46, kWhite);
++        ui::text(list, fonts.regular, fit(fonts.regular, title_lines[1], 28, 1160),
++                 kMargin, y2, 28, kWhite.with_alpha(0.9f));
++    }
++    else
++    {
++        const std::string &primary = title_lines.empty() ? title_ : title_lines[0];
++        ui::text(list, fonts.semibold, fit(fonts.semibold, primary, 48, 1160), kMargin, 784, 48, kWhite);
++    }
      if (!meta_.empty())
 -        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 22, 1300), kMargin, 148, 22,
 -                 kWhite.with_alpha(0.7f));
@@ -4468,8 +4562,8 @@
 -    list.gradient_rect({0, 760, 1920, 320}, 0, kBlack.with_alpha(0.0f), kBlack.with_alpha(0.82f));
 -
 -    const Rect track{kMargin, 920, 1920 - 2 * kMargin, 8};
-+        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 28, 1160),
-+                 kMargin, 830, 28, kWhite.with_alpha(0.68f));
++        ui::text(list, fonts.regular, fit(fonts.regular, meta_, 26, 1160),
++                 kMargin, 830, 26, kWhite.with_alpha(0.68f));
 +
 +    float bx = kMargin;
 +    for (const auto &badge : badges_)
@@ -4601,6 +4695,13 @@
 +        layout.size = 26; layout.text_size = 18;
 +        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), chapters, 3, 1920 - kMargin, true, layout);
 +    }
++    else if (!raw_.is_live)
++    {
++        ui::Hint extras[] = {{ui::Button::l1, "-30s"}, {ui::Button::r1, "+30s"},
++                             {ui::Button::touchpad, "Sub delay"}};
++        layout.size = 26; layout.text_size = 18;
++        ui::draw_hints(list, fonts, ui::GlyphStyle::dark(), extras, 3, 1920 - kMargin, true, layout);
++    }
 +    std::string tracks = "Audio: " + (audio_track_.empty() ? std::string("Default") : audio_track_) +
 +        "   /   Subs: " + (sub_track_.empty() ? std::string("Off") : sub_track_) + "   (Up toggle / Down select)";
      if (raw_.sub_delay_ms != 0)
@@ -4638,7 +4739,7 @@
      {
          const float s = 0.85f + 0.15f * paused_.value;
          list.push_transform(s, 960, 520, 0, 0);
-@@ -460,7 +519,7 @@
+@@ -460,7 +539,7 @@
      const float size = caption_size(raw_.subtitle_face);
      const float line_h = size * 1.25f;
      /* Lifted above the timeline while the chrome is up. */
@@ -4647,7 +4748,7 @@
  
      const ui::FontRef &font = caption_font(fonts, raw_.subtitle_style);
      const bool heavy = raw_.subtitle_style == 3;
-@@ -494,8 +553,8 @@
+@@ -494,8 +573,8 @@
              Rect r{static_cast<float>(raw_.subtitle_image_x) * sx, static_cast<float>(raw_.subtitle_image_y) * sy,
                     static_cast<float>(raw_.subtitle_image_w) * sx, static_cast<float>(raw_.subtitle_image_h) * sy};
              /* Lifted clear of the timeline while the chrome is up. */
@@ -4658,7 +4759,7 @@
              list.image(tex, r, ::hui::gfx::kFullUv, kWhite);
              top = r.y;
          }
-@@ -518,7 +577,7 @@
+@@ -518,7 +597,7 @@
   * own opacity so it shows with the controls hidden too. */
  void OsdScreen::draw_skip(DrawList &list, const Context &ctx) const
  {
@@ -4667,7 +4768,7 @@
          return;
      const ui::Fonts &fonts = ctx.fonts;
      ui::Hint hint{ui::Button::triangle, skip_label_.c_str()};
-@@ -544,7 +603,7 @@
+@@ -544,7 +623,7 @@
  void OsdScreen::draw_music(DrawList &list, const Context &ctx) const
  {
      const ui::Fonts &fonts = ctx.fonts;
@@ -4676,7 +4777,7 @@
      draw_backdrop(list, ctx);
      const Rect card{960 - 520, 300, 1040, 380};
      list.shadow({card.x, card.y + 30, card.w, card.h}, page::kRadiusCard, 60, kBlack.with_alpha(0.6f));
-@@ -578,7 +637,7 @@
+@@ -578,7 +657,7 @@
      const Rect panel{kMargin, 200, 760, 560};
      list.rounded_rect(panel, page::kRadiusCard, kBlack.with_alpha(0.72f));
      list.bordered_rect(panel, page::kRadiusCard, kClear, 1.0f, kWhite.with_alpha(0.12f));
@@ -4685,7 +4786,7 @@
               Align::left, 3.0f);
      float y = panel.y + 84;
      for (const std::string &l : hud_lines_)
-@@ -642,6 +701,8 @@
+@@ -642,6 +721,8 @@
      {
          draw_centre(list, ctx);
          draw_captions(list, ctx, chrome);
@@ -4694,7 +4795,7 @@
          draw_skip(list, ctx);
      }
      if (hud_on_)
-@@ -652,7 +713,7 @@
+@@ -652,7 +733,7 @@
          std::snprintf(fps, sizeof fps, "%d FPS", raw_.fps);
          const Rect chip{1920 - 180, 40, 140, 40};
          list.rounded_rect(chip, 20, kBlack.with_alpha(0.6f));
@@ -4703,7 +4804,7 @@
      }
  }
  
-@@ -664,7 +725,85 @@
+@@ -664,7 +745,85 @@
      out->text = title_;
      out->index = out->total = 1;
      out->rect = {0, 0, 1920, 1080};
@@ -5065,7 +5166,39 @@
      m_last_state = state;
  
      /* GL-5 (#81): caption-only mode — a subtitle cue is up but the playback
-@@ -2904,9 +2991,9 @@
+@@ -2842,7 +2929,30 @@
+     // 1. Title & Meta
+     Rml::Element* el_title = m_playback_doc->GetElementById("media-title");
+     if (el_title) {
+-        el_title->SetInnerRML(state.title.empty() ? "Video Playback" : state.title);
++        auto esc_rml = [](const std::string& raw) {
++            std::string out;
++            out.reserve(raw.size() + 16);
++            for (char c : raw) {
++                switch (c) {
++                    case '&': out += "&amp;"; break;
++                    case '<': out += "&lt;"; break;
++                    case '>': out += "&gt;"; break;
++                    case '\r': break;
++                    default: out += c; break;
++                }
++            }
++            return out;
++        };
++        const std::string raw_title = state.title.empty() ? "Video Playback" : state.title;
++        const size_t nl = raw_title.find('\n');
++        if (nl == std::string::npos) {
++            el_title->SetInnerRML(esc_rml(raw_title));
++        } else {
++            const std::string first = esc_rml(raw_title.substr(0, nl));
++            std::string second = raw_title.substr(nl + 1);
++            for (char& ch : second) if (ch == '\n') ch = ' ';
++            el_title->SetInnerRML(first + "<br/><span class=\"media-episode\">" + esc_rml(second) + "</span>");
++        }
+     }
+ 
+     Rml::Element* el_meta = m_playback_doc->GetElementById("media-meta");
+@@ -2904,9 +3014,9 @@
              el_dec->SetProperty("display", "inline-block");
              el_dec->SetInnerRML(state.decoder_badge);
              bool hw = state.decoder_badge.find("Hardware") != std::string::npos;
@@ -5078,7 +5211,7 @@
          }
      }
      // #103: upscaler badge - hidden when upscaling is Off in Settings
-@@ -2958,18 +3045,18 @@
+@@ -2958,18 +3068,18 @@
      Rml::Element* el_fill = m_playback_doc->GetElementById("progress-fill");
      if (el_fill) {
          el_fill->SetProperty("width", evo_fmt("%.1f%%", pct));
@@ -5100,7 +5233,7 @@
          if (state.scrub_active) {
              el_scrub->SetProperty("display", "flex");
              Rml::Element* el_stime = m_playback_doc->GetElementById("scrub-time");
-@@ -2981,21 +3068,22 @@
+@@ -2981,21 +3091,22 @@
  
      Rml::Element* el_scrub_lbl = m_playback_doc->GetElementById("scrub-label");
      if (el_scrub_lbl) {
@@ -5128,7 +5261,7 @@
              el_pause->SetProperty("display", "flex");
          } else {
              el_pause->SetProperty("display", "none");
-@@ -3003,7 +3091,7 @@
+@@ -3003,7 +3114,7 @@
      }
  
      if (Rml::Element* el_load = m_playback_doc->GetElementById("loading-badge")) {
@@ -5137,7 +5270,7 @@
          el_load->SetProperty("display", (state.loading && !state.scrub_active) ? "flex" : "none");
      }
  
-@@ -3035,7 +3123,8 @@
+@@ -3035,7 +3146,8 @@
              "item-seek", "item-chapter", "progress-container", "time-row" };
          for (const char* id : k_vod_only)
              if (Rml::Element* e = m_playback_doc->GetElementById(id))
@@ -5147,7 +5280,7 @@
          /* #150: the chapter hint only for a file that has chapters. */
          if (Rml::Element* e = m_playback_doc->GetElementById("item-chapter"))
              e->SetProperty("display", (state.is_live || state.chapter_count == 0) ? "none" : "flex");
-@@ -4331,3 +4420,16 @@
+@@ -4331,3 +4443,16 @@
  #endif
  }
  

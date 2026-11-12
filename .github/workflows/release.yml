@@ -1,6 +1,7 @@
 name: Release
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -14,21 +15,66 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  verify-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      content-version: ${{ steps.version.outputs.content_version }}
+      prev-tag: ${{ steps.version.outputs.prev_tag }}
+      is-prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13.7'
+      - name: Verify VERSION and contentVersion bump
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          args=(--github-output "$GITHUB_OUTPUT")
+          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
+            args+=(--allow-head-tag)
+          elif [[ "$EVENT_NAME" == push && -n "$BEFORE_SHA" ]]; then
+            args+=(--base-ref "$BEFORE_SHA")
+          fi
+          python3 scripts/check_release_version.py "${args[@]}"
+          if [[ "$REF_TYPE" == tag ]]; then
+            tag="$(grep '^tag=' "$GITHUB_OUTPUT" | tail -n1 | cut -d= -f2-)"
+            if [[ "$tag" != "$REF_NAME" ]]; then
+              echo "ERROR: Pushed tag $REF_NAME does not match VERSION tag $tag" >&2
+              exit 1
+            fi
+          fi
   build:
+    needs: verify-version
     uses: ./.github/workflows/build.yml
+    with:
+      release-tag: ${{ needs.verify-version.outputs.tag }}
   macos:
+    needs: verify-version
     if: github.event_name == 'workflow_dispatch' && inputs.macos
     uses: ./.github/workflows/build.yml
     with:
       runner: macos-14
+      release-tag: ${{ needs.verify-version.outputs.tag }}
   release:
-    needs: build
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [verify-version, build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag')
     runs-on: ubuntu-24.04
     permissions:
       actions: read
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - name: Download tested Linux packages
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -37,17 +83,62 @@ jobs:
       - name: Verify release assets
         working-directory: release
         run: sha256sum --check SHA256SUMS
-      - name: Create draft release
+      - name: Publish release with generated changelog
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ needs.build.outputs.release-tag }}
+          VERSION: ${{ needs.verify-version.outputs.version }}
+          TAG: ${{ needs.verify-version.outputs.tag }}
+          CONTENT_VERSION: ${{ needs.verify-version.outputs.content-version }}
+          PREV_TAG: ${{ needs.verify-version.outputs.prev-tag }}
+          IS_PRERELEASE: ${{ needs.verify-version.outputs.is-prerelease }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Preserving existing release $TAG and its original assets."
             exit 0
           fi
-          args=(--draft --title "Nuvio Pro ${TAG}" --generate-notes --target "$GITHUB_SHA")
-          case "$TAG" in *alpha*|*beta*|*rc*) args+=(--prerelease) ;; esac
+
+          gen_args=(-f "tag_name=$TAG" -f "target_commitish=$GITHUB_SHA")
+          if [[ -n "$PREV_TAG" ]]; then
+            gen_args+=(-f "previous_tag_name=$PREV_TAG")
+          fi
+          gh api "repos/${GH_REPO}/releases/generate-notes" "${gen_args[@]}" --jq .body > generated_notes.md
+
+          if ! grep -qE '^[\*\-] ' generated_notes.md; then
+            range="$GITHUB_SHA"
+            [[ -n "$PREV_TAG" ]] && range="${PREV_TAG}..${GITHUB_SHA}"
+            commits="$(git log --no-merges --format='- %s (%h)' -n 30 "$range" || true)"
+            if [[ -n "$commits" ]]; then
+              {
+                echo "## Changes"
+                echo ""
+                echo "$commits"
+                echo ""
+                cat generated_notes.md
+              } > generated_notes_with_commits.md
+              mv generated_notes_with_commits.md generated_notes.md
+            fi
+          fi
+
+          {
+            echo "# Nuvio Pro ${TAG}"
+            echo ""
+            cat generated_notes.md
+            echo ""
+            echo "## Installation"
+            echo ""
+            echo "Download \`PPSA99996.zip\` and verify it against \`SHA256SUMS\`. Close Nuvio Pro before replacing \`/data/homebrew/PPSA99996\` and keep \`/data/nuvio\`."
+            echo "Title ID: \`PPSA99996\` · PS5 \`contentVersion\`: \`${CONTENT_VERSION}\`. Do not update console firmware."
+            echo "\`nuvio-pro-ps5-${VERSION}.zip\` includes corresponding sources, helpers, and build receipts."
+          } > notes.md
+
+          args=(--title "Nuvio Pro ${TAG}" --notes-file notes.md --target "$GITHUB_SHA")
+          if [[ "$IS_PRERELEASE" == true ]]; then
+            args+=(--prerelease --latest=false)
+          else
+            args+=(--latest)
+          fi
           mapfile -t assets < release/ASSETS
           gh release create "$TAG" "${args[@]}" "${assets[@]}"
+          echo "### Published release" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

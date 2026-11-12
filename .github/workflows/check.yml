@@ -57,6 +57,15 @@ jobs:
           path: .cache/verified/${{ steps.diff.outputs.verification-key }}
           key: ${{ steps.diff.outputs.verification-key }}
           lookup-only: true
+      - name: Warn if release version is not bumped yet
+        if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+        run: |
+          if python3 scripts/check_release_version.py --base-ref "${{ github.event.pull_request.base.sha }}"; then
+            echo "Release version bump is ready for main merge." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::VERSION or sce_sys/param.json contentVersion is not bumped above main/latest release. The release build will fail after merging to main unless bumped."
+            echo "Warning: VERSION or sce_sys/param.json contentVersion is not bumped yet; the release build on main merge will fail until bumped." >> "$GITHUB_STEP_SUMMARY"
+          fi
   native-build:
     needs: [check, changes]
     if: needs.changes.outputs.native == 'true'

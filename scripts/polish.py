@@ -29,6 +29,7 @@ def apply(evo,nuvio):
     replace(web,"b.textContent='Back to EVO'", "b.textContent='Player settings'")
     replace(web,'font:24px sans-serif;', 'font-size:24px;font-family:inherit;')
     web.write_text(fix_playback_handoff(web.read_text()))
+    web.write_text(fix_playback_title(web.read_text()))
     patch_playback_start(app)
     patch_playback_restart_diagnostics(app)
     patch_playback_read_diagnostics(app)
@@ -71,18 +72,57 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
     replace(application,
         '            if ((pressed & PadButtons::L3) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {',
         '            if (((pressed & PadButtons::L3) && !evo_webui_active()) || ((pressed & PadButtons::R3) && !r3IsChapters && !r3ToKeyboard)) {')
+    replace(application, '''            // Synthesize stick tilt events into directional pad masks
+            static bool s_stickLeft = false, s_stickRight = false, s_stickUp = false, s_stickDown = false;
+            bool curStickLeft  = (rawLx < -0.55f);
+            bool curStickRight = (rawLx >  0.55f);
+            bool curStickUp    = (rawLy < -0.55f);
+            bool curStickDown  = (rawLy >  0.55f);
+
+            if (curStickLeft && !s_stickLeft)   pressed |= PadButtons::Left;
+            if (curStickRight && !s_stickRight) pressed |= PadButtons::Right;
+            if (curStickUp && !s_stickUp)       pressed |= PadButtons::Up;
+            if (curStickDown && !s_stickDown)   pressed |= PadButtons::Down;
+
+            if (curStickLeft)  held |= PadButtons::Left;
+            if (curStickRight) held |= PadButtons::Right;
+            if (curStickUp)    held |= PadButtons::Up;
+            if (curStickDown)  held |= PadButtons::Down;
+
+            s_stickLeft = curStickLeft;
+            s_stickRight = curStickRight;
+            s_stickUp = curStickUp;
+            s_stickDown = curStickDown;
+
+            evo_input_update(&evo_pad_state, padData.buttons, static_cast<uint64_t>(now_ms()));''', '''            // Synthesize Left OR Right Stick tilts into D-pad masks + auto-repeat
+            const float kNativeStickThreshold = 0.48f;
+            const float magL = std::max(std::abs(rawLx), std::abs(rawLy));
+            const float magR = std::max(std::abs(rawRx), std::abs(rawRy));
+            const float useX = (magR > magL && magR > kNativeStickThreshold) ? rawRx : rawLx;
+            const float useY = (magR > magL && magR > kNativeStickThreshold) ? rawRy : rawLy;
+            uint32_t stickPadMask = 0;
+            if (std::abs(useX) > kNativeStickThreshold || std::abs(useY) > kNativeStickThreshold) {
+                if (std::abs(useX) >= std::abs(useY))
+                    stickPadMask = (useX < 0.0f) ? PadButtons::Left : PadButtons::Right;
+                else
+                    stickPadMask = (useY < 0.0f) ? PadButtons::Up : PadButtons::Down;
+            }
+            held |= stickPadMask;
+            evo_input_update(&evo_pad_state, padData.buttons | stickPadMask, static_cast<uint64_t>(now_ms()));''')
     replace(application, '''            if (evo_webui_active()) {
                 /* #101: the system browser is up and owns the controller. */''', '''            if (evo_webui_active()) {
-                /* Keep physical D-pad/X/Circle with the browser. Either stick
-                 * supplies one dominant direction through the native bridge. */
-                int x = static_cast<int>(padData.leftStick.x) - 128;
-                int y = static_cast<int>(padData.leftStick.y) - 128;
-                if (std::abs(x) <= 70 && std::abs(y) <= 70) {
-                    x = static_cast<int>(padData.rightStick.x) - 128;
-                    y = static_cast<int>(padData.rightStick.y) - 128;
-                }
+                /* Keep physical D-pad/X/Circle with the browser. Stronger of Left or
+                 * Right stick supplies one dominant direction through the native bridge. */
+                int lx = static_cast<int>(padData.leftStick.x) - 128;
+                int ly = static_cast<int>(padData.leftStick.y) - 128;
+                int rx = static_cast<int>(padData.rightStick.x) - 128;
+                int ry = static_cast<int>(padData.rightStick.y) - 128;
+                int magL = std::max(std::abs(lx), std::abs(ly));
+                int magR = std::max(std::abs(rx), std::abs(ry));
+                int x = (magR > magL && magR > 56) ? rx : lx;
+                int y = (magR > magL && magR > 56) ? ry : ly;
                 uint32_t stick = 0;
-                if (std::abs(x) > 70 || std::abs(y) > 70) {
+                if (std::abs(x) > 56 || std::abs(y) > 56) {
                     if (std::abs(x) >= std::abs(y))
                         stick = x < 0 ? PadButtons::Left : PadButtons::Right;
                     else
@@ -97,7 +137,8 @@ void EvoRmlApp::RenderNuvio(uint32_t* framebuffer, int width, int height, const 
                 evo_webui_controller(pressed & PadButtons::Options,
                                      pressed & PadButtons::Triangle, direction,
                                      pressed & PadButtons::R2 ? 2 : (pressed & PadButtons::L3 ? 1 :
-                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 : 0))));''')
+                                     (pressed & PadButtons::L1 ? 3 : (pressed & PadButtons::R1 ? 4 :
+                                     (pressed & PadButtons::L2 ? 5 : (pressed & PadButtons::TouchPad ? 6 : 0))))));''')
     h=app/'include/evo_webui.h'
     h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nvoid evo_webui_controller(int options, int menu, int direction, int shortcut);\n')
     replace(application,'std::atomic<bool> g_web_done{false};','std::atomic<bool> g_web_done{false};\nbool g_nuvio_preparing = false;')
@@ -271,6 +312,60 @@ def patch_search_back(text):
       return false;''')
 
 
+def patch_pin_shared_keys(text):
+    old = '  if (\n    isEditableTarget(target) &&\n'
+    new = '  if (\n    (isEditableTarget(target) || target?.closest?.("[data-overlay-root=\'pin\']")) &&\n'
+    if text.count(old) != 1:
+        raise RuntimeError('Pinned sharedKeys Backspace anchor changed')
+    return text.replace(old, new)
+
+
+def patch_pin_render_overlay(text):
+    imp_old = 'import * as internals from "./profileSelectionScreen.js";'
+    imp_new = (
+        'import * as internals from "./profileSelectionScreen.js";\n'
+        'import { ps5GlyphSvg } from "../../ui/navigation/ps5-text-input.js";'
+    )
+    hint_old = '<div class="profile-pin-back-hint">${escapeHtml(PROFILE_PIN_TEXT.back)}</div>'
+    hint_new = '''<div class="profile-pin-back-hint">${globalThis.__NUVIO_PS5__
+                  ? `<div class="ps5-pin-controls">${[["Dpad", "Navigate"], ["Cross", "Select"], ["Square", "Backspace"], ["Circle", "Cancel"]]
+                      .map(([glyph, label]) => `<span class="ps5-control-hint"><span class="ps5-control-glyph" aria-hidden="true">${ps5GlyphSvg(glyph)}</span><span>${label}</span></span>`)
+                      .join("")}</div>`
+                  : escapeHtml(PROFILE_PIN_TEXT.back)}</div>'''
+    if text.count(imp_old) != 1 or text.count(hint_old) != 1:
+        raise RuntimeError('Pinned PIN render anchor changed')
+    return text.replace(imp_old, imp_new).replace(hint_old, hint_new)
+
+
+def patch_pin_submit_keydown(text):
+    old = '''      if (code === 8 || code === 46 || key === "Backspace" || key === "Delete") {
+        event?.preventDefault?.();
+        if (!this.isPinOperationInProgress && this.pinValue) {
+          this.pinValue = this.pinValue.slice(0, -1);
+          this.pinOverlayError = "";
+          this.render();
+        }
+        return true;
+      }'''
+    new = '''      if (code === 8 || code === 46 || key === "Backspace" || key === "Delete" ||
+          (globalThis.__NUVIO_PS5__ && (code === 113 || key === "F2"))) {
+        event?.preventDefault?.();
+        if (event?.repeat && (code === 113 || key === "F2")) {
+          return true;
+        }
+        if (!this.isPinOperationInProgress && this.pinValue) {
+          this.pinValue = this.pinValue.slice(0, -1);
+          this.pinOverlayError = "";
+          this.pendingFocusKey = this.focusKey || this.getDefaultFocusKey();
+          this.render();
+        }
+        return true;
+      }'''
+    if text.count(old) != 1:
+        raise RuntimeError('Pinned PIN keydown anchor changed')
+    return text.replace(old, new)
+
+
 def patch_nuvio(nuvio):
     patch_stream_selection(nuvio)
     home_dom = nuvio/'js/ui/screens/home/homeDomUpdate.js'
@@ -288,6 +383,13 @@ def patch_nuvio(nuvio):
         't("profile_selection_hint", {}, "Hold to manage profile")',
         '(globalThis.__NUVIO_PS5__ ? "Press Square or Options to manage profile" : '
         't("profile_selection_hint", {}, "Hold to manage profile"))')
+    for rel, fn in (
+        ('js/platform/sharedKeys.js', patch_pin_shared_keys),
+        ('js/core/profile/profileSelectionScreenMethods-03-render-pin-overlay.js', patch_pin_render_overlay),
+        ('js/core/profile/profileSelectionScreenMethods-06-submit-completed-pin.js', patch_pin_submit_keydown),
+    ):
+        target = nuvio/rel
+        target.write_text(fn(target.read_text()))
     # Form controls otherwise retain the browser's font instead of the theme.
     replace(nuvio/'css/base.css', '\n* {\n',
         '\nbutton,\ninput,\ntextarea,\nselect {\n  font-family: inherit;\n}\n\n* {\n')
@@ -316,6 +418,8 @@ def patch_nuvio(nuvio):
         css.write('\n'+(Path(__file__).parent/'ps5-search-keyboard.css').read_text()+"""
 .series-primary-btn,
 .series-secondary-btn {
+  appearance: none;
+  -webkit-appearance: none;
   box-sizing: border-box;
   height: auto;
   min-height: 4.2vw;
@@ -323,12 +427,197 @@ def patch_nuvio(nuvio):
   border-radius: 999px;
   line-height: 1;
 }
+.series-circle-btn {
+  appearance: none;
+  -webkit-appearance: none;
+}
 .series-primary-btn .series-btn-svg,
 .series-primary-btn .series-btn-icon svg {
   width: 1.5vw;
   height: 1.5vw;
 }
 .series-primary-btn { overflow: visible; }
+.series-detail-shell:not(.detail-trailer-active) .detail-hero-body {
+  overflow: visible;
+}
+/* Give Detail hero buttons room on top/left while keeping left visual alignment
+ * intact with the title and overview below. */
+.series-detail-actions {
+  padding: 8px 6px 4px;
+  margin-left: -6px;
+}
+/* Upstream .performance-constrained applies tizenCardLift scale(1.03) and outer
+ * box-shadows to .series-primary-btn/.series-circle-btn (while omitting
+ * .series-secondary-btn), making Resume/Play taller and clipping pill edges.
+ * Keep uniform inset focus rings and unscaled geometry on Detail controls. */
+.performance-constrained .series-primary-btn.focused,
+.performance-constrained .series-secondary-btn.focused,
+.performance-constrained .series-circle-btn.focused,
+.performance-constrained .detail-company-card.focused,
+.performance-constrained .detail-comment-card.focused,
+.performance-constrained .series-season-btn.focused,
+.performance-constrained .series-insight-tab.focused,
+.performance-constrained .series-episode-card.focused,
+.performance-constrained .detail-morelike-card.focused,
+.performance-constrained .movie-cast-card.focused,
+.performance-constrained .series-cast-card.focused {
+  animation: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+.performance-constrained .series-primary-btn.focused,
+.performance-constrained .series-secondary-btn.focused,
+.performance-constrained .series-circle-btn.focused,
+.performance-constrained .detail-company-card.focused {
+  box-shadow: inset 0 0 0 4px var(--detail-focus-ring, var(--focus-color, #fff)) !important;
+}
+.performance-constrained .detail-comment-card.focused,
+.performance-constrained .series-season-btn.focused,
+.performance-constrained .series-insight-tab.focused {
+  box-shadow: inset 0 0 0 3px var(--focus-color, var(--secondary-color, #fff)) !important;
+}
+/* Prevent top/left outer focus-ring or focus-scale clipping inside tight
+ * scrollable tracks across Home, Cast Detail, Folders, Detail rows, and Dialogs. */
+.home-screen-shell .home-track {
+  padding-top: 6px;
+}
+.cast-credit-track {
+  padding: 6px 6px 8px;
+  margin-left: -6px;
+}
+.folder-row-track {
+  padding: 6px 6px 8px;
+  margin-left: -2px;
+}
+.detail-company-track,
+.detail-morelike-track,
+.detail-comments-track {
+  padding-top: 6px;
+}
+.poster-list-picker-actions {
+  padding: 8px 56px;
+}
+/* Upstream PIN styles target <= 760px height or oversize px for 1080p.
+ * Scale proportions smoothly across 720p/1080p and fit controller hints below. */
+.profile-pin-overlay {
+  padding: 28px 24px;
+}
+.profile-pin-heading {
+  font-size: clamp(26px, 2.2vw, 40px);
+  line-height: 1.2;
+  margin: 0;
+}
+.profile-pin-box-row {
+  gap: clamp(14px, 1.3vw, 22px);
+  margin: clamp(22px, 2.5vh, 34px) 0 0;
+}
+.profile-pin-box {
+  width: clamp(80px, 5.8vw, 108px);
+  height: clamp(80px, 5.8vw, 108px);
+  border-radius: clamp(14px, 1vw, 18px);
+}
+.profile-pin-dot {
+  width: clamp(15px, 1.15vw, 20px);
+  height: clamp(15px, 1.15vw, 20px);
+}
+.profile-pin-cursor {
+  height: clamp(32px, 2.4vw, 44px);
+}
+.profile-pin-support {
+  font-size: clamp(16px, 1.05vw, 20px);
+  min-height: clamp(22px, 1.6vw, 28px);
+  margin: clamp(16px, 1.8vh, 24px) 0 0;
+}
+.profile-pin-keypad {
+  width: clamp(256px, 18vw, 324px);
+  gap: clamp(8px, 0.6vw, 11px) clamp(10px, 0.7vw, 13px);
+  margin: clamp(16px, 1.8vh, 24px) 0 0;
+}
+.profile-pin-key {
+  width: clamp(74px, 5.2vw, 94px);
+  height: clamp(48px, 3.3vw, 62px);
+  font-size: clamp(22px, 1.5vw, 28px);
+  border-radius: 10px;
+}
+.profile-pin-delete-icon {
+  width: clamp(22px, 1.4vw, 26px);
+  height: clamp(22px, 1.4vw, 26px);
+}
+.profile-pin-forgot {
+  font-size: clamp(14px, 0.9vw, 17px);
+  margin: clamp(16px, 2vh, 24px) 0 0;
+}
+.profile-pin-back-hint {
+  margin: clamp(14px, 1.6vh, 20px) 0 0;
+  font-size: clamp(15px, 0.95vw, 18px);
+}
+.ps5-pin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 26px;
+}
+.ps5-control-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(255, 255, 255, 0.86);
+  font-weight: 500;
+}
+.ps5-control-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: clamp(22px, 1.45vw, 28px);
+  height: clamp(22px, 1.45vw, 28px);
+}
+.ps5-control-glyph svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ps5-control-glyph.wide {
+  width: clamp(32px, 2.1vw, 40px);
+}
+.ps5-control-glyph.narrow {
+  width: clamp(19px, 1.25vw, 24px);
+}
+.ps5-control-bar {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(14px, 1.8vh, 22px);
+  transform: translateX(-50%);
+  z-index: 9000;
+  pointer-events: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 1.35vw, 24px);
+  padding: clamp(7px, 0.7vw, 12px) clamp(16px, 1.5vw, 26px);
+  border-radius: 999px;
+  background: rgba(12, 13, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: clamp(15px, 1.05vw, 20px);
+  white-space: nowrap;
+  max-width: 96vw;
+  overflow: hidden;
+}
+.ps5-control-bar[hidden] {
+  display: none;
+}
+.ps5-control-bar .ps5-control-glyph {
+  width: clamp(22px, 1.5vw, 29px);
+  height: clamp(22px, 1.5vw, 29px);
+}
+.ps5-control-bar .ps5-control-glyph.wide {
+  width: clamp(34px, 2.25vw, 44px);
+}
+.ps5-control-bar .ps5-control-glyph.narrow {
+  width: clamp(20px, 1.3vw, 26px);
+}
 .stream-route-shell { zoom: .72; }
 
 """)
@@ -888,7 +1177,7 @@ void evo_webui_controller(int options, int menu, int direction, int shortcut) {
         ++s_controller_navigation;
         s_controller_direction = direction;
     }
-    if (shortcut >= 1 && shortcut <= 4) {
+    if (shortcut >= 1 && shortcut <= 6) {
         ++s_controller_keyboard;
         s_controller_shortcut = shortcut;
     }
@@ -913,6 +1202,54 @@ def fix_player_back(source):
         }
         // Stop playback confirmation prompt
         if (screenMgr) {''')
+
+
+def fix_playback_title(source):
+    """Resolve movie or two-line Series\\nSxxExx Episode playback titles without Nuvio Pro fallback."""
+    route_old = "\" history[k]=function(s){if(s&&typeof s==='object'){lastState=s;if(s.route)evoLog('route '+s.route);}var r=o.apply(this,arguments);note();return r;};});\""
+    route_new = "\" history[k]=function(s){if(s&&typeof s==='object'){lastState=s;if(s.route&&s.route!=='stream'&&s.route!=='player')nvTitle='';if(s.route)evoLog('route '+s.route);}var r=o.apply(this,arguments);note();return r;};});\""
+    nv_old = (
+        "\"var nvTitle='';function nvNoteTitle(){var tt=document.querySelector('#stream .stream-route-title'),\"\n"
+        "\" lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code');\"\n"
+        "\" var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').trim();\"\n"
+        "\" if(t){if(ep&&ep.textContent)t=t+' - '+String(ep.textContent).trim();nvTitle=t;}}\""
+    )
+    nv_new = (
+        "\"var nvTitle='';function nvNoteTitle(){var wt=window.__nuvioPlaybackTitle?window.__nuvioPlaybackTitle():'';\"\n"
+        "\" if(wt){nvTitle=wt;return;}\"\n"
+        "\" var tt=document.querySelector('#stream .stream-route-title'),\"\n"
+        "\"  lg=document.querySelector('#stream .stream-route-logo'),ep=document.querySelector('#stream .stream-route-episode-code'),\"\n"
+        "\"  sb=document.querySelector('#stream .stream-route-subtitle');\"\n"
+        "\" var t=String((tt&&tt.textContent)||(lg&&lg.getAttribute('alt'))||'').replace(/\\\\s+/g,' ').trim();\"\n"
+        "\" var e=ep&&ep.textContent?String(ep.textContent).replace(/\\\\s+/g,' ').trim():'';\"\n"
+        "\" var s=sb&&sb.textContent?String(sb.textContent).replace(/\\\\s+/g,' ').trim():'';\"\n"
+        "\" if(t){if(e)t=t+String.fromCharCode(10)+e+(s&&s!==t&&s!==e?' '+s:'');nvTitle=t;}}\""
+    )
+    title_old = (
+        "\" if(NUVIO){var pr=(lastState&&lastState.params)||{},ks=['title','name','metaTitle','itemTitle','showTitle'],t='';\"\n"
+        "\"  for(var q=0;q<ks.length&&!t;q++){if(typeof pr[ks[q]]==='string')t=pr[ks[q]];}\"\n"
+        "/* The stream screen, still in the DOM under the player, has it in text. */\n"
+        "\"  nvNoteTitle();if(nvTitle)t=nvTitle;\"\n"
+        "\"  go(t||document.title);return 1;}\""
+    )
+    title_new = (
+        "\" if(NUVIO){var wt=window.__nuvioPlaybackTitle?window.__nuvioPlaybackTitle():'';\"\n"
+        "\"  if(!wt){var pr=(lastState&&lastState.params)||{},ks=['playerTitle','title','name','metaTitle','itemTitle','showTitle','fallbackTitle'],t='';\"\n"
+        "\"   for(var q=0;q<ks.length&&!t;q++){var v=typeof pr[ks[q]]==='string'?pr[ks[q]].trim():'';if(v&&v!=='Untitled'&&v!=='Nuvio'&&v!=='Nuvio Pro')t=v;}\"\n"
+        "\"   var ek=['playerEpisodeTitle','episodeTitle','playerSubtitle'],et='';\"\n"
+        "\"   for(var q=0;q<ek.length&&!et;q++){var ev=typeof pr[ek[q]]==='string'?pr[ek[q]].trim():'';if(ev&&ev!==t&&ev!=='Untitled'&&ev!=='Nuvio'&&ev!=='Nuvio Pro')et=ev;}\"\n"
+        "\"   var sn=pr.season==null?NaN:Number(pr.season),en=Number(pr.episode);\"\n"
+        "\"   if(t&&Number.isInteger(sn)&&sn>=0&&Number.isInteger(en)&&en>0){var p2=function(n){return n<10?'0'+n:''+n;};\"\n"
+        "\"    var sc='S'+p2(sn)+'E'+p2(en);t=t+String.fromCharCode(10)+sc+(et?' '+et:'');}\"\n"
+        "\"   nvNoteTitle();wt=t||nvTitle;}\"\n"
+        "\"  go(wt||document.title);return 1;}\""
+    )
+    if source.count(route_old) != 1 or source.count(title_old) != 1:
+        raise RuntimeError('Pinned playback title anchors changed')
+    out = source.replace(route_old, route_new).replace(title_old, title_new)
+    if nv_old in out:
+        out = out.replace(nv_old, nv_new, 1)
+    return out
 
 
 def fix_playback_handoff(source):

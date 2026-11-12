@@ -46,7 +46,10 @@ class NativeSkinTests(unittest.TestCase):
                          'if (!skip_on_) hints[n++]', 'raw_.subtitle2_color, 0, 2',
                          'raw_.subtitle_style == 3', 'raw_.subtitle_image_canvas_w'):
                 self.assertIn(text, after)
-            self.assertIn('fit(fonts.semibold, title_, 48, 1160)', after)
+            self.assertIn('split_lines(title_.c_str())', after)
+            self.assertIn('fit(fonts.semibold, title_lines[0], 46, 1160)', after)
+            self.assertIn('fit(fonts.regular, title_lines[1], 28, 1160)', after)
+            self.assertIn('fit(fonts.semibold, primary, 48, 1160)', after)
             self.assertIn('1920 - 2 * kMargin, 12', after)
             self.assertNotIn('bar_.draw(canvas)', after)  # no EVO progress glow/finish flash
 
