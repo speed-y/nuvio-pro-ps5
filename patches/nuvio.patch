@@ -1,6 +1,6 @@
 --- a/css/base.css
 +++ b/css/base.css
-@@ -67,6 +67,13 @@
+@@ -71,6 +71,13 @@
    -moz-osx-font-smoothing: grayscale;
  }
  
@@ -224,7 +224,7 @@
  import { AuthManager } from "./core/auth/authManager.js";
  import { AuthState } from "./core/auth/authState.js";
  import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
-@@ -108,6 +118,698 @@
+@@ -112,6 +122,698 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
@@ -923,7 +923,7 @@
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -334,6 +1036,11 @@
+@@ -359,6 +1061,11 @@
  }
  
  async function shouldShowProfileSelection() {
@@ -935,7 +935,7 @@
    const profiles = await ProfileManager.getProfiles();
    const activeProfileId = ProfileManager.getActiveProfileId();
    const cachedPinStates = ProfileSyncService.getCachedProfileLockStates();
-@@ -358,7 +1065,7 @@
+@@ -383,7 +1090,7 @@
    }
    const activeProfileHasPin = hasProfilePin(pinStates, activeProfileId);
  
@@ -944,7 +944,7 @@
      return { show: false, pinStates, liveStateKnown };
    }
  
-@@ -408,13 +1115,27 @@
+@@ -433,13 +1140,27 @@
    // The startup sync fans out to about ten remote surfaces. Home paints from
    // its local cache first and refreshes when the pull completes, so starting
    // the pull after that paint keeps the first screen responsive.
@@ -979,7 +979,7 @@
    const storedResumeRoute =
      restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
        ? Router.consumeWebOsResumeRoute()
-@@ -797,8 +1518,10 @@
+@@ -823,8 +1544,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (
@@ -2011,7 +2011,7 @@
            this.requestBackgroundRender();
 --- a/js/ui/screens/home/homeDomUpdate.js
 +++ b/js/ui/screens/home/homeDomUpdate.js
-@@ -222,6 +222,13 @@
+@@ -240,6 +240,13 @@
    source.innerHTML = markup;
    const canUpdate = incremental && hasMountedHomeDom(container);
    if (canUpdate) {

@@ -5144,3 +5144,31 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `/data/nuvio/evo.log` startup lines recorded `EVO boot: BUILD f6e43e65-nuvio_1111-2348`, `bootstrap: promotion verified errno=0`, `server: listen ok port=8686`, `title-ui: response status=200`, and `page: route profileSelection`.
 - Observed Continue Watching Nuvio Sync verification:
   - Console owner confirmed the Continue Watching Nuvio Sync behavior worked on the TV after launch.
+
+## Nuvio TV 1.4.0 integration and v0.2.0-alpha.3 preparation, 2026-11-12
+
+- Status: `[LOCALLY BUILT]`.
+- Console execution status: `[UNKNOWN]` on retail PS5 firmware 12.70.
+- Target title identity: `PPSA99996`. Public version: `0.2.0-alpha.3`. PS5 `contentVersion`: `01.000.010`.
+- Build ID: `f6e43e65-nuvio_1112-1220`.
+- Environment: Nuvio UI `nuvio-tv-smart@1.4.0` (`ec5e15c050c7ac98ede4e201a97bc4f93b96420e`), EVO `v0.13.5`, Python `3.13.7`, Node `v22.23.5`, npm `10.9.9`, Clang `23.1.4`.
+- Pinned input updates in `deps.lock`:
+  - `nuvio-tv-source` `1.4.0`: archive SHA-256 `a03eef675fdf44e6c603405f726efef7ed5248ebdc19d0c855d36b6b35ca77d5` (`9093888` bytes).
+  - `nuvio-official-tv-config` `1.4.0`: archive SHA-256 `69d99f91f0eb3046192dc498dbc7d82ba856dbc7ad1a20225d0bb746808529f9` (`7801680` bytes, matches GitHub release asset digest).
+- Upstream `1.4.0` source review (`[SOURCE-VERIFIED]`):
+  - `1.4.0` adds legacy `--*-rgb-legacy` CSS color tokens, adaptive TV performance tiers, `homeRowWindow` row parking and `homeDomUpdate` node source caching.
+  - It also adds TV poster rescaling, DASH MIME hints, HTTP 416 retry, Tizen audio metadata merging and tolerant MDBList ID parsing.
+  - All `scripts/polish.py` and `scripts/watch_sync.py` patch anchors and `nuvio.env.js` configuration keys apply cleanly to `1.4.0`.
+- Artifacts and SHA-256 hashes from `make build`:
+  - `eboot.bin`: `a4e2c8a5bc077d2e6838bf0f5a2a0582d8053352f22e881e36af33bb89e57f08` (`48847892` bytes, signed container integrity valid)
+  - `eboot.elf`: `bb1bfa72a7efc3be9b6acf84aa331d0376e08a286e29dbfad598f848dfb6022d` (`50071340` bytes)
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036` (`1284674` bytes)
+  - `webui/app.bundle.js`: `23093b07a9296a79c33e9c1dd2cf91d76a701e85f00b004520214203047772c8` (`3886406` bytes)
+  - `bootstrap-promote.elf`: `b12dd74a69a5d04e0e07d59e33ce877b856ed7f82d569424ca59406a797428e8` (`110992` bytes)
+  - `nuvio.elf`: `56bbb88212a077fe4c7891e11d462e61e47ac2623a32d0c23d56f86f980457c8` (`112400` bytes)
+- Host verification:
+  - Upstream `npm run test:perf` passed all `109` tests plus legacy color token checks on the patched `1.4.0` tree.
+  - `make ui`, `make build` and `make check` run cleanly after the pin and patch updates.
+- Pending console verification on retail PS5 firmware 12.70:
+  - Install and launch `PPSA99996`, then check Home row navigation, Hero updates, Continue Watching sync and native playback handoff.
+

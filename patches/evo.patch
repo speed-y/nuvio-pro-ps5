@@ -2408,7 +2408,7 @@
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
-+  "contentVersion": "01.000.009",
++  "contentVersion": "01.000.010",
    "downloadDataSize": 256,
    "gameIntent": {
      "permittedIntents": [
