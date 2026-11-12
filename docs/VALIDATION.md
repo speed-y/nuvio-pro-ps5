@@ -5305,20 +5305,24 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
 - Pending (`[UNKNOWN]`):
   - Console startup with an `elfldr` older than `v0.21`, and a repeat check on the owner's `12.70` loader.
 
-## Startup failure reasons on the loading screen, 2026-11-12
+## Startup failure reasons and webui check verification, 2026-11-12
 
-- Status: `[LOCALLY BUILT]`. No console result.
-- Problem: every startup failure left the same `Opening Nuvio Pro` screen. The Nuvio shell drew it over EVO's error text, and the title did not retry a failed open.
-- Change (`scripts/build.py` `startup_status()`, rendered through `scripts/native_general.py` and `scripts/polish.py`):
-  - After 8 seconds without storage access, the screen reports that the jailbreak has not unlocked storage. It clears when a later request succeeds.
-  - Helper failures name the `connect` or `transfer` stage with its errno. The title no longer opens a browser page without a UI server.
-  - A missing `/data/homebrew/PPSA99996/webui/index.html` stops startup with an internal-storage instruction.
-  - Page-server, browser start, browser open and page watchdog failures each show their own message.
-  - The title also logs each message as `startup: <title>. <detail>`.
-- Host checks:
-  - `make build` passed on Linux x86-64 with Python `3.13.5`, from `main` `1bd25fe` plus this change, without PR #10.
-  - `eboot.bin`: `5504639efdfd3cdf3d3347dccc821ca6c69bdb39e71596fa5e5878c7c80ad43d` (`48634244` bytes). `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
-  - A Chromium mock of `assets/nuvio.rml` at `1920x1080` used LatoLatin and the same positions. Two-line messages end at y 690, above the accent line at y 713.
-  - The mock is HTML, not the RmlUi renderer, so console layout can differ.
-- Pending (`[UNKNOWN]`):
-  - TV rendering of each message, and each failure path on a console.
+- Status: `[TESTED-ON-CONSOLE]`.
+- Target: Retail PS5, firmware 12.70, ELF loader on port 9021, PS5Upload HTTP on port 9180.
+- Artifacts:
+  - Initial PR 11 test build: `eboot.bin` `706c6401fb0cd64f58de60760857e9df91985f19346ed5773bc630a5d9501e45` (48634244 bytes).
+  - Fixed PR 11 build: `eboot.bin` `0dbe26d4ce346f80b4465121b9a436fcf55e68a8cbda3808f9141368e5c466a4` (48852148 bytes).
+  - Runtime: `libc.prx` `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+- Initial observed failure:
+  - Installed PR 11 build `f6e43e65-nuvio_1112-1919`.
+  - Startup halted on splash with `Nuvio Pro is missing its webui folder`.
+  - Cause: `access()` ran before `server_start()` under unprivileged real UID in the sandbox. The process lacked permissions before `nuvio_bootstrap()` promotion, so `access()` returned -1.
+- Resolution:
+  - Reordered startup to run `server_start()` first so `nuvio_bootstrap()` applies elevated capabilities.
+  - Checked `webui/index.html` with `open(..., O_RDONLY)` after loopback socket initialization.
+- Console execution results:
+  - Uploaded fixed `eboot.bin` over PS5Upload HTTP API. `control-5.elf` verified the installed hash.
+  - Launched via `control-3.elf` (`pid: 1227`, `app_id: 57368`).
+  - `/data/nuvio/evo.log` recorded successful connection accept, `status=200`, storage restoration of 1,465,177 bytes, and `page: route profileSelection`.
+  - Owner confirmed on TV that the startup screen passed and Nuvio Pro loaded successfully.
+
