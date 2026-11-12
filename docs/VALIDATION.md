@@ -5080,3 +5080,67 @@ The owner then pressed L1, R1, L2, R2, L3 and R3 once each. The new log range by
 
 [SOURCE-VERIFIED] Public version is `0.2.0-alpha.2`. Title remains `PPSA99996`. PS5 content version is `01.000.009`.
 The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not publish a release or authorize console deployment.
+
+## Continue Watching Nuvio Sync persistence, 2026-11-12
+
+- Status: `[LOCALLY BUILT]`.
+- Console execution status: `[UNKNOWN]` on retail PS5 firmware 12.70.
+- Target title identity: `PPSA99996`.
+- Build ID: `f6e43e65-nuvio_1111-2341`.
+- Environment: Nuvio UI `nuvio-tv-smart@1.3.11`, Node `v22.23.2`.
+- Artifacts and SHA-256 hashes:
+  - `eboot.bin`: `6362e49a2df4e40a95ef425c9facc3590a776a0718bcf8eebbe3efc6fc7d29b6` (`48847892` bytes)
+  - `eboot.elf`: `d024f7ad16d54a0eac06fadb1a8c5b4c03dfddaa741746646e129e00b9337ce6`
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`
+  - `webui/app.bundle.js`: `7ad07f655807b14208365f9feef0f8441382a0cff193f76dfc2e18bf7c29cebd`
+  - `payload` (`payload_sha256`): `cb0e8132c2453ba73d36efd83752e5f5bafcafeebe88c914687dc72cdbce0bbf` (`110992` bytes)
+- Host build and patch checks:
+  - `make build` updated `patches/nuvio.patch` and built `eboot.bin`, `webui/app.bundle.js`, and the payload.
+  - Host unit tests in `tests/test_continue_watching_sync.py` verified patched Nuvio modules against simulated Supabase `watched_items` and `watch_progress` sync calls.
+  - `make check` passed all `159` unit tests, `make docs-check`, and `scripts/check.py`.
+- Pending hardware verification:
+  - Install and launch `PPSA99996` on retail PS5 firmware 12.70.
+  - Sign in to Nuvio Sync and mark an episode and a movie watched from Continue Watching.
+  - Reopen the app after startup sync completes and verify that watched progress stays synchronized.
+
+## Node.js 22.23.5 toolchain upgrade, 2026-11-12
+
+- Status: `[LOCALLY BUILT]`.
+- Console execution status: `[UNKNOWN]` on retail PS5 firmware 12.70.
+- Target title identity: `PPSA99996`.
+- Build ID: `f6e43e65-nuvio_1111-2348`.
+- Environment: Nuvio UI `nuvio-tv-smart@1.3.11`, Node `v22.23.5`, npm `10.9.9`.
+- Pins updated:
+  - Updated `host_requirements` for Node in `deps.lock` to `22.23.5`.
+  - Updated `.github/workflows/check.yml`, `.github/workflows/build.yml`, and `docs/BUILD.md` to Node `22.23.5`.
+- Artifacts and SHA-256 hashes:
+  - `eboot.bin`: `625a97fbb60949427ad0be6b198ddc32cd9b95bb1d1fa14ac6bcb9c62ed90e28` (`48847892` bytes)
+  - `eboot.elf`: `758ce00d9004d8c286f2692e7d6687180d7f092c6d3a7a2ea188b39fd1ab480f` (`50071340` bytes)
+  - `sce_module/libc.prx`: `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`
+  - `webui/app.bundle.js`: `7ad07f655807b14208365f9feef0f8441382a0cff193f76dfc2e18bf7c29cebd`
+  - `payload` (`payload_sha256`): `9f0c96dfd13d724cd568d1e8c267a9cf816f828a682fe8484e649cca003d9b95` (`110992` bytes)
+  - `nuvio.elf`: `d43063f1e31490fbec540071502d9038181fbb19244e1b61cb1986c82c00f8ce`
+- Host checks:
+  - `make build` completed with Node `v22.23.5` and npm `10.9.9`.
+  - `make check` runs under Node `v22.23.5`.
+
+## Console update and launch on retail PS5 firmware 12.70, 2026-11-12
+
+- Status: `[PROVEN]`.
+- Console execution status: `[PROVEN]` install update and launch on retail PS5 firmware 12.70 (`PPSA99996`, `app.db` metadata still lists prior `01.000.007` registration version while `/data/homebrew/PPSA99996/sce_sys/param.json` reports `contentVersion` `01.000.009`).
+- Build ID: `f6e43e65-nuvio_1111-2348`.
+- Transfer and verification method:
+  - Closed the running `PPSA99996` process via PS5Upload `/api/app/close` (`app_id: 16408`) after `close.elf` timed out while waiting on exit (`NUVIO close: termination sent, process still present`).
+  - Verified `/data/homebrew/PPSA99996` had `274` of `274` matching file paths and `271` unchanged non-`eboot.bin` SHA-256 hashes against `build/build.json`.
+  - Backed up the prior `eboot.bin` (`48629988` bytes, SHA-256 `c873484622b2dad592df7ee2aa0ae079ae61a60d0b8dada4df6628aea94cbaa2`) via `control-5.elf` after creating `/data/homebrew/ps5-homebrew-dev`.
+  - Uploaded the three changed files (`sce_sys/param.json`, `webui/app.bundle.js`, `eboot.bin`) over PS5Upload HTTP API (`port 9180`), and saved `config/installed-build.json`.
+- Verified console hashes:
+  - `eboot.bin` via `control-5.elf`: `48847892` bytes, SHA-256 `625a97fbb60949427ad0be6b198ddc32cd9b95bb1d1fa14ac6bcb9c62ed90e28`
+  - `webui/app.bundle.js` via PS5Upload readback: `3875319` bytes, SHA-256 `7ad07f655807b14208365f9feef0f8441382a0cff193f76dfc2e18bf7c29cebd`
+  - `sce_sys/param.json` via PS5Upload readback: `915` bytes, SHA-256 `f9860efa19a61b7aeb46ae55610838832aed77e47d7103984085f314ad58c334`
+- Observed launch and ShadowMount state:
+  - `control-3.elf` returned `NUVIO running_big_app=-1` and `NUVIO launch_result=0x6018` (`PPSA99996` running as `app_id: 24600`, `pid: 1085`).
+  - `control-2.elf` reported `"installed":true`, `"mounted":true`, `"size_bytes":117131747`.
+  - `/data/nuvio/evo.log` startup lines recorded `EVO boot: BUILD f6e43e65-nuvio_1111-2348`, `bootstrap: promotion verified errno=0`, `server: listen ok port=8686`, `title-ui: response status=200`, and `page: route profileSelection`.
+- Observed Continue Watching Nuvio Sync verification:
+  - Console owner confirmed the Continue Watching Nuvio Sync behavior worked on the TV after launch.

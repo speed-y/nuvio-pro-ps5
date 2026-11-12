@@ -589,28 +589,8 @@ def patch_nuvio(nuvio):
 }""")
     # A watched mark must push the existing progress row as completed. A 100 ms
     # placeholder is dropped by isSyncableProgressItem, so the server keeps the
-    # half-played row and the next pull restores it.
-    replace(nuvio/'js/data/repository/watchProgressRepository.js',
-        """  async getProgressByContentId(contentId) {""",
-        """  async markStoredProgressWatched(contentId, videoId = null) {
-    const pid = activeProfileId();
-    const rows = WatchProgressStore.listForProfile(pid).filter((item) =>
-      matchesProgressTarget(item, contentId, videoId)
-    );
-    if (!rows.length) {
-      return false;
-    }
-    const completed = rows.map((item) => {
-      const stored = Number(item?.durationMs);
-      const durationMs = Number.isFinite(stored) && stored >= 60000 ? stored : 60000;
-      return { ...item, positionMs: durationMs, durationMs, updatedAt: Date.now() };
-    });
-    WatchProgressStore.upsertMany(completed, pid);
-    queueWatchProgressCloudSync(pid);
-    return true;
-  }
-
-  async getProgressByContentId(contentId) {""")
+    # half-played row and the next pull restores it. watch_sync supplies the
+    # shared markStoredProgressWatched implementation.
     for path, old in (
         (nuvio/'js/ui/screens/home/homeScreenMethods-09-toggle-continue-watching-watched.js',
          """      await watchProgressRepository.saveProgress({
@@ -858,6 +838,8 @@ export async function resolveExperienceRoute(profileId) {
     subtitle_handoff.patch_frontend(nuvio)
     import native_preferences
     native_preferences.patch_frontend(nuvio)
+    import watch_sync
+    watch_sync.patch_frontend(nuvio)
 
 
 def patch_controller_hook(source):
@@ -1202,10 +1184,11 @@ def patch_playback_progress(app):
 static inline void evo_webui_playback_ended(int played) { (void)played; }''')
     replace(app/'core/src/Application.cpp', '            double pos = pb->getPositionSeconds();',
         '''            double pos = pb->getPositionSeconds();
-            if (!pb->isScrubbing())
+            if (!pb->isScrubbing()) {
                 evo_webui_progress_sample(pos, pb->getDurationSeconds());
                 if (g_web_rep.frames % 600 == 0)
-                    EVO_LOGI("web", "progress sample position=%.3f duration=%.3f", pos, pb->getDurationSeconds());''')
+                    EVO_LOGI("web", "progress sample position=%.3f duration=%.3f", pos, pb->getDurationSeconds());
+            }''')
     playback = app/'core/src/services/PlaybackController.cpp'
     replace(playback, '#include "evo/services/PlaybackController.hpp"',
         '#include "evo/services/PlaybackController.hpp"\n#include "evo_webui.h"')

@@ -877,8 +877,12 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
     if os.uname().sysname == 'Darwin':
         zlib = 'ZLIB_ARCHIVE="${NUVIO_MAC_SDK}/usr/lib/libz.tbd"'
         s = s.replace('clang++ -std=c++20', '/usr/bin/clang++ -std=c++20')
+        s = s.replace('readelf -lW', 'llvm-readelf -lW')
     else:
         zlib = 'ZLIB_ARCHIVE="$(pkg-config --variable=libdir zlib)/libz.a"'
+    # Drain readelf output so an early awk exit does not trigger SIGPIPE under pipefail.
+    s = s.replace("awk '$1==\"LOAD\" && $7==\"R\" && $8 ~ /^0x/ {print $2; exit}'",
+                  "awk '!seen && $1==\"LOAD\" && $7==\"R\" && $8 ~ /^0x/ {print $2; seen=1}'")
     s = s.replace('eval "$("${SCRIPTS_DIR}/setup-native-app-deps.sh")"',
                   zlib)
     s = s.replace('-I "${ZLIB_INCLUDE}"', '')

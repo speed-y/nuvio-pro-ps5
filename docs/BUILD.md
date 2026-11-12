@@ -76,7 +76,7 @@ The builder never installs or updates them.
 | Tool | Recorded version | Purpose |
 |---|---|---|
 | Python | 3.13.7 | Build scripts, tests and file checks |
-| Node.js | 22.23.2 | Nuvio UI build and JavaScript tests |
+| Node.js | 22.23.5 | Nuvio UI build and JavaScript tests |
 | LLVM and lld | 23.1.2 | PS5 compilation and linking |
 | nasm | 3.02 | Assembles FFmpeg's x86-64 optimized routines |
 | Homebrew coreutils | Version not recorded | GNU tools for the upstream build |

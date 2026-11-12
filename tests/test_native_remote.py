@@ -77,13 +77,13 @@ struct AnimationManager {
 MOCKS = r'''
 static PS5_PadData controllerState{}, remoteState{};
 static bool controllerOk = true, remoteOk = true;
-static int opens = 0, gets = 0, remoteReads = 0, controllerReads = 0, closes = 0;
+static int opens = 0, getHandles = 0, remoteReads = 0, controllerReads = 0, closes = 0;
 static int openResult = 2, getResult = 2;
 extern "C" int scePadOpen(int user, int port, int index, void* arg) {
     assert(user == 0xff && port == 16 && index == 0 && !arg); ++opens; return openResult;
 }
 extern "C" int scePadGetHandle(int user, int port, int index) {
-    assert(user == 0xff && port == 16 && index == 0); ++gets; return getResult;
+    assert(user == 0xff && port == 16 && index == 0); ++getHandles; return getResult;
 }
 extern "C" int scePadClose(int handle) { assert(handle == 2); ++closes; return 0; }
 extern "C" int scePadReadState(int handle, PS5_PadData* state) {
@@ -251,11 +251,11 @@ void disconnect() {
 void acquisition() {
     Fixture f; openResult = -123;
     controllerState.buttons = Cross; f.frame(1000);
-    assert(playback.toggles == 1 && opens == 1 && gets == 0 && remoteReads == 0);
+    assert(playback.toggles == 1 && opens == 1 && getHandles == 0 && remoteReads == 0);
     f.frame(1999); assert(opens == 1);
     openResult = static_cast<int>(0x80920004u); getResult = -1; f.frame(2000);
-    assert(opens == 2 && gets == 1 && closes == 0);
-    getResult = 2; f.frame(3000); assert(opens == 3 && gets == 2 && remoteReads == 1);
+    assert(opens == 2 && getHandles == 1 && closes == 0);
+    getResult = 2; f.frame(3000); assert(opens == 3 && getHandles == 2 && remoteReads == 1);
     s_nuvioRemote.shutdown(); s_nuvioRemote.shutdown(); assert(closes == 0);
 }
 
