@@ -11,6 +11,9 @@ on:
       verification-key:
         type: string
         default: ''
+      release-tag:
+        type: string
+        default: ''
     outputs:
       release-tag:
         value: ${{ jobs.build.outputs.release-tag }}
@@ -84,9 +87,12 @@ jobs:
         id: package
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_TAG: ${{ inputs.release-tag }}
         run: |
           tag="manual-${GITHUB_SHA:0:12}"
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+          if [[ -n "$RELEASE_TAG" ]]; then
+            tag="$RELEASE_TAG"
+          elif [[ "$GITHUB_REF_TYPE" == tag ]]; then
             tag="$GITHUB_REF_NAME"
           elif [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
             tag="pr-${PR_NUMBER}-${GITHUB_SHA:0:12}"
