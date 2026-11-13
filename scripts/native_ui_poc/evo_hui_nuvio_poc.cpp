@@ -119,7 +119,7 @@ Rect NuvioPocScreen::focus_rect() const
         if (play_focused_)
         {
             const float text_x = content_x() + 48.0f + theme_.poster_w + 48.0f;
-            return {text_x, 220.0f + 470.0f, 220.0f, 64.0f};
+            return {text_x, 180.0f + 470.0f, 220.0f, 64.0f};
         }
         return {content_x(), 180.0f, 1920.0f - content_x() - 48.0f, 720.0f};
     }
