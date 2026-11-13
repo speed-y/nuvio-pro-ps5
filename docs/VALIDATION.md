@@ -5451,8 +5451,24 @@ Side-by-side image: `output/uiview/nuvio_vs_poc_side_by_side.png`.
 timeout remains in `test_home_hero` under this VM after a GUI session.
 That failure is not from the PoC sources.
 
-[PENDING] Owner review of the refreshed host side-by-side.
-Console install of `PPSA99995` remains pending.
-Confirm product `PPSA99996` and `/data/nuvio` remain untouched afterward.
-Judge Phase 1 identity (dark field, brand, hero, shelf, focus, purple accent),
-not pixel parity with browser Home.
+[PROVEN] Console install of `PPSA99995` and 4K native rendering.
+Product `PPSA99996` and `/data/nuvio` remain untouched.
+Owner TV inspection for controller focus feel remains open.
+
+## Native UI PoC side-by-side console deployment, 2026-11-13
+
+- Console execution status: `[PROVEN]` side-by-side install and 4K native rendering on retail PS5 firmware `12.70` (`PPSA99995`).
+- Target title identity: `PPSA99995` ("Nuvio Native PoC"). Data root: `/data/nuvio-poc`.
+- Local build: `f6e43e65-nuvio_1113-1206` (`eboot.bin` size `48858964`, SHA-256 `761193ad540b0476c4687a1f23e294316884e86ef35f7b473ccd08c4f1171eff`).
+- Procedure:
+  - Transferred 274 files (111.75 MiB) to `/data/homebrew/PPSA99995` over PS5Upload HTTP API (`port 9180`).
+  - Preserved production `/data/homebrew/PPSA99996` and `/data/nuvio`.
+  - Initialized `/data/nuvio-poc/poc_catalog.json` with sample catalogue data.
+  - Ran `control-1.elf` over port 9021. ShadowMount registered `/data/homebrew/PPSA99995` (`status: 0, changed: true`).
+  - Verified on-console raw binary with `control-5.elf`: `NUVIO eboot installed bytes=48858964 sha256=761193ad540b0476c4687a1f23e294316884e86ef35f7b473ccd08c4f1171eff`.
+- Observed execution:
+  - Title launched as process `pid 1350`, `app_id 49178` (`PPSA99995`, `1977.6 MiB` memory).
+  - `/data/nuvio-poc/evo.log` confirmed `EVO boot: BUILD f6e43e65-nuvio_1113-1206`.
+  - Hardware scanout confirmed native 4K display output (`3840x2160`, changed `99.36%`).
+  - Scanout confirmed top color values: `#111111` (left rail) and `#0d0d0d` (dark shelf background).
+  - Continuous 60 FPS presentation confirmed over 1200 frames with zero timeouts (`flip_waits=600, timeouts=0`).
