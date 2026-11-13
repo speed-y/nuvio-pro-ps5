@@ -47,7 +47,7 @@ flowchart LR
     Player --> Browser
 ```
 
-The two lifetimes matter. Search text shows the split. [VERIFIED] [scripts/ps5-text-input-session.c](../scripts/ps5-text-input-session.c) calls `sceWebBrowserDialogClose` before `evo_keyboard_open_native`. The owner confirmed that the keyboard appears without the browser on 12.70. Simultaneous browser and IME display failed in the recorded comparison. See [Architecture](ARCHITECTURE.md#controller-and-screen-state).
+The two lifetimes matter. Search text shows the split. Earlier native IME prototypes used a browser-close state machine before Nuvio moved to in-browser keyboard entry. Simultaneous browser and IME display failed in the recorded comparison. See [Architecture](ARCHITECTURE.md#controller-and-screen-state) and [scripts/ps5-text-input.js](../scripts/ps5-text-input.js).
 
 [VERIFIED] The product title identity is `PPSA99996` in `sce_sys/param.json` on
 `main`. That file sets the name, category, and content version. It does not
@@ -120,8 +120,8 @@ This port uses the PS5 payload SDK v0.43 and pacbrew target libraries. It does n
 
 | API | Evidence | Role |
 |---|---|---|
-| `sceWebBrowserDialog*` | [scripts/ps5-text-input-session.c](../scripts/ps5-text-input-session.c) | Opens the system browser |
-| `sceImeDialog*` | Same file and [scripts/polish.py](../scripts/polish.py) | System keyboard |
+| `sceWebBrowserDialog*` | [scripts/build.py](../scripts/build.py) | Opens the system browser |
+| `sceImeDialog*` | [scripts/polish.py](../scripts/polish.py) | System keyboard |
 | `scePadOpen`, `scePadReadState`, `scePadClose` | [scripts/native_remote.py](../scripts/native_remote.py) | DualSense and remote input |
 | `sceVideodec2` | [Architecture](ARCHITECTURE.md) | Hardware video decode |
 | `sceAgc` | Pinned EVO `docs/ui/hui-kit.md` | UI and playback presentation |
@@ -419,7 +419,7 @@ Repository files:
 - [scripts/ps5-navigation.js](../scripts/ps5-navigation.js)
 - [scripts/ps5-general.js](../scripts/ps5-general.js)
 - [scripts/ps5-general-hui.cpp](../scripts/ps5-general-hui.cpp)
-- [scripts/ps5-text-input-session.c](../scripts/ps5-text-input-session.c)
+- [scripts/ps5-text-input.js](../scripts/ps5-text-input.js)
 - [scripts/native_remote.py](../scripts/native_remote.py)
 - [docs/NATIVE_UI_POC.md](NATIVE_UI_POC.md)
 - [scripts/native_ui_poc/](../scripts/native_ui_poc/)
