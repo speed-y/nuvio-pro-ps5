@@ -5369,3 +5369,28 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - `make build` passed. `eboot.bin`: `d30203d064322aa567dfcc8d5658b4a1ccb4bb53938784d7bce586e67f6fc4b8` (`48635284` bytes), before the version bump in the same PR.
 - Pending (`[UNKNOWN]`):
   - Startup from `/mnt/ext1/homebrew` and from a USB drive on a console.
+
+## Nuvio TV 1.4.1 integration, 2026-11-13
+
+- Status: `[TESTED-ON-CONSOLE]`.
+- Target: Retail PS5, firmware 12.70, ELF loader on port 9021, PS5Upload HTTP on port 9180.
+- Artifacts:
+  - `eboot.bin`: `6a610a22e14d762da470415297f8f514c4b964c5fefdef458636941a641b8bd5` (48,853,188 bytes).
+  - `webui/app.bundle.js`: `639cdf2f120044565271826323f1c8e0dbd99d844ec96c48d461443bb880fe7b` (3,902,709 bytes).
+  - `webui/appinfo.json`: `b618317ea0a568b111409889c57f02252c381cd16aa789647f653c4d446dbbd5` (802 bytes).
+  - `webui/css/bundle.css`: `45f02f93503ff59ad6f802d06e39dd80f6c4a0311c1a6d678af4c6dff684043f` (604,678 bytes).
+  - Runtime: `libc.prx` `e6ff45d16adf687855cc3b33b0c8a4132b6504360b221e0a34c7e99fb3ba0036`.
+  - Upstream pins: `nuvio-tv-source` `1.4.1` (`f5c673886965b0030b497e54ea5d60b4ed0a1870`), `nuvio-official-tv-config` `1.4.1`.
+- Changes:
+  - Replaced Nuvio TV Smart source pin with version 1.4.1 in `deps.lock`.
+  - Updated documentation references in `docs/ARCHITECTURE.md` and `docs/SOURCES.md`.
+  - Pinned patches from `scripts/polish.py` and `scripts/watch_sync.py` apply cleanly to upstream 1.4.1.
+- Console verification results:
+  - Closed previous instance cleanly via `/api/app/close`.
+  - Backed up prior `eboot.bin` via `control-5.elf`.
+  - Uploaded changed webui assets and `eboot.bin` over PS5Upload HTTP API.
+  - Read back on-console webui assets and confirmed matching SHA-256 digests.
+  - Ran `control-5.elf` over port 9021. The helper confirmed that the installed `eboot.bin` hash matches the receipt.
+  - Launched title via `control-3.elf` (`pid 1326`, `app_id 16410`).
+  - Confirmed title mounted and active via `control-2.elf`.
+  - Read `/data/nuvio/evo.log`. The log confirmed promotion, loopback server listening on 8686, route `profileSelection`, and user navigation to `home`.

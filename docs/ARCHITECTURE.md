@@ -56,7 +56,7 @@ The old upstream identity is `PPSA99997`. Historical evidence retains that ident
 patches show changes to upstream files. The adapters also copy the loading
 artwork and the RML assets. The patches alone do not perform the full build.
 
-The browser UI uses Nuvio TV 1.4.0. EVO remains pinned to v0.13.5 with the existing native patches.
+The browser UI uses Nuvio TV 1.4.1. EVO remains pinned to v0.13.5 with the existing native patches.
 Upstream now supplies nullable collection-rating normalization, manual source selection and series-wide stream preference lookup.
 PS5 adapters retain focused stream identity during incremental loading and defer preference writes until native playback succeeds.
 The adapters disable the new stream-link cache on PS5. Stream reuse still matches fresh addon results instead of storing signed URLs or headers.
