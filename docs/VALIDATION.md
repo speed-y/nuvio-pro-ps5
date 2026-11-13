@@ -5483,7 +5483,7 @@ Owner TV inspection for controller focus feel remains open.
   - Implemented card progress bar rendering on the Continue Watching shelf.
   - Added hero metadata pill badges: format (`4K HDR`), rating (`★ 7.8`), duration, and genres.
   - Added hero action buttons (`Watch Now` and `Details`) focusable by navigating up from shelf zero.
-  - Integrated 12 Nuvio theme presets extracted from upstream client palettes (Arctic Blue, Gold, Jade, Rose Gold, Graphite, Violet, Ocean, Crimson, Emerald, Amber, Rose, and Default Dark).
+  - Integrated 12 Nuvio theme presets extracted from upstream client palettes. Themes include Arctic Blue, Gold, Jade, Rose Gold, Graphite, Violet, and Ocean.
   - Wired controller Square button to cycle theme presets live during execution.
 - Verification:
   - `make check` passed all 184 tests.
@@ -5491,3 +5491,23 @@ Owner TV inspection for controller focus feel remains open.
   - Verified on-console binary hash via `control-5.elf`: `bytes=48932052 sha256=1c8536b152b5a74294e759cd3af498d86fc1ee97edd35d527c29f99698419418`.
   - Process executed as `pid 1363`, `app_id 16410` (`1977.7 MiB` memory, 116 threads).
   - Hardware scanout confirmed 4K (`3840x2160`) at 60 FPS (`flip_waits=600, timeouts=0`) with top palette color `#0b0e14` (Arctic Blue theme).
+
+## Native UI PoC hero alignment, multi-shelf, and playback update, 2026-11-13
+
+- Console execution status: `[PROVEN]` Watch Now focus alignment, multi-shelf catalogue, and playback handoff on retail PS5 firmware `12.70` (`PPSA99995`).
+- Target title identity: `PPSA99995` ("Nuvio Native PoC"). Data root: `/data/nuvio-poc`.
+- Local build: `f6e43e65-nuvio_1113-1310` (`eboot.bin` size `48931988`, SHA-256 `09880f5472c00dc28b888d75cbea5bee03e611de43c5e0a2d5e5433c97fb1ca1`).
+- Changes delivered:
+  - Aligned hero button focus rectangle with button render position at vertical coordinate `390.0f - scroll_y_`.
+  - Matched focus ring corner radius to the 24-pixel button boundary.
+  - Replaced static blue gradient block with dynamic backdrop art matching focused cards.
+  - Added left and bottom dark gradient vignettes matching upstream Nuvio TV layout.
+  - Removed obsolete single-shelf catalogue path to load full three-shelf catalogue.
+  - Bound sample video clip to playable action to enable instant playback handoff.
+- Verification:
+  - `make check` passed all 184 tests.
+  - Uploaded updated `eboot.bin` to `/data/homebrew/PPSA99995` via PS5Upload HTTP API.
+  - Verified on-console binary size `48931988` and SHA-256 `09880f5472c00dc28b888d75cbea5bee03e611de43c5e0a2d5e5433c97fb1ca1`.
+  - Process executed as `pid 1368`, `app_id 32794` (`1978.0 MiB` memory, 116 threads).
+  - Hardware scanout confirmed 4K (`3840x2160`) at 60 FPS (`flip_waits=600, timeouts=0`).
+  - Scanout showed clean dark background `#0b0e14` without bright blue artifacts.

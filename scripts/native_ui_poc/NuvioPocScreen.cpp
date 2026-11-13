@@ -261,6 +261,8 @@ int parse_simple_catalog(const std::string &json, std::vector<NuvioPocScreen::Ca
         }
         if (item.title.empty())
             continue;
+        if (item.play_url.empty())
+            item.play_url = "/data/nuvio-poc/poc_sample.mp4";
         item.poster_w = 221;
         item.poster_h = 339;
         const uint32_t a = 0x102030u + static_cast<uint32_t>(custom_shelf.items.size()) * 0x1020u;
@@ -311,22 +313,8 @@ NuvioPocScreen::NuvioPocScreen() : StatefulScreen("NuvioPocScreen")
 {
     theme_preset_ = static_cast<int>(NUVIO_THEME_ARCTIC_BLUE);
     theme_ = nuvio_poc_get_theme_preset(static_cast<nuvio_theme_preset_t>(theme_preset_));
-    hero_w_ = 1280;
-    hero_h_ = 720;
-    hero_art_.assign(static_cast<std::size_t>(hero_w_ * hero_h_), 0);
-    {
-        auto full = makePoster(0x0b1424, 0x3185f5, 0.2f);
-        for (int y = 0; y < hero_h_; ++y)
-        {
-            for (int x = 0; x < hero_w_; ++x)
-            {
-                const int sx = x * 221 / hero_w_;
-                const int sy = y * 339 / hero_h_;
-                hero_art_[static_cast<std::size_t>(y * hero_w_ + x)] =
-                    full[static_cast<std::size_t>(sy * 221 + sx)];
-            }
-        }
-    }
+    hero_w_ = 0;
+    hero_h_ = 0;
     status_ = "Loading shelves…";
 }
 
@@ -373,18 +361,15 @@ void NuvioPocScreen::startMetadataFetch()
         int error = 0;
 
         std::string body;
-        const char *paths[] = {"/data/nuvio-poc/poc_catalog.json", "/app0/assets/nuvio_poc_catalog.json"};
+        const char *user_path = "/data/nuvio-poc/poc_catalog.json";
         int got = -1;
-        for (const char *path : paths)
+        if (read_file(user_path, &body) == 0)
         {
-            if (read_file(path, &body) == 0)
+            got = parse_simple_catalog(body, &loaded);
+            if (got == 0)
+                status = "Custom shelves";
+            else
             {
-                got = parse_simple_catalog(body, &loaded);
-                if (got == 0)
-                {
-                    status = "Loaded catalogue";
-                    break;
-                }
                 error = 1;
                 status = "Catalogue parse failed";
             }
@@ -393,7 +378,7 @@ void NuvioPocScreen::startMetadataFetch()
         {
             fill_builtin(&loaded);
             if (!error)
-                status = "Home";
+                status = "";
         }
 
         {
@@ -529,18 +514,7 @@ void NuvioPocScreen::playFocused()
 
     std::string url = it.play_url;
     if (url.empty())
-    {
-        if (access("/data/nuvio-poc/poc_sample.mp4", R_OK) == 0)
-            url = "/data/nuvio-poc/poc_sample.mp4";
-        else if (access("/data/nuvio-poc/poc_sample.mkv", R_OK) == 0)
-            url = "/data/nuvio-poc/poc_sample.mkv";
-    }
-    if (url.empty())
-    {
-        status_ = "No playable URL for this card";
-        status_is_error_ = 1;
-        return;
-    }
+        url = "/data/nuvio-poc/poc_sample.mp4";
 
     detail_open_ = 0;
     play_focused_ = 0;
@@ -624,6 +598,12 @@ void NuvioPocScreen::fillParams(nuvio_poc_params_t *params) const
             params->hero_year = hero.year.c_str();
             params->hero_duration = hero.duration.c_str();
             params->hero_genres = hero.genres.c_str();
+            if (!hero.poster.empty() && hero.poster_w > 0 && hero.poster_h > 0)
+            {
+                params->hero_art = hero.poster.data();
+                params->hero_art_w = hero.poster_w;
+                params->hero_art_h = hero.poster_h;
+            }
         }
     }
 

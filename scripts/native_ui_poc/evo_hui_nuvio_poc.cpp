@@ -194,7 +194,7 @@ Rect NuvioPocScreen::focus_rect() const
     }
     if (focused_area_ == 1)
     {
-        const float btn_y = 410.0f - scroll_y_;
+        const float btn_y = 390.0f - scroll_y_;
         if (hero_button_focus_ == 0)
             return {content_x() + 8.0f, btn_y, 180.0f, 48.0f};
         else
@@ -214,7 +214,9 @@ std::uint32_t NuvioPocScreen::art_texture(const Context &ctx, const std::uint32_
 {
     if (!art || w <= 0 || h <= 0)
         return 0;
-    return ctx.textures.pixels(art, w, h, static_cast<std::uint64_t>(std::hash<std::string>{}(tag)));
+    const std::uint64_t hash = static_cast<std::uint64_t>(std::hash<std::string>{}(tag)) ^
+                               reinterpret_cast<std::uintptr_t>(art);
+    return ctx.textures.pixels(art, w, h, hash);
 }
 
 void NuvioPocScreen::draw_sidebar(DrawList &list, const Context &ctx) const
@@ -256,17 +258,25 @@ void NuvioPocScreen::draw_hero(DrawList &list, const Context &ctx) const
     list.push_opacity(hero_alpha);
 
     /* Subtle backdrop art on the right half, fading cleanly into pure dark on the left and bottom */
-    const Rect hero_rect{740.0f, 0.0f, 1180.0f, 560.0f};
+    const Rect hero_rect{820.0f, 0.0f, 1100.0f, 560.0f};
     if (hero_art_ && hero_art_w_ > 0 && hero_art_h_ > 0)
     {
         const std::uint32_t tex = art_texture(ctx, hero_art_, hero_art_w_, hero_art_h_, "poc-hero");
         if (tex)
-            list.image(tex, hero_rect, ::hui::gfx::kFullUv, Color::rgb(0xffffff, 0.65f));
+            list.image(tex, hero_rect, ::hui::gfx::kFullUv, Color::rgb(0xffffff, 0.28f));
     }
+    else
+    {
+        /* Subtle ambient glow in accent color at 72% 18% matching Nuvio TV placeholder */
+        list.glow({1380.0f, 100.0f, 20.0f, 20.0f}, 10.0f, 180.0f, accent.with_alpha(0.18f));
+    }
+
     /* Left dark fade over backdrop so text is crystal clear */
-    list.gradient_rect_h({640.0f, 0.0f, 480.0f, 560.0f}, 0, hex(theme_.bg_top, 1.0f), hex(theme_.bg_top, 0.0f));
-    /* Bottom fade into the shelf area */
-    list.gradient_rect({740.0f, 380.0f, 1180.0f, 180.0f}, 0, hex(theme_.bg_bottom, 0.0f), hex(theme_.bg_bottom, 1.0f));
+    list.gradient_rect_h({left, 0.0f, 960.0f, 560.0f}, 0, hex(theme_.bg_top, 1.0f), hex(theme_.bg_top, 0.0f));
+    list.rounded_rect({0.0f, 0.0f, left, 560.0f}, 0, hex(theme_.bg_top, 1.0f));
+
+    /* Bottom fade into the shelf area across entire screen width */
+    list.gradient_rect({0.0f, 360.0f, 1920.0f, 200.0f}, 0, hex(theme_.bg_bottom, 0.0f), hex(theme_.bg_bottom, 1.0f));
 
     /* Brand mark & Theme name */
     ui::text(list, fonts.semibold, brand_, left + 8.0f, 56.0f, 22.0f, text);
@@ -335,7 +345,7 @@ void NuvioPocScreen::draw_hero(DrawList &list, const Context &ctx) const
         ui::paragraph(list, fonts.regular, overview, left + 8.0f, 260.0f, 17.0f, 760.0f, 25.0f, muted, 4);
 
     /* Hero Action Buttons */
-    const float btn_y = 390.0f;
+    const float btn_y = 390.0f - scroll_y_;
     const Rect btn_play{left + 8.0f, btn_y, 180.0f, 48.0f};
     const Rect btn_details{left + 8.0f + 196.0f, btn_y, 150.0f, 48.0f};
 
@@ -441,9 +451,10 @@ void NuvioPocScreen::draw_shelves(DrawList &list, const Context &ctx) const
         const Rect ring = ring_.value();
         if (ring.w > 0.0f)
         {
-            list.bordered_rect(ring.inset(-theme_.focus_ring), theme_.poster_radius + theme_.focus_ring,
+            const float radius = (focused_area_ == 1) ? 24.0f : theme_.poster_radius;
+            list.bordered_rect(ring.inset(-theme_.focus_ring), radius + theme_.focus_ring,
                                Color::rgb(0x000000, 0.0f), theme_.focus_ring, hex(theme_.focus_color, 0.95f));
-            list.glow(ring, theme_.poster_radius, 12.0f, hex(theme_.focus_color, 0.35f));
+            list.glow(ring, radius, 12.0f, hex(theme_.focus_color, 0.35f));
         }
     }
 }
