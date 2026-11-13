@@ -9,7 +9,7 @@ Builds after 0.2.0-alpha.4 replace the splash text with the reason startup stopp
 | Waiting for the jailbreak to unlock storage | Run etaHEN or another jailbreak daemon. Nuvio continues when storage unlocks. |
 | No ELF loader answered on port 9021 | Start the jailbreak's ELF loader, then open Nuvio again. |
 | The ELF loader did not start the Nuvio helper | Run the jailbreak again, then open Nuvio again. |
-| Nuvio Pro is missing its webui folder | Place the `webui/` folder beside `eboot.bin` on internal or USB storage. |
+| Nuvio Pro is missing its webui folder | Put `PPSA99996`, with `webui/` beside `eboot.bin`, in a folder ShadowMountPlus scans by default, such as `/data/homebrew` or `/mnt/ext1/homebrew` on the M.2 drive. |
 | The PS5 browser did not start, open or load the page | Close Nuvio and open it again. Then collect `/data/nuvio/evo.log`. |
 
 The first message appears after 8 seconds without storage access. Without that access, `/data/nuvio` does not exist and the title writes no log.

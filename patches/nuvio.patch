@@ -411,7 +411,7 @@
  import { AuthManager } from "./core/auth/authManager.js";
  import { AuthState } from "./core/auth/authState.js";
  import { DeviceSessionRegistration } from "./core/auth/deviceSessionRegistration.js";
-@@ -112,6 +122,763 @@
+@@ -114,6 +124,763 @@
    "serverConnection"
  ]);
  let hasSelectedProfileThisSession = false;
@@ -1175,7 +1175,7 @@
  let appShellRendered = false;
  let updateCheckStarted = false;
  
-@@ -359,6 +1126,11 @@
+@@ -361,6 +1128,11 @@
  }
  
  async function shouldShowProfileSelection() {
@@ -1187,7 +1187,7 @@
    const profiles = await ProfileManager.getProfiles();
    const activeProfileId = ProfileManager.getActiveProfileId();
    const cachedPinStates = ProfileSyncService.getCachedProfileLockStates();
-@@ -383,7 +1155,7 @@
+@@ -385,7 +1157,7 @@
    }
    const activeProfileHasPin = hasProfilePin(pinStates, activeProfileId);
  
@@ -1196,7 +1196,7 @@
      return { show: false, pinStates, liveStateKnown };
    }
  
-@@ -433,13 +1205,27 @@
+@@ -435,13 +1207,27 @@
    // The startup sync fans out to about ten remote surfaces. Home paints from
    // its local cache first and refreshes when the pull completes, so starting
    // the pull after that paint keeps the first screen responsive.
@@ -1231,7 +1231,7 @@
    const storedResumeRoute =
      restoreWebOsRoute && typeof Router.consumeWebOsResumeRoute === "function"
        ? Router.consumeWebOsResumeRoute()
-@@ -823,8 +1609,10 @@
+@@ -825,8 +1611,10 @@
          // Honor "remember last profile" for guests too: skip the picker and go
          // straight in with the last profile (guests have no PIN).
          if (
@@ -2316,7 +2316,7 @@
            this.requestBackgroundRender();
 --- a/js/ui/screens/home/homeDomUpdate.js
 +++ b/js/ui/screens/home/homeDomUpdate.js
-@@ -240,6 +240,13 @@
+@@ -246,6 +246,13 @@
    source.innerHTML = markup;
    const canUpdate = incremental && hasMountedHomeDom(container);
    if (canUpdate) {
@@ -2972,7 +2972,7 @@
        }
        this.sidebarExpanded = false;
        this.focusZone = "content";
-@@ -230,6 +239,7 @@
+@@ -231,6 +240,7 @@
        // completes. Paint the Smart TV shell now so the native input and sidebar
        // remain usable while the row request runs in the background.
        this.render();
@@ -3032,7 +3032,7 @@
                    data-action="searchInput"
 --- a/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
 +++ b/js/ui/screens/search/searchScreenMethods-06-activate-action-node.js
-@@ -298,7 +298,12 @@
+@@ -317,7 +317,12 @@
        }
      },
      consumeBackRequest() {

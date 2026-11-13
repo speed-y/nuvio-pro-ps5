@@ -1,6 +1,7 @@
 /* Serve packaged Nuvio assets through the native title's existing listener.
  * SPDX-License-Identifier: GPL-3.0-or-later */
 #include "local_ui.h"
+#include "webui_roots.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -124,26 +125,22 @@ const char *nuvio_local_ui_root(void)
     }
 #endif
 
-    static const char * const candidates[] = {
-        "/data/homebrew/PPSA99996/webui",
-        "/mnt/usb0/homebrew/PPSA99996/webui",
-        "/mnt/usb0/PPSA99996/webui",
-        "/mnt/usb1/homebrew/PPSA99996/webui",
-        "/mnt/usb1/PPSA99996/webui",
-        "/mnt/usb2/homebrew/PPSA99996/webui",
-        "/mnt/usb2/PPSA99996/webui",
-        "/mnt/usb3/homebrew/PPSA99996/webui",
-        "/mnt/usb3/PPSA99996/webui",
-        "/mnt/ext0/app/PPSA99996/webui",
-        "/mnt/ext0/homebrew/PPSA99996/webui",
-        "/mnt/ext0/PPSA99996/webui",
+    for (size_t i = 0; nuvio_webui_scan_roots[i]; i++) {
+        char candidate[LOCAL_PATH_MAX];
+        int n = snprintf(candidate, sizeof candidate, "%s/PPSA99996/webui", nuvio_webui_scan_roots[i]);
+        if (n > 0 && (size_t)n < sizeof candidate && local_file_exists(candidate, "index.html")) {
+            snprintf(s_root, sizeof s_root, "%s", candidate);
+            return s_root;
+        }
+    }
+    static const char * const sandbox[] = {
         "/mnt/sandbox/PPSA99996_000/app0/webui",
         "/app0/webui",
         NULL
     };
-    for (size_t i = 0; candidates[i]; i++) {
-        if (local_file_exists(candidates[i], "index.html")) {
-            snprintf(s_root, sizeof s_root, "%s", candidates[i]);
+    for (size_t i = 0; sandbox[i]; i++) {
+        if (local_file_exists(sandbox[i], "index.html")) {
+            snprintf(s_root, sizeof s_root, "%s", sandbox[i]);
             return s_root;
         }
     }

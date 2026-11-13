@@ -838,7 +838,7 @@ static void nuvio_fail(const char *title, const char *detail)
          '        if (webui_fd < 0) {\n'
          '            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);\n'
          '            nuvio_fail("Nuvio Pro is missing its webui folder",\n'
-         '                       "Place webui/ beside eboot.bin on internal or USB storage.");\n'
+         '                       "Install PPSA99996 in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");\n'
          '            s_state = P_OFF;\n'
          '            return;\n'
          '        }\n'
@@ -935,7 +935,7 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
         provider = app/'addons/src/provider_nuvio.c'
         web_source, provider_source = title_ui_sources(web_source, provider.read_text())
         provider.write_text(provider_source)
-        for name in ('local_ui.c', 'local_ui.h'):
+        for name in ('local_ui.c', 'local_ui.h', 'webui_roots.h'):
             shutil.copyfile(ROOT/'scripts'/name, app/'src'/name)
         # Reuse the payload server's path and MIME helpers. Its listener is
         # never called by the title; requests use EVO's existing connection.

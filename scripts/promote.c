@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "app_info.h"
+#include "webui_roots.h"
 
 /* SDK v0.43's runtime initializes firmware-specific support before main and
  * refuses unknown versions. Do not add a second firmware allowlist here.
@@ -83,7 +84,8 @@ static int promote_once(int quiet) {
     }
     usleep((useconds_t)NUVIO_PROMOTE_DELAY_MS * 1000);
     printf("NUVIO promote pid=%d previous_auth=%016lx caps=",(int)target,(unsigned long)auth);
-    for(size_t i=0;i<16;i++) printf("%02x",saved[i]); puts("");
+    for(size_t i=0;i<16;i++) { printf("%02x",saved[i]); }
+    puts("");
     if(kernel_set_ucred_caps(target,priv) || kernel_set_ucred_authid(target,privileged) ||
        kernel_get_ucred_caps(target,check) || memcmp(check,priv,16) ||
        kernel_get_ucred_authid(target)!=privileged) {
@@ -110,22 +112,13 @@ static void ensure_conf(void) {
 }
 
 static const char *nuvio_ui_detect_root(void) {
-    static const char *candidates[] = {
-        "/data/homebrew/PPSA99996/webui",
-        "/mnt/usb0/homebrew/PPSA99996/webui",
-        "/mnt/usb0/PPSA99996/webui",
-        "/mnt/usb1/homebrew/PPSA99996/webui",
-        "/mnt/usb1/PPSA99996/webui",
-        "/mnt/ext0/app/PPSA99996/webui",
-        "/mnt/ext0/homebrew/PPSA99996/webui",
-        "/mnt/ext0/PPSA99996/webui",
-        NULL
-    };
-    for(int i = 0; candidates[i]; i++) {
+    static char root[512];
+    for(int i = 0; nuvio_webui_scan_roots[i]; i++) {
         char index[512];
-        snprintf(index, sizeof(index), "%s/index.html", candidates[i]);
+        snprintf(root, sizeof(root), "%s/PPSA99996/webui", nuvio_webui_scan_roots[i]);
+        snprintf(index, sizeof(index), "%s/index.html", root);
         int fd = open(index, O_RDONLY);
-        if(fd >= 0) { close(fd); return candidates[i]; }
+        if(fd >= 0) { close(fd); return root; }
     }
     return NUVIO_UI_ROOT;
 }
