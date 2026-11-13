@@ -14,9 +14,11 @@ The PS5 Homebrew Store catalog accepts pre-release tags. Use a fixed tag such as
 
 ## PR test releases
 
-Pull requests within the same repository publish an experimental GitHub prerelease after host checks and a new native build pass.
+Pull requests within the same repository publish an experimental GitHub draft prerelease after host checks and a new native build pass.
 External fork pull requests cannot publish releases.
-Find the download in the repository's Releases page or the publishing job's summary.
+Draft releases remain private to repository collaborators.
+They stay hidden from the public and store scrapers.
+Find the download in the repository's Releases page when signed in, or in the publishing job's summary.
 
 Checks run for pull requests and pushes to `main`, without duplicate feature-branch push runs.
 New commits cancel superseded check runs. All commits still run host, documentation and privacy checks.
@@ -27,7 +29,7 @@ A missing record requires a build. Cancelling an unfinished build cannot create 
 The fixed tag is `pr-<number>-<tested-merge-commit-prefix>`.
 The release records the PR head and tested merge commit.
 It attaches the existing CI packages without rebuilding them, verifies their checksums, and does not replace earlier release assets on reruns.
-These releases are not marked latest.
+These releases publish as drafts and are not marked latest.
 They retain the app's content version and are test candidates, not store updates.
 The release notes explicitly state that console validation remains pending.
 The publishing job renames their store zip to `PPSA99996-pr-test.zip`, so the store catalog does not offer them.
