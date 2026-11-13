@@ -5472,3 +5472,22 @@ Owner TV inspection for controller focus feel remains open.
   - Hardware scanout confirmed native 4K display output (`3840x2160`, changed `99.36%`).
   - Scanout confirmed top color values: `#111111` (left rail) and `#0d0d0d` (dark shelf background).
   - Continuous 60 FPS presentation confirmed over 1200 frames with zero timeouts (`flip_waits=600, timeouts=0`).
+
+## Native UI PoC multi-shelf and theme presets update, 2026-11-13
+
+- Console execution status: `[PROVEN]` multi-shelf layout, live theme switching, and metadata pills on retail PS5 firmware `12.70` (`PPSA99995`).
+- Target title identity: `PPSA99995` ("Nuvio Native PoC"). Data root: `/data/nuvio-poc`.
+- Local build: `f6e43e65-nuvio_1113-1249` (`eboot.bin` size `48932052`, SHA-256 `1c8536b152b5a74294e759cd3af498d86fc1ee97edd35d527c29f99698419418`).
+- Changes delivered:
+  - Added multi-shelf data model and vertical camera scroll across three shelves: Continue Watching, Popular Movies, and Trending Series.
+  - Implemented card progress bar rendering on the Continue Watching shelf.
+  - Added hero metadata pill badges: format (`4K HDR`), rating (`★ 7.8`), duration, and genres.
+  - Added hero action buttons (`Watch Now` and `Details`) focusable by navigating up from shelf zero.
+  - Integrated 12 Nuvio theme presets extracted from upstream client palettes (Arctic Blue, Gold, Jade, Rose Gold, Graphite, Violet, Ocean, Crimson, Emerald, Amber, Rose, and Default Dark).
+  - Wired controller Square button to cycle theme presets live during execution.
+- Verification:
+  - `make check` passed all 184 tests.
+  - Uploaded updated `eboot.bin` to `/data/homebrew/PPSA99995` via PS5Upload HTTP API.
+  - Verified on-console binary hash via `control-5.elf`: `bytes=48932052 sha256=1c8536b152b5a74294e759cd3af498d86fc1ee97edd35d527c29f99698419418`.
+  - Process executed as `pid 1363`, `app_id 16410` (`1977.7 MiB` memory, 116 threads).
+  - Hardware scanout confirmed 4K (`3840x2160`) at 60 FPS (`flip_waits=600, timeouts=0`) with top palette color `#0b0e14` (Arctic Blue theme).
