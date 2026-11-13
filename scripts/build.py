@@ -841,7 +841,7 @@ static void nuvio_fail(const char *title, const char *detail)
          '        if (webui_fd < 0) {\n'
          '            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);\n'
          '            nuvio_fail("Nuvio Pro is missing its webui folder",\n'
-         '                       "Install PPSA99996 in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");\n'
+         f'                       "Install {TITLE} in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");\n'
          '            s_state = P_OFF;\n'
          '            return;\n'
          '        }\n'

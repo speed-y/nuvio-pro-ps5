@@ -115,7 +115,7 @@ static const char *nuvio_ui_detect_root(void) {
     static char root[512];
     for(int i = 0; nuvio_webui_scan_roots[i]; i++) {
         char index[512];
-        snprintf(root, sizeof(root), "%s/PPSA99996/webui", nuvio_webui_scan_roots[i]);
+        snprintf(root, sizeof(root), "%s/PPSA99995/webui", nuvio_webui_scan_roots[i]);
         snprintf(index, sizeof(index), "%s/index.html", root);
         int fd = open(index, O_RDONLY);
         if(fd >= 0) { close(fd); return root; }

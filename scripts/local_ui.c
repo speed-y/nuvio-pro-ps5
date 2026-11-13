@@ -127,14 +127,14 @@ const char *nuvio_local_ui_root(void)
 
     for (size_t i = 0; nuvio_webui_scan_roots[i]; i++) {
         char candidate[LOCAL_PATH_MAX];
-        int n = snprintf(candidate, sizeof candidate, "%s/PPSA99996/webui", nuvio_webui_scan_roots[i]);
+        int n = snprintf(candidate, sizeof candidate, "%s/PPSA99995/webui", nuvio_webui_scan_roots[i]);
         if (n > 0 && (size_t)n < sizeof candidate && local_file_exists(candidate, "index.html")) {
             snprintf(s_root, sizeof s_root, "%s", candidate);
             return s_root;
         }
     }
     static const char * const sandbox[] = {
-        "/mnt/sandbox/PPSA99996_000/app0/webui",
+        "/mnt/sandbox/PPSA99995_000/app0/webui",
         "/app0/webui",
         NULL
     };
@@ -145,7 +145,7 @@ const char *nuvio_local_ui_root(void)
         }
     }
 
-    return "/data/homebrew/PPSA99996/webui";
+    return "/data/homebrew/PPSA99995/webui";
 }
 
 int nuvio_local_ui_send(int fd, const char *root, const char *method,
