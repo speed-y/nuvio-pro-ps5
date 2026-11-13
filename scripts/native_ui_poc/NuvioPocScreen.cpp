@@ -391,7 +391,7 @@ void NuvioPocScreen::fillParams(nuvio_poc_params_t *params) const
         params->hero_detail = status_.c_str();
         params->hero_overview = "";
     }
-    params->item_count = std::min(static_cast<int>(items_.size()), NUVIO_POC_MAX_ITEMS);
+    params->item_count = std::min(static_cast<int>(items_.size()), static_cast<int>(NUVIO_POC_MAX_ITEMS));
     for (int i = 0; i < params->item_count; ++i)
     {
         const CatalogItem &item = items_[static_cast<std::size_t>(i)];

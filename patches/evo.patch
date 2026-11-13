@@ -15,7 +15,7 @@
   *            link resolution, progress reporting. C, in-binary, trusted.
   *   look   - the provider's OWN .rml/.rcss bundle, fetched at runtime over
 - *            HTTP and cached under /data/evoplayer/providers/<id>/. Markup and
-+ *            HTTP and cached under /data/nuvio/providers/<id>/. Markup and
++ *            HTTP and cached under /data/nuvio-poc/providers/<id>/. Markup and
   *            styling only; see evo_provider_bundle.h.
   *
   * The logic half publishes a data model. The downloaded markup binds to it by
@@ -24,7 +24,7 @@
  #define EVO_PROVIDER_API_VERSION 1
  
 -/* A provider id is a directory name under /data/evoplayer/providers/, so it is
-+/* A provider id is a directory name under /data/nuvio/providers/, so it is
++/* A provider id is a directory name under /data/nuvio-poc/providers/, so it is
   * deliberately narrow: lowercase ASCII, digits, '-' and '_'. Validated by
   * evo_provider_id_valid() rather than trusted. */
  #define EVO_PROVIDER_MAX_ID       24
@@ -35,7 +35,7 @@
   * A bundle is the "look" half of a provider (see evo_provider.h): the markup
   * and styling the service authors for itself, fetched over HTTP at runtime and
 - * cached under /data/evoplayer/providers/<id>/. Emby looks like Emby; IPTV is
-+ * cached under /data/nuvio/providers/<id>/. Emby looks like Emby; IPTV is
++ * cached under /data/nuvio-poc/providers/<id>/. Emby looks like Emby; IPTV is
   * a channel grid. EVO renders it and supplies the data; it does not design it.
   *
   * WHY THIS IS SAFE TO DOWNLOAD
@@ -44,7 +44,7 @@
  /*
   * The cache directory for `provider_id`, with no trailing slash:
 - * "/data/evoplayer/providers/iptv". Returns NULL if the id is not valid.
-+ * "/data/nuvio/providers/iptv". Returns NULL if the id is not valid.
++ * "/data/nuvio-poc/providers/iptv". Returns NULL if the id is not valid.
   * The buffer is per-thread static - use it immediately.
   */
  const char *evo_bundle_dir(const char *provider_id);
@@ -122,7 +122,7 @@
   *
   *   1. PATH SAFETY. A manifest entry names where its file is written and,
 - *      later, what LoadDocument opens. An entry of "../../../data/evoplayer/
-+ *      later, what LoadDocument opens. An entry of "../../../data/nuvio/
++ *      later, what LoadDocument opens. An entry of "../../../data/nuvio-poc/
   *      emby.conf" would have this code write a downloaded file over stored
   *      credentials. evo_bundle_path() is the only way to turn a bundle-relative
   *      name into a real path and it refuses anything that could leave the
@@ -231,10 +231,22 @@
   * Jellyfin) and nothing runs in the PS5 browser.
   *
 - * The user's addons are a list of manifest URLs in /data/evoplayer/addons.json.
-+ * The user's addons are a list of manifest URLs in /data/nuvio/addons.json.
++ * The user's addons are a list of manifest URLs in /data/nuvio-poc/addons.json.
   * Only streams with a direct http(s) `url` are offered; torrent-only streams
   * (infoHash) need a debrid resolver and are skipped.
   *
+--- a/projects/evoplayer/core/include/evo/Common.hpp
++++ b/projects/evoplayer/core/include/evo/Common.hpp
+@@ -59,7 +59,8 @@
+     SettingsAudio = 33,  /* #118 */
+     SettingsExperimental = 34, /* #105 */
+     ChapterPicker = 35,        /* #150 */
+-    SubtitleFile = 36          /* pick a subtitle file anywhere on the console */
++    SubtitleFile = 36,         /* pick a subtitle file anywhere on the console */
++    NuvioPoc = 37              /* Nuvio native UI proof shelf */
+ };
+ 
+ // Playback Quality Profile
 --- a/projects/evoplayer/core/include/evo/screens/AudioTrackPickerScreen.hpp
 +++ b/projects/evoplayer/core/include/evo/screens/AudioTrackPickerScreen.hpp
 @@ -31,6 +31,8 @@
@@ -289,7 +301,14 @@
      void navigate(int delta);
 --- a/projects/evoplayer/core/src/Application.cpp
 +++ b/projects/evoplayer/core/src/Application.cpp
-@@ -66,6 +66,7 @@
+@@ -1,5 +1,6 @@
+ #include "evo/Application.hpp"
+ #include "evo/screens/LaunchScreen.hpp"
++#include "evo/screens/NuvioPocScreen.hpp"
+ #include "evo/screens/BrowserScreen.hpp"
+ #include "evo/screens/PlayerScreen.hpp"
+ #include "evo/screens/SettingsScreen.hpp"
+@@ -66,6 +67,7 @@
  #include "evo_subtitle.h"
  #include "evo_usb_remote.h"
  #include "evo_webui.h"
@@ -297,7 +316,7 @@
  /* #90: providers are reached through the vtable registry, never by name.
   * addon_emby.h is gone from here - provider_emby.c is the only thing that
   * includes it now. */
-@@ -119,7 +120,11 @@
+@@ -119,7 +121,11 @@
      float acceleration[3];
      float angularVelocity[3];
      PS5_PadTouchData touchData;
@@ -310,7 +329,7 @@
  } PS5_PadData;
  
  static_assert(offsetof(PS5_PadData, touchData) == 52, "touchData offset mismatch");
-@@ -134,6 +139,125 @@
+@@ -134,6 +140,125 @@
  extern int screen;
  long long now_ms(void);
  }
@@ -436,7 +455,15 @@
  
  #ifndef EVO_PLAYER_VERSION
  #define EVO_PLAYER_VERSION "v0.13.5"
-@@ -545,6 +669,7 @@
+@@ -483,6 +608,7 @@
+ 
+ bool Application::initScreens() {
+     m_screenManager->registerScreen(std::make_unique<LaunchScreen>());
++    m_screenManager->registerScreen(std::make_unique<NuvioPocScreen>());
+     m_screenManager->registerScreen(std::make_unique<BrowserScreen>());
+     m_screenManager->registerScreen(std::make_unique<PlayerScreen>());
+     m_screenManager->registerScreen(std::make_unique<SettingsScreen>());
+@@ -545,6 +671,7 @@
      if (m_shutdownDone)
          return;
      m_shutdownDone = true;
@@ -444,7 +471,7 @@
  
      m_running = false;
  
-@@ -616,15 +741,17 @@
+@@ -616,15 +743,17 @@
   * the page.
   */
  PlaybackSource g_web_src;
@@ -463,7 +490,7 @@
      g_web_done = true;
      return nullptr;
  }
-@@ -731,12 +858,17 @@
+@@ -731,12 +860,17 @@
  
      if (phase == 0) {
          char url[2048], title[256];
@@ -482,7 +509,7 @@
          g_web_done = false;
          g_web_ok = false;
          pthread_attr_t attr;
-@@ -754,6 +886,7 @@
+@@ -754,6 +888,7 @@
          if (!g_web_done)
              return;
          pthread_join(g_web_thread, nullptr);
@@ -490,7 +517,7 @@
          EVO_LOGI("web", "startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
          evo_boot_log_flush();
          if (!g_web_ok) {
-@@ -773,17 +906,29 @@
+@@ -773,17 +908,29 @@
          web_report("", 0.0);
      } else {
          IPlaybackController* pb = app.getPlaybackController();
@@ -521,7 +548,7 @@
              web_report("/Stopped", g_web_rep.lastPos);
              g_web_rep.on = false;
              evo_webui_playback_ended(seen_active ? 1 : 0);
-@@ -1179,6 +1324,7 @@
+@@ -1179,6 +1326,7 @@
              }
              if (++m_softCloseFrames > 150) {     /* ~2.5 s of presented frames */
                  evo_agc_runtime_wait_idle(500);
@@ -529,7 +556,7 @@
                  m_softClosed = true;
                  evo_boot_log("soft close: parked - GPU idle, display latched, "
                               "safe to close from the switcher");
-@@ -1250,7 +1396,7 @@
+@@ -1250,7 +1398,7 @@
                  if (s_upd_t0.tv_sec == 0) s_upd_t0 = t;
                  if (t.tv_sec - s_upd_t0.tv_sec >= 8) {
                      s_upd_checked = true;
@@ -538,23 +565,28 @@
                  }
              }
              /* A small card at the side, not a screen: it stays until the user
-@@ -1291,6 +1437,15 @@
+@@ -1291,6 +1439,20 @@
              }
          }
          evo_usb_remote_poll();
-+        /* Nuvio starts once its durable settings are reachable. Existing
-+         * EVO code owns browser, playback handoff and shutdown lifetimes. */
++        /* PoC title: open the native shelf by default. Keep the browser path
++         * intact; /data/nuvio-poc/use_browser opts back into it for comparison. */
 +        static bool nuvio_opened = false;
 +        if (!nuvio_opened && evo_jailbreak_is_open()) {
-+            const evo_provider_t *nv = evo_provider_find("nuvio");
-+            if (nv && nv->is_configured() &&
-+                evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio") == 0)
++            if (access("/data/nuvio-poc/use_browser", F_OK) == 0) {
++                const evo_provider_t *nv = evo_provider_find("nuvio");
++                if (nv && nv->is_configured() &&
++                    evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio") == 0)
++                    nuvio_opened = true;
++            } else if (m_screenManager) {
++                m_screenManager->navigateTo(ScreenId::NuvioPoc);
 +                nuvio_opened = true;
++            }
 +        }
          evo_webui_pump();   /* #101: the system browser, when a web UI is open */
          webui_playback_pump();
  
-@@ -1384,7 +1539,24 @@
+@@ -1384,7 +1546,24 @@
          uint32_t held = 0;
          bool hasInput = false;
  
@@ -580,7 +612,7 @@
              /*
               * Synthetic presses from the dev remote (`key <button>`), OR'd in
               * before anything reads the mask so they are indistinguishable
-@@ -1419,29 +1591,21 @@
+@@ -1419,29 +1598,21 @@
              m_rightStickX = (std::abs(rawRx) > kStickDeadzone) ? rawRx : 0.0f;
              m_rightStickY = (std::abs(rawRy) > kStickDeadzone) ? rawRy : 0.0f;
  
@@ -625,7 +657,7 @@
  
              // Synthesize directional repeat events into pressed mask
              if (evo_input_fired(&evo_pad_state, EVO_ACT_UP))    pressed |= PadButtons::Up;
-@@ -1532,7 +1696,7 @@
+@@ -1532,7 +1703,7 @@
                  r3IsChapters = true;
              /* #227: on the keyboard's PHONE LINK OFF card, R3 is Set port. */
              const bool r3ToKeyboard = (pressed & PadButtons::R3) && evo_keyboard_wants_r3();
@@ -634,7 +666,7 @@
                  EVO_LOGI("screenshot", "stick click pressed=%#010x", pressed);
                  evo_boot_log_flush();
                  std::string shotPath;
-@@ -1576,7 +1740,34 @@
+@@ -1576,7 +1747,34 @@
              }
  
              if (evo_webui_active()) {
@@ -670,17 +702,20 @@
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1622,6 +1813,9 @@
+@@ -1622,6 +1820,12 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
++        const bool onNuvioPoc = m_screenManager &&
++            m_screenManager->getCurrentScreenId() == ScreenId::NuvioPoc;
 +        bool nuvioShell = !isPlayer &&
 +            !(m_playbackController && m_playbackController->isActive()) &&
-+            !evo_webui_native_requested();
++            !evo_webui_native_requested() &&
++            !onNuvioPoc;
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1734,7 +1928,7 @@
+@@ -1734,7 +1938,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -689,7 +724,7 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1961,7 +2155,14 @@
+@@ -1961,7 +2165,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -1082,7 +1117,7 @@
          std::fputc('\n', fp);
          std::fclose(fp);
 -    } else if (FILE* fp2 = std::fopen("/data/evoplayer/evo_set.txt", "w")) {
-+    } else if (FILE* fp2 = std::fopen("/data/nuvio/evo_set.txt", "w")) {
++    } else if (FILE* fp2 = std::fopen("/data/nuvio-poc/evo_set.txt", "w")) {
          std::fputs(text, fp2);
          std::fputc('\n', fp2);
          std::fclose(fp2);
@@ -1374,7 +1409,7 @@
  void evo_boot_log_crash_drain(int fd);
  /* #229: the file the log is going to (/mnt/usb0/evo.log, or
 - * /data/evoplayer/evo.log with no USB stick). 0 = no file open yet. */
-+ * /data/nuvio/evo.log with no USB stick). 0 = no file open yet. */
++ * /data/nuvio-poc/evo.log with no USB stick). 0 = no file open yet. */
  int evo_log_file_path(char *out, size_t cap);
  
  /* Mask credentials in a line in place (api_key=, token=, password=, ...,
@@ -1383,7 +1418,7 @@
   *     returns the bytes written, -1 if the sink stopped it.
   *   evo_report_save:  writes /mnt/usb0/evo_report.txt, or
 - *     /data/evoplayer/evo_report.txt with no stick; the path goes to `out`.
-+ *     /data/nuvio/evo_report.txt with no stick; the path goes to `out`.
++ *     /data/nuvio-poc/evo_report.txt with no stick; the path goes to `out`.
   *     1 = saved. */
  typedef int (*evo_report_sink_fn)(void *ud, const char *data, size_t n);
  long evo_report_write(evo_report_sink_fn sink, void *ud);
@@ -1394,13 +1429,13 @@
   * evo_data_path - where EVO's persistent data lives.
   *
 - * As an elfldr payload EVO runs unsandboxed and writes to /data/evoplayer/.
-+ * As an elfldr payload EVO runs unsandboxed and writes to /data/nuvio/.
++ * As an elfldr payload EVO runs unsandboxed and writes to /data/nuvio-poc/.
   * As the PPSA99039 app module the process launches into a fresh per-title
   * sandbox: /data is ENOENT until evo_jailbreak_self() lifts it. Once lifted,
 - * /data/evoplayer/ is the durable home - the same as the payload.
 - * /download0/evoplayer/ is only a fallback for the window before the self-unjail
-+ * /data/nuvio/ is the durable home - the same as the payload.
-+ * /download0/nuvio/ is only a fallback for the window before the self-unjail
++ * /data/nuvio-poc/ is the durable home - the same as the payload.
++ * /download0/nuvio-poc/ is only a fallback for the window before the self-unjail
   * lands (or if it never does); it is a savedata-relative mount with no
   * sceSaveDataMount2/commit behind it, so writes there do NOT survive a
   * relaunch (issue #46).
@@ -1409,9 +1444,9 @@
 - *   - payload / host build:            always /data/evoplayer
 - *   - app module, sandbox open:        /data/evoplayer   (cached once resolved)
 - *   - app module, sandbox still shut:  /download0/evoplayer (transient, not cached)
-+ *   - payload / host build:            always /data/nuvio
-+ *   - app module, sandbox open:        /data/nuvio   (cached once resolved)
-+ *   - app module, sandbox still shut:  /download0/nuvio (transient, not cached)
++ *   - payload / host build:            always /data/nuvio-poc
++ *   - app module, sandbox open:        /data/nuvio-poc   (cached once resolved)
++ *   - app module, sandbox still shut:  /download0/nuvio-poc (transient, not cached)
   *
   * evo_data_dir() / evo_data_path() do that resolution. Nothing else should
   * reference EVO_DATA_DIR - it survives only as the fallback literal inside
@@ -1420,10 +1455,10 @@
  
  #ifdef EVO_APP_MODULE
 -#define EVO_DATA_DIR "/download0/evoplayer"   /* fallback only - see above */
-+#define EVO_DATA_DIR "/download0/nuvio"   /* fallback only - see above */
++#define EVO_DATA_DIR "/download0/nuvio-poc"   /* fallback only - see above */
  #else
 -#define EVO_DATA_DIR "/data/evoplayer"
-+#define EVO_DATA_DIR "/data/nuvio"
++#define EVO_DATA_DIR "/data/nuvio-poc"
  #endif
  
  #ifdef __cplusplus
@@ -1432,13 +1467,13 @@
  /* The data root, no trailing slash. Resolved once, lazily; on the app module
   * it stays on the /download0 fallback (uncached) until the sandbox opens, then
 - * pins to /data/evoplayer. */
-+ * pins to /data/nuvio. */
++ * pins to /data/nuvio-poc. */
  const char *evo_data_dir(void);
  
  /*
   * Join `leaf` onto the data root: evo_data_path("emby.conf") ->
 - * "/data/evoplayer/emby.conf". A leading '/' on `leaf` is ignored.
-+ * "/data/nuvio/emby.conf". A leading '/' on `leaf` is ignored.
++ * "/data/nuvio-poc/emby.conf". A leading '/' on `leaf` is ignored.
   *
   * Returns a pointer to a per-thread static buffer - use it immediately (as an
   * fopen()/open() argument, say); do not stash it or pass two results of this
@@ -1449,7 +1484,7 @@
   * Module: evo_favorites
   *
 - * Favorites database. Persists to /data/evoplayer/evo_favorites.txt.
-+ * Favorites database. Persists to /data/nuvio/evo_favorites.txt.
++ * Favorites database. Persists to /data/nuvio-poc/evo_favorites.txt.
   * Stores up to 100 entries with path, title and duration.
   *
   * Public surface:
@@ -1460,7 +1495,7 @@
  
  /* Looks for NTFS volumes on /dev/da0..da7 (and, in --usb-remote builds,
 - * /data/evoplayer/test/ntfs.img). Volumes on a disk that is gone are dropped;
-+ * /data/nuvio/test/ntfs.img). Volumes on a disk that is gone are dropped;
++ * /data/nuvio-poc/test/ntfs.img). Volumes on a disk that is gone are dropped;
   * new disks are mounted. Cheap when nothing changed. Returns the count. */
  int  evo_ntfs_refresh(void);
  
@@ -1471,7 +1506,7 @@
   * Module: evo_recent
   *
 - * Recent-files database. Persists to /data/evoplayer/evo_recent.txt.
-+ * Recent-files database. Persists to /data/nuvio/evo_recent.txt.
++ * Recent-files database. Persists to /data/nuvio-poc/evo_recent.txt.
   * Stores the last 25 played files with path, title, position and duration.
   *
   * Public surface:
@@ -2445,7 +2480,7 @@
   * elfldr payload: USB, as documented (docs/ui/theming.md). App module: USB is
   * ENOENT in the sandbox until tools/sandbox-unjail (task 7), so custom themes
 - * come from /download0/evoplayer/themes/ instead. */
-+ * come from /download0/nuvio/themes/ instead. */
++ * come from /download0/nuvio-poc/themes/ instead. */
  #ifndef EVO_THEME_DIR
  #ifdef EVO_APP_MODULE
  #define EVO_THEME_DIR evo_data_path("themes")
@@ -2456,11 +2491,11 @@
    "attribute2": 0,
    "attribute3": 524352,
 -  "conceptId": "99039",
-+  "conceptId": "99996",
++  "conceptId": "99995",
    "contentBadgeType": 1,
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
-+  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
++  "contentId": "UP9000-PPSA99995_00-NUVIOPOC00000000",
 +  "contentVersion": "01.000.013",
    "downloadDataSize": 256,
    "gameIntent": {
@@ -2470,7 +2505,7 @@
      "defaultLanguage": "en-US",
      "en-US": {
 -      "titleName": "EVO Player"
-+      "titleName": "Nuvio Pro"
++      "titleName": "Nuvio Native PoC"
      }
    },
    "masterVersion": "01.00",
@@ -2479,7 +2514,7 @@
    "requiredSystemSoftwareVersion": "0x0000000000000000",
    "sdkVersion": "0x0000000000000000",
 -  "titleId": "PPSA99039",
-+  "titleId": "PPSA99996",
++  "titleId": "PPSA99995",
    "versionFileUri": ""
  }
 --- a/projects/evoplayer/src/evo_boot_log.c
@@ -2489,7 +2524,7 @@
  #endif
  
 -#define EVO_LOG_PATH "/mnt/usb0/evo.log"
-+#define EVO_LOG_PATH "/data/nuvio/evo.log"
++#define EVO_LOG_PATH "/data/nuvio-poc/evo.log"
  
  /*
   * Two phases:
@@ -2498,14 +2533,14 @@
              g_log_path = EVO_LOG_PATH;
          } else {
 -            fp = fopen("/data/evoplayer/evo.log", "a");
-+            fp = fopen("/data/nuvio/evo.log", "a");
++            fp = fopen("/data/nuvio-poc/evo.log", "a");
              if (fp)
 -                g_log_path = "/data/evoplayer/evo.log";
-+                g_log_path = "/data/nuvio/evo.log";
++                g_log_path = "/data/nuvio-poc/evo.log";
          }
          if (!fp)
 -            return;   /* /mnt/usb0 and /data/evoplayer not reachable yet — try again next call */
-+            return;   /* /mnt/usb0 and /data/nuvio not reachable yet — try again next call */
++            return;   /* /mnt/usb0 and /data/nuvio-poc not reachable yet — try again next call */
          pthread_mutex_lock(&g_io_lock);
          fseek(fp, 0, SEEK_END);
          g_written = ftell(fp);
@@ -2517,8 +2552,8 @@
       * Re-resolves every call, because the data root moves. On the app module
 -     * evo_data_dir() answers /download0/evoplayer until the self-unjail lands
 -     * and /data/evoplayer after - and only the latter survives a relaunch
-+     * evo_data_dir() answers /download0/nuvio until the self-unjail lands
-+     * and /data/nuvio after - and only the latter survives a relaunch
++     * evo_data_dir() answers /download0/nuvio-poc until the self-unjail lands
++     * and /data/nuvio-poc after - and only the latter survives a relaunch
       * (issue #46), which is the whole point of the quarantine. So this is
       * called again after evo_data_path_rebind().
       */
@@ -2530,8 +2565,8 @@
      if (!evo_jailbreak_is_open())
 -        return EVO_DATA_DIR;              /* "/download0/evoplayer" - transient */
 -    g_root = "/data/evoplayer";
-+        return EVO_DATA_DIR;              /* "/download0/nuvio" - transient */
-+    g_root = "/data/nuvio";
++        return EVO_DATA_DIR;              /* "/download0/nuvio-poc" - transient */
++    g_root = "/data/nuvio-poc";
  #else
      /*
       * #90: the host renderer needs a writable data root somewhere other than
@@ -2540,7 +2575,7 @@
          return g_root;
      }
 -    g_root = EVO_DATA_DIR;                /* "/data/evoplayer" - always */
-+    g_root = EVO_DATA_DIR;                /* "/data/nuvio" - always */
++    g_root = EVO_DATA_DIR;                /* "/data/nuvio-poc" - always */
  #endif
      return g_root;
  }
@@ -2551,7 +2586,7 @@
   * Module: evo_favorites
   *
 - * Favorites database. Persists to /data/evoplayer/evo_favorites.txt.
-+ * Favorites database. Persists to /data/nuvio/evo_favorites.txt.
++ * Favorites database. Persists to /data/nuvio-poc/evo_favorites.txt.
   * Extracted from main.c (lines 617–721, 1591–1607).
   */
  
@@ -2726,7 +2761,7 @@
      if (!s_img_tried) {
          s_img_tried = 1;
 -        add_device_disk("/data/evoplayer/test/ntfs.img", "img0", MAX_DISKS, 0);
-+        add_device_disk("/data/nuvio/test/ntfs.img", "img0", MAX_DISKS, 0);
++        add_device_disk("/data/nuvio-poc/test/ntfs.img", "img0", MAX_DISKS, 0);
      }
  #endif
      return evo_ntfs_volume_count();
@@ -2737,7 +2772,7 @@
   * Module: evo_recent
   *
 - * Recent-files database. Persists to /data/evoplayer/evo_recent.txt.
-+ * Recent-files database. Persists to /data/nuvio/evo_recent.txt.
++ * Recent-files database. Persists to /data/nuvio-poc/evo_recent.txt.
   * Extracted from main.c (lines 600–614, 1611–1723, 1428–1445).
   */
  
@@ -2748,16 +2783,16 @@
  
  #define CMD_PATH        "/mnt/usb0/evo_cmd"
 -#define CMD_FALLBACK    "/data/evoplayer/evo_cmd"
-+#define CMD_FALLBACK    "/data/nuvio/evo_cmd"
++#define CMD_FALLBACK    "/data/nuvio-poc/evo_cmd"
  #define STATUS_PATH     "/mnt/usb0/evo_status"
 -#define STATUS_FALLBACK "/data/evoplayer/evo_status"
-+#define STATUS_FALLBACK "/data/nuvio/evo_status"
++#define STATUS_FALLBACK "/data/nuvio-poc/evo_status"
  #define UI_PATH         "/mnt/usb0/evo_ui.json"
  #define UI_TMP_PATH     "/mnt/usb0/evo_ui.json.tmp"
 -#define UI_FALLBACK     "/data/evoplayer/evo_ui.json"
 -#define UI_TMP_FALLBACK "/data/evoplayer/evo_ui.json.tmp"
-+#define UI_FALLBACK     "/data/nuvio/evo_ui.json"
-+#define UI_TMP_FALLBACK "/data/nuvio/evo_ui.json.tmp"
++#define UI_FALLBACK     "/data/nuvio-poc/evo_ui.json"
++#define UI_TMP_FALLBACK "/data/nuvio-poc/evo_ui.json.tmp"
  
  extern int    screen;   /* main.c */
  extern void   evo_iobench_run(const char *spec);   /* evo_iobench.c */
@@ -4099,7 +4134,7 @@
 +    if (!strcmp(s_hook_profile, "nuvio")) {
 +        if (s_listen_fd < 0) {
 +            if (!s_nuvio_failure[0])
-+                nuvio_fail("Nuvio Pro could not start its page server", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
++                nuvio_fail("Nuvio Pro could not start its page server", "Close Nuvio Pro and open it again. See /data/nuvio-poc/evo.log for details.");
 +            s_state = P_OFF;
 +            return;
 +        }
@@ -4110,7 +4145,7 @@
 +        if (webui_fd < 0) {
 +            LOG("startup: webui check failed root=%s errno=%d", ui_root, errno);
 +            nuvio_fail("Nuvio Pro is missing its webui folder",
-+                       "Install PPSA99996 in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");
++                       "Install PPSA99995 in a ShadowMountPlus folder, such as /data/homebrew or /mnt/ext1/homebrew on the M.2 drive.");
 +            s_state = P_OFF;
 +            return;
 +        }
@@ -4157,7 +4192,7 @@
      snprintf(s_error, sizeof s_error, "%s", msg);
      s_error_pending = 1;
 +    if (!strcmp(s_hook_profile, "nuvio"))
-+        nuvio_fail("The Nuvio page did not load", "Close Nuvio Pro and open it again. See /data/nuvio/evo.log for details.");
++        nuvio_fail("The Nuvio page did not load", "Close Nuvio Pro and open it again. See /data/nuvio-poc/evo.log for details.");
  }
  
  int evo_webui_take_error(char *buf, size_t cap)
@@ -4292,6 +4327,25 @@
 +    if (options) tlog("controller: Options");
 +    if (menu) tlog("controller: Triangle");
 +}
+--- a/projects/evoplayer/ui_kit/include/evo_hui.h
++++ b/projects/evoplayer/ui_kit/include/evo_hui.h
+@@ -13,6 +13,7 @@
+ #define EVO_HUI_H
+ 
+ #include "evo_rmlui_bridge.h"
++#include "nuvio_poc_params.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -78,6 +79,8 @@
+ int  evo_hui_render_surround(int width, int height);
+ void evo_hui_update_provider(const evo_hui_provider_params_t* params);
+ int  evo_hui_render_provider(int width, int height);
++void evo_hui_update_nuvio_poc(const nuvio_poc_params_t* params);
++int  evo_hui_render_nuvio_poc(int width, int height);
+ /* The virtual keyboard: an overlay that draws only while it is visible. */
+ void evo_hui_update_keyboard(const evo_keyboard_params_t* params);
+ int  evo_hui_render_keyboard(int width, int height);
 --- a/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
 +++ b/projects/evoplayer/ui_kit/include/evo_hui_complex.hpp
 @@ -6,7 +6,7 @@
@@ -4299,7 +4353,7 @@
   * appears, and the kit draws that atlas like any other font. Thai and the
   * Indic scripts use Noto faces embedded in the binary; Chinese, Japanese and
 - * Korean use the Noto Sans CJK files in /data/evoplayer/fonts when they are
-+ * Korean use the Noto Sans CJK files in /data/nuvio/fonts when they are
++ * Korean use the Noto Sans CJK files in /data/nuvio-poc/fonts when they are
   * there (4-8 MB each, too big to embed).
   */
  #pragma once
@@ -4336,6 +4390,62 @@
      bool empty_ = false;
      std::string empty_title_, empty_hint_, empty_icon_;
      std::vector<std::pair<int, std::string>> hints_; /* ui::Button, label */
+--- a/projects/evoplayer/ui_kit/src/evo_hui_app.cpp
++++ b/projects/evoplayer/ui_kit/src/evo_hui_app.cpp
+@@ -18,6 +18,7 @@
+ #include "evo_hui_settings.hpp"
+ #include "evo_hui_surround.hpp"
+ #include "evo_hui_provider.hpp"
++#include "evo_hui_nuvio_poc.hpp"
+ #include "hui_agc_batch.hpp"
+ 
+ #include "evo_agc_runtime.h"
+@@ -93,6 +94,7 @@
+     image,
+     surround,
+     provider,
++    nuvio_poc,
+     dialog, /* overlays from here on */
+     toast,
+     keyboard,
+@@ -131,6 +133,8 @@
+         return "hui_surround";
+     case Screen::provider:
+         return "hui_provider";
++    case Screen::nuvio_poc:
++        return "hui_nuvio_poc";
+     default:
+         return "hui";
+     }
+@@ -175,6 +179,7 @@
+     evo::kit::ImageViewer image;
+     evo::kit::SurroundScreen surround;
+     evo::kit::ProviderGridScreen provider;
++    evo::kit::NuvioPocScreen nuvio_poc;
+     evo::kit::KeyboardOverlay keyboard;
+     bool keyboard_visible = false;
+     /* Frame bookkeeping: one dt per presented frame, however many kit draws
+@@ -833,3 +838,20 @@
+ }
+ 
+ } /* extern "C" */
++
++
++void evo_hui_update_nuvio_poc(const nuvio_poc_params_t *params)
++{
++    if (params)
++        kit().nuvio_poc.set(*params);
++}
++
++int evo_hui_render_nuvio_poc(int width, int height)
++{
++    Kit &k = kit();
++    return k.render(Screen::nuvio_poc, width, height,
++                    [&](float dt, hui::gfx::DrawList &list, const Context &ctx) {
++                        k.nuvio_poc.update(dt);
++                        k.nuvio_poc.draw(list, ctx);
++                    });
++}
 --- a/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
 +++ b/projects/evoplayer/ui_kit/src/evo_hui_complex.cpp
 @@ -64,7 +64,7 @@
@@ -4343,7 +4453,7 @@
  {
      const char *bundle; /* embedded in the binary, or null */
 -    const char *file;   /* under /data/evoplayer/fonts, or null */
-+    const char *file;   /* under /data/nuvio/fonts, or null */
++    const char *file;   /* under /data/nuvio-poc/fonts, or null */
      const char *lang;
  };
  
@@ -5126,7 +5236,15 @@
      Rml::ElementDocument* m_browser_doc = nullptr;
 --- a/projects/evoplayer/ui_rml/include/evo_rmlui_bridge.h
 +++ b/projects/evoplayer/ui_rml/include/evo_rmlui_bridge.h
-@@ -73,7 +73,17 @@
+@@ -3,6 +3,7 @@
+ 
+ #include <stdint.h>
+ #include <stdbool.h>
++#include "nuvio_poc_params.h"
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -73,7 +74,17 @@
      /* Settings -> DEFAULT FONT STYLE for both captions:
       * 0 standard, 1 light, 2 rounded, 3 bold (prospero_subtitle_style). */
      int subtitle_style;
@@ -5144,7 +5262,7 @@
      /* GL-5 (#81): dev FPS pill (#fps-pill), independent of the OSD chrome. */
      int fps;
      int debug_overlay;
-@@ -1023,6 +1033,7 @@
+@@ -1023,6 +1034,7 @@
  /* Launch / home screen API */
  void evo_rmlui_update_launch(const evo_rmlui_launch_params_t* params);
  void evo_rmlui_render_launch(uint32_t* framebuffer, int width, int height);
@@ -5168,7 +5286,7 @@
       * The remaining entries are host/dev fallbacks (fopen against loose
       * files) for when the bundle hasn't been (re)generated. The old
 -     * /data/evoplayer/app/ and /data/homebrew/EVOPlayer/ search paths - the
-+     * /data/nuvio/app/ and /data/homebrew/EVOPlayer/ search paths - the
++     * /data/nuvio-poc/app/ and /data/homebrew/EVOPlayer/ search paths - the
       * #44 out-of-band FTP sync target - are gone: that sync is removed
       * (deploy-app.sh), and shipping a self-contained .ffpfsc means those
       * loose console-side copies must have zero effect on rendering. */
@@ -5177,7 +5295,7 @@
              /* CJK is 4-8 MB a script, too big to embed in the binary: load
               * whichever Noto Sans CJK subset files are in the data folder
 -             * (/data/evoplayer/fonts/NotoSansSC-Regular.otf, ...JP, ...KR). */
-+             * (/data/nuvio/fonts/NotoSansSC-Regular.otf, ...JP, ...KR). */
++             * (/data/nuvio-poc/fonts/NotoSansSC-Regular.otf, ...JP, ...KR). */
  #if defined(EVO_AGC_DEVICE)
              for (const char* cjk : { "NotoSansSC-Regular.otf", "NotoSansJP-Regular.otf",
                                       "NotoSansKR-Regular.otf" }) {
@@ -5438,13 +5556,34 @@
      state.fps = p->fps;
      state.debug_overlay = (p->debug_overlay != 0);
      state.music_mode = (p->music_mode != 0);
-@@ -779,3 +790,7 @@
+@@ -779,3 +790,28 @@
  
  } // extern "C"
  
 +
 +extern "C" void evo_rmlui_render_nuvio(uint32_t* framebuffer,int width,int height,const char* message) {
 +    EvoRmlApp::Instance().RenderNuvio(framebuffer,width,height,message);
++}
++
++
++extern "C" void evo_rmlui_update_nuvio_poc(const nuvio_poc_params_t* params) {
++#if defined(EVO_AGC_DEVICE)
++    evo_hui_update_nuvio_poc(params);
++#else
++    (void)params;
++#endif
++}
++
++extern "C" void evo_rmlui_render_nuvio_poc(uint32_t* framebuffer, int width, int height) {
++#if defined(EVO_AGC_DEVICE)
++    if (EvoRmlApp::Instance().GlActive() && evo_hui_render_nuvio_poc(width, height)) {
++        EvoRmlApp::Instance().NoteExternalDraw();
++        return;
++    }
++#endif
++    (void)framebuffer;
++    (void)width;
++    (void)height;
 +}
 --- a/projects/evoplayer/ui_rml/src/evo_rmlui_render.cpp
 +++ b/projects/evoplayer/ui_rml/src/evo_rmlui_render.cpp
@@ -5453,7 +5592,7 @@
          /* Not bundled (or the bundle is stale/missing) - fall back to disk,
           * same prefixes evo_rmlui_app.cpp tries for .rml/.rcss/fonts. The
 -         * #44 out-of-band /data/evoplayer/app/assets/ sync target and the
-+         * #44 out-of-band /data/nuvio/app/assets/ sync target and the
++         * #44 out-of-band /data/nuvio-poc/app/assets/ sync target and the
           * defunct ELF-payload /data/homebrew/EVOPlayer/ path are gone - #60
           * makes the package self-contained instead of leaning on either. */
          std::vector<std::string> candidates = {
@@ -5542,3 +5681,109 @@
  echo ""
  echo "   Deploy + launch:"
  echo "     ./scripts/deploy-app.sh          # FTP -> /data/homebrew/${TITLE_ID}/"
+--- a/tools/hui_preview.sh
++++ b/tools/hui_preview.sh
+@@ -13,8 +13,12 @@
+ set -euo pipefail
+ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ if [[ ! -f /.dockerenv ]]; then
+-    cd "${ROOT}"
+-    MSYS_NO_PATHCONV=1 exec docker compose run --rm ps5-dev bash ./tools/hui_preview.sh "$@"
++    if [[ "${NUVIO_HUI_PREVIEW_LOCAL:-}" == "1" ]]; then
++        cd "${ROOT}"
++    else
++        cd "${ROOT}"
++        MSYS_NO_PATHCONV=1 exec docker compose run --rm ps5-dev bash ./tools/hui_preview.sh "$@"
++    fi
+ fi
+ 
+ KIT="${ROOT}/third_party/ps5-homebrew-ui"
+@@ -39,6 +43,7 @@
+          "${EVO}/ui_kit/src/evo_hui_extra.cpp"
+          "${EVO}/ui_kit/src/evo_hui_surround.cpp"
+          "${EVO}/ui_kit/src/evo_hui_provider.cpp"
++         "${EVO}/ui_kit/src/evo_hui_nuvio_poc.cpp"
+          "${KIT}/host/platform_host.cpp")
+ while IFS= read -r -d '' f; do SOURCES+=("$f"); done < <(
+     find "${KIT}/src/gfx" "${KIT}/src/ui" "${KIT}/src/core" -name '*.cpp' -print0 | sort -z)
+--- a/tools/hui_preview/hui_preview.cpp
++++ b/tools/hui_preview/hui_preview.cpp
+@@ -24,7 +24,9 @@
+ #include "evo_hui_extra.hpp"
+ #include "evo_hui_surround.hpp"
+ #include "evo_hui_provider.hpp"
++#include "evo_hui_nuvio_poc.hpp"
+ #include "extra_fixtures.inc"
++#include "nuvio_poc_fixtures.inc"
+ #include "overflow_check.inc"
+ 
+ #include "core/save_file.hpp"
+@@ -391,6 +393,9 @@
+     evo_rmlui_surround_params_t srp{};
+     evo_hui_provider_params_t prp{};
+     std::vector<uint32_t> provider_art;
++    nuvio_poc_params_t nuvio_poc_params{};
++    std::vector<uint32_t> nuvio_poc_hero;
++    std::vector<std::vector<uint32_t>> nuvio_poc_posters;
+     evo_rmlui_about_params_t aboutp{};
+     evo_rmlui_changelog_params_t changelogp{};
+ 
+@@ -508,6 +513,21 @@
+     };
+     const Fixture fixtures[] = {
+         {"home", 0, [&] { clear_focus(); launch.hero_focused = 1; }},
++        {"nuvio_poc", 18, [&] {
++            clear_focus();
++            fill_nuvio_poc_fixture(nuvio_poc_params, nuvio_poc_hero, 1280, 720,
++                                   nuvio_poc_posters, 221, 339, 1);
++        }},
++        {"nuvio_poc_detail", 18, [&] {
++            clear_focus();
++            fill_nuvio_poc_detail_fixture(nuvio_poc_params, nuvio_poc_hero, 1280, 720,
++                                          nuvio_poc_posters, 221, 339);
++        }},
++        {"nuvio_poc_error", 18, [&] {
++            clear_focus();
++            fill_nuvio_poc_error_fixture(nuvio_poc_params, nuvio_poc_hero, 1280, 720,
++                                         nuvio_poc_posters, 221, 339);
++        }},
+         {"home_shelf", 0, [&] { clear_focus(); launch.recent_cursor = 4; launch.recent[4].is_focused = 1; }},
+         {"home_library", 0, [&] { clear_focus(); launch.library[1].is_focused = 1; }},
+         {"home_rail", 0, [&] { clear_focus(); nav.rail_focused = 1; nav.cursor_index = 1; }},
+@@ -878,7 +898,9 @@
+         evo::kit::KeyboardOverlay keyboard;
+         evo::kit::SurroundScreen surround;
+         evo::kit::ProviderGridScreen provider;
++        evo::kit::NuvioPocScreen nuvio_poc;
+         f.setup();
++        if (f.kind == 18) { nuvio_poc.set(nuvio_poc_params); nuvio_poc.enter(); }
+         osd.set(op);
+         osd.set_hud(hud);
+         osd.enter();
+@@ -952,6 +974,8 @@
+                 surround.update(kDt);
+             else if (f.kind == 17)
+                 provider.update(kDt);
++            else if (f.kind == 18)
++                nuvio_poc.update(kDt);
+             rail.update(kDt);
+             textures.tick();
+             time += kDt;
+@@ -980,6 +1004,8 @@
+             surround.draw(list, ctx);
+         else if (f.kind == 17)
+             provider.draw(list, ctx);
++        else if (f.kind == 18)
++            nuvio_poc.draw(list, ctx);
+         const bool over_video = (f.kind >= 4 && f.kind <= 6) || f.kind == 11 || f.kind == 12 || f.kind == 15;
+         if (over_video)
+         {
+@@ -999,7 +1025,7 @@
+             else
+                 keyboard.draw(list, ctx);
+         }
+-        else if (f.kind != 10 && f.kind != 14)
++        else if (f.kind != 10 && f.kind != 14 && f.kind != 18)
+         {
+             rail.draw(list, ctx);
+         }
