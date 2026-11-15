@@ -36,6 +36,21 @@ globalThis.__nuvioSavePlaybackReturn = function () {
   return progressSession;
 };
 
+globalThis.__nuvioSaveSettingsReturn = function () {
+  if (!globalThis.__NUVIO_PS5__) return;
+  try {
+    if (typeof Router !== "undefined" && Router && Router.current) {
+      Router.persistWebOsResumeRoute(Router.current, Router.currentParams);
+    }
+    LocalStore.set(PS5_PLAYBACK_RETURN_KEY, {
+      profileId: String(ProfileManager.getActiveProfileId()),
+      progressSession: "settings",
+      resume: LocalStore.get("webos_last_resume_route", null),
+      savedAt: Date.now()
+    });
+  } catch (_) {}
+};
+
 function canResumePs5Playback() {
   if (!ps5PlaybackReturn || !globalThis.__NUVIO_PS5__) return false;
   if (new URLSearchParams(window.location.search).get("nuvioPlaybackReturn") !== "1") return false;
@@ -59,6 +74,9 @@ function canResumePs5Playback() {
     LocalStore.set("webos_last_resume_route", { ...resume, params, savedAt: Date.now() });
   } else {
     LocalStore.remove("webos_last_resume_route");
+  }
+  if (ps5PlaybackReturn.progressSession === "settings") {
+    LocalStore.remove(PS5_PLAYBACK_RETURN_KEY);
   }
   return true;
 }

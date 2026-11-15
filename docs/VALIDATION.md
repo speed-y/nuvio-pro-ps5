@@ -5394,3 +5394,36 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Launched title via `control-3.elf` (`pid 1326`, `app_id 16410`).
   - Confirmed title mounted and active via `control-2.elf`.
   - Read `/data/nuvio/evo.log`. The log confirmed promotion, loopback server listening on 8686, route `profileSelection`, and user navigation to `home`.
+
+## Player settings return navigation and fresh install storage recursion, 2026-11-15
+
+- Status: `[TESTED-ON-CONSOLE]`.
+- Artifacts:
+  - `eboot.bin`: `3acc1746c7bc61beebea4e20c0a003a3d45d298d8f139ff76f6e3c8908778cb9` (48,853,188 bytes).
+  - `webui/app.bundle.js`: `b029216995ef42c6b6d79fa1ca559d61b19fd21bdb83f8e591029423b9aff56c` (3,903,079 bytes).
+- Problems:
+  - Selecting Player settings closed the web dialog into EVO MainMenu. Backing out terminated the application at Quit.
+  - Reopening from Player settings dropped the user onto the profile selection screen rather than restoring their session and route.
+  - Fresh installations lost account credentials and repeated the login pairing screen on every start or playback exit.
+  - Non-recursive directory creation failed when parent folders were missing. Failed storage saves returned 500, causing subsequent loads to clear local storage.
+- Changes:
+  - Updated `evo_mkdir()` to create parent path components recursively.
+  - Added `EnsureDataDirectories()` startup calls for `/data`, `/data/nuvio`, and `/data/nuvio/webui`.
+  - Added directory retry before writing local storage in `serve_storage()`.
+  - Updated Player settings close button to pass current URL via `/evo/close?return=` query parameter with `nuvioPlaybackReturn=1`.
+  - Added `__nuvioSaveSettingsReturn()` in `scripts/ps5-resume.js` to preserve the active profile session and current route across settings transitions.
+  - Directed close transition to open EVO SettingsScreen immediately.
+  - Updated SettingsScreen Circle handler to save settings and reopen Nuvio at the preserved return URL.
+  - Added regression tests in `tests/test_nuvio.py` verifying recursive path creation, settings return session preservation, and patch markers.
+- Host verification:
+  - `python3 scripts/build.py --title-ui --auto-bootstrap 9021` compiled and signed `eboot.bin` successfully.
+  - `make check` passed 176 tests with zero failures.
+- Console verification results:
+  - Closed active title cleanly through PS5Upload HTTP API.
+  - Backed up prior `eboot.bin` to `/data/homebrew/ps5-homebrew-dev` with `control-5.elf`.
+  - Uploaded signed `eboot.bin` (`48,853,188` bytes) and `webui/app.bundle.js` (`3,903,079` bytes) over PS5Upload HTTP API.
+  - Confirmed matching hashes on console with chunked readback and `control-5.elf`.
+  - Launched title with `control-3.elf` (`pid 1115`, `launch_result=0x2018`).
+  - Confirmed title mounted and managed with `control-2.elf`.
+  - Read `/data/nuvio/evo.log`: verified `BUILD f6e43e65-nuvio_1115-1118`, HTTP 200 asset responses, storage restoration, and active decoders.
+

@@ -2079,3 +2079,122 @@ assert.equal(ctx.__nuvioPlaybackTitle(), '');
 console.log('Playback title formatter: PASS');
 '''
         subprocess.run(['node', '-e', script, str(APP/'ps5-general.js')], check=True, timeout=10)
+
+    def test_player_settings_return_and_recursive_mkdir(self):
+        import shutil
+        import subprocess
+        import tempfile
+        compiler = shutil.which('cc')
+        if not compiler:
+            self.skipTest('No host C compiler')
+
+        c_code = r'''
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static int evo_mkdir_leaf(const char *path) {
+    if (mkdir(path, 0777) == 0 || errno == EEXIST) return 0;
+    return -1;
+}
+
+int evo_mkdir(const char *path) {
+    if (!path || !*path) return -1;
+    char tmp[512];
+    size_t len = strlen(path);
+    if (len >= sizeof(tmp)) return -1;
+    memcpy(tmp, path, len + 1);
+    while (len > 1 && tmp[len - 1] == '/') tmp[--len] = '\0';
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/' && *(p - 1) != '/') {
+            *p = '\0';
+            evo_mkdir_leaf(tmp);
+            *p = '/';
+        }
+    }
+    return evo_mkdir_leaf(tmp);
+}
+
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    char path[512];
+    snprintf(path, sizeof path, "%s/deep/parent/chain/webui", argv[1]);
+    assert(evo_mkdir(path) == 0);
+    struct stat st;
+    assert(stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'mkdir_test.c'
+            exe = Path(tmp) / 'mkdir_test'
+            src.write_text(c_code)
+            subprocess.run([compiler, '-Wall', '-Wextra', '-Werror', str(src), '-o', str(exe)], check=True, timeout=10)
+            subprocess.run([str(exe), tmp], check=True, timeout=10)
+
+        node_script = r'''
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const resumeCode = fs.readFileSync(process.argv[1], 'utf8');
+const decisionCode = fs.readFileSync(process.argv[2], 'utf8').replace(
+  'if (hasSelectedProfileThisSession) {',
+  'if (hasSelectedProfileThisSession || await canResumePs5Playback()) {'
+);
+const store = new Map();
+let active = '2';
+const profiles = [{ id: '1' }, { id: '2' }];
+store.set('profiles', profiles);
+const boot = (search = '', ps5 = true) => {
+  const ctx = {
+    __NUVIO_PS5__: ps5,
+    URLSearchParams,
+    window: { location: { search } },
+    LocalStore: {
+      get: (k, d) => (store.has(k) ? store.get(k) : d),
+      set: (k, v) => store.set(k, v),
+      remove: (k) => store.delete(k)
+    },
+    ProfileManager: {
+      getActiveProfileId: () => active,
+      getProfiles: async () => profiles,
+      isRememberLastProfileEnabled: () => false,
+      hasEverSelectedProfile: () => true
+    },
+    ProfileSyncService: { pullProfileLockStates: async () => ({ '2': true }) },
+    Router: {
+      current: 'settings',
+      currentParams: {},
+      isWebOsResumeRouteRestorable: (r) => ['detail', 'stream', 'home', 'search', 'settings'].includes(r),
+      persistWebOsResumeRoute: (r, p) => store.set('webos_last_resume_route', { route: r, params: p, savedAt: Date.now() })
+    },
+    console
+  };
+  vm.createContext(ctx);
+  vm.runInContext('let hasSelectedProfileThisSession=false;\n' + resumeCode + '\n' + decisionCode, ctx);
+  return ctx;
+};
+(async () => {
+  let ctx = boot();
+  ctx.__nuvioSaveSettingsReturn();
+  assert.equal(store.has('ps5_playback_return'), true);
+  const ret = store.get('ps5_playback_return');
+  assert.equal(ret.progressSession, 'settings');
+  assert.equal(ret.resume.route, 'settings');
+  const returningCtx = boot('?nuvioPlaybackReturn=1');
+  const decision = await returningCtx.shouldShowProfileSelection();
+  assert.equal(decision.show, false);
+  assert.equal(returningCtx.canResumePs5Playback(), true);
+  assert.equal(store.has('ps5_playback_return'), false);
+})().catch(e => { console.error(e); process.exit(1); });
+'''
+        subprocess.run(['node', '-e', node_script, str(APP/'ps5-resume.js'),
+                        str(APP.parent/'tests/fixtures/app_profile_return.js.txt')], check=True, timeout=10)
+
+        patch = (APP.parent / 'patches/evo.patch').read_text()
+        self.assertIn('evo_webui_take_settings_requested()', patch)
+        self.assertIn('evo_webui_reopen_from_settings()', patch)
+        self.assertIn('evo_mkdir("/data")', patch)
+        self.assertIn('evo_mkdir(evo_data_path("webui"))', patch)
+        self.assertIn('/evo/close?return=', patch)
