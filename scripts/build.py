@@ -913,6 +913,16 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
             if '/data/evoplayer' in s or '/download0/evoplayer' in s:
                 p.write_text(s.replace('/data/evoplayer', '/data/nuvio').replace('/download0/evoplayer', '/download0/nuvio'))
     replace_once(app/'core/src/Application.cpp',
+                 '''static void EnsureDataDirectories() {
+    mkdir("/data", 0777);
+    mkdir(evo_data_dir(), 0777);
+}''',
+                 '''static void EnsureDataDirectories() {
+    evo_mkdir("/data");
+    evo_mkdir(evo_data_dir());
+    evo_mkdir(evo_data_path("webui"));
+}''')
+    replace_once(app/'core/src/Application.cpp',
                  '        evo_webui_pump();   /* #101: the system browser, when a web UI is open */',
                  '''        /* Nuvio starts once its durable settings are reachable. Existing
          * EVO code owns browser, playback handoff and shutdown lifetimes. */
@@ -923,7 +933,10 @@ def adapt(evo, loopback_diagnostic=False, title_ui=False, auto_bootstrap=False):
                 evo_webui_open_ex(nv->web_ui_url(), "/", "nuvio") == 0)
                 nuvio_opened = true;
         }
-        evo_webui_pump();   /* #101: the system browser, when a web UI is open */''')
+        evo_webui_pump();   /* #101: the system browser, when a web UI is open */
+        if (evo_webui_take_settings_requested() && m_screenManager) {
+            m_screenManager->navigateTo(ScreenId::Settings);
+        }''')
     replace_once(app/'src/evo_webui.c',
                  '2, 108,  0, 1812, 1080, 0x0, 0x0',
                  '2,   0,  0, 1920, 1080, 0x0, 0x0')
