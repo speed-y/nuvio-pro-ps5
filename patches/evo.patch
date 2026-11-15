@@ -436,7 +436,19 @@
  
  #ifndef EVO_PLAYER_VERSION
  #define EVO_PLAYER_VERSION "v0.13.5"
-@@ -545,6 +669,7 @@
+@@ -224,8 +348,9 @@
+ }
+ 
+ static void EnsureDataDirectories() {
+-    mkdir("/data", 0777);
+-    mkdir(evo_data_dir(), 0777);
++    evo_mkdir("/data");
++    evo_mkdir(evo_data_dir());
++    evo_mkdir(evo_data_path("webui"));
+ }
+ 
+ /*
+@@ -545,6 +670,7 @@
      if (m_shutdownDone)
          return;
      m_shutdownDone = true;
@@ -444,7 +456,7 @@
  
      m_running = false;
  
-@@ -616,15 +741,17 @@
+@@ -616,15 +742,17 @@
   * the page.
   */
  PlaybackSource g_web_src;
@@ -463,7 +475,7 @@
      g_web_done = true;
      return nullptr;
  }
-@@ -731,12 +858,17 @@
+@@ -731,12 +859,17 @@
  
      if (phase == 0) {
          char url[2048], title[256];
@@ -482,7 +494,7 @@
          g_web_done = false;
          g_web_ok = false;
          pthread_attr_t attr;
-@@ -754,6 +886,7 @@
+@@ -754,6 +887,7 @@
          if (!g_web_done)
              return;
          pthread_join(g_web_thread, nullptr);
@@ -490,7 +502,7 @@
          EVO_LOGI("web", "startPlaybackSource -> %s", g_web_ok ? "ok" : "failed");
          evo_boot_log_flush();
          if (!g_web_ok) {
-@@ -773,17 +906,29 @@
+@@ -773,17 +907,29 @@
          web_report("", 0.0);
      } else {
          IPlaybackController* pb = app.getPlaybackController();
@@ -521,7 +533,7 @@
              web_report("/Stopped", g_web_rep.lastPos);
              g_web_rep.on = false;
              evo_webui_playback_ended(seen_active ? 1 : 0);
-@@ -1179,6 +1324,7 @@
+@@ -1179,6 +1325,7 @@
              }
              if (++m_softCloseFrames > 150) {     /* ~2.5 s of presented frames */
                  evo_agc_runtime_wait_idle(500);
@@ -529,7 +541,7 @@
                  m_softClosed = true;
                  evo_boot_log("soft close: parked - GPU idle, display latched, "
                               "safe to close from the switcher");
-@@ -1250,7 +1396,7 @@
+@@ -1250,7 +1397,7 @@
                  if (s_upd_t0.tv_sec == 0) s_upd_t0 = t;
                  if (t.tv_sec - s_upd_t0.tv_sec >= 8) {
                      s_upd_checked = true;
@@ -538,7 +550,7 @@
                  }
              }
              /* A small card at the side, not a screen: it stays until the user
-@@ -1291,6 +1437,15 @@
+@@ -1291,7 +1438,19 @@
              }
          }
          evo_usb_remote_poll();
@@ -552,9 +564,13 @@
 +                nuvio_opened = true;
 +        }
          evo_webui_pump();   /* #101: the system browser, when a web UI is open */
++        if (evo_webui_take_settings_requested() && m_screenManager) {
++            m_screenManager->navigateTo(ScreenId::Settings);
++        }
          webui_playback_pump();
  
-@@ -1384,7 +1539,24 @@
+         /* Non-blocking: wakes the log writer thread. This was a blocking
+@@ -1384,7 +1543,24 @@
          uint32_t held = 0;
          bool hasInput = false;
  
@@ -580,7 +596,7 @@
              /*
               * Synthetic presses from the dev remote (`key <button>`), OR'd in
               * before anything reads the mask so they are indistinguishable
-@@ -1419,29 +1591,21 @@
+@@ -1419,29 +1595,21 @@
              m_rightStickX = (std::abs(rawRx) > kStickDeadzone) ? rawRx : 0.0f;
              m_rightStickY = (std::abs(rawRy) > kStickDeadzone) ? rawRy : 0.0f;
  
@@ -625,7 +641,7 @@
  
              // Synthesize directional repeat events into pressed mask
              if (evo_input_fired(&evo_pad_state, EVO_ACT_UP))    pressed |= PadButtons::Up;
-@@ -1532,7 +1696,7 @@
+@@ -1532,7 +1700,7 @@
                  r3IsChapters = true;
              /* #227: on the keyboard's PHONE LINK OFF card, R3 is Set port. */
              const bool r3ToKeyboard = (pressed & PadButtons::R3) && evo_keyboard_wants_r3();
@@ -634,7 +650,7 @@
                  EVO_LOGI("screenshot", "stick click pressed=%#010x", pressed);
                  evo_boot_log_flush();
                  std::string shotPath;
-@@ -1576,7 +1740,34 @@
+@@ -1576,7 +1744,34 @@
              }
  
              if (evo_webui_active()) {
@@ -670,7 +686,7 @@
              } else if (evo_keyboard_is_open()) {
                  evo_keyboard_update();
                  if (pressed) {
-@@ -1622,6 +1813,9 @@
+@@ -1622,6 +1817,9 @@
  
          // 3. Determine if graphics needs to render/present
          bool isPlayer = (m_screenManager->getCurrentScreenId() == ScreenId::Player);
@@ -680,7 +696,7 @@
          bool isSurround = (m_screenManager->getCurrentScreenId() == ScreenId::SurroundTest);
  
          static bool s_was_player = false;
-@@ -1734,7 +1928,7 @@
+@@ -1734,7 +1932,7 @@
           * page or a bundle refresh landing between two button presses would
           * not be drawn until the next press.
           */
@@ -689,7 +705,7 @@
                         evo_rmlui_needs_frame() ||
                         evo_rmlui_provider_needs_frame() || (jb_repaint > 0);
          if (jb_repaint > 0) jb_repaint--;
-@@ -1961,7 +2155,14 @@
+@@ -1961,7 +2159,14 @@
                      evo_bt("frame %d: screenManager render begin", frame);
                      evo_boot_log_flush();
                  }
@@ -1077,6 +1093,24 @@
  } // namespace evo
 --- a/projects/evoplayer/core/src/screens/SettingsScreen.cpp
 +++ b/projects/evoplayer/core/src/screens/SettingsScreen.cpp
+@@ -1,4 +1,5 @@
+ #include "evo/screens/SettingsScreen.hpp"
++#include "evo_webui.h"
+ #include "evo/Application.hpp"
+ #include "evo_rmlui_bridge.h"
+ #include "evo_feedback.h"
+@@ -1198,9 +1199,8 @@
+     }
+     if (pressed & PadButtons::Circle) {
+         evo_feedback(EVO_FB_CANCEL);
+-        if (auto screenMgr = Application::getInstance().getScreenManager()) {
+-            screenMgr->navigateTo(ScreenId::MainMenu);
+-        }
++        saveSettings();
++        evo_webui_reopen_from_settings();
+         return true;
+     }
+ 
 @@ -1470,7 +1470,7 @@
          std::fputs(text, fp);
          std::fputc('\n', fp);
@@ -1520,7 +1554,7 @@
  static inline void evo_webui_playback_ended(int played) { (void)played; }
  
  #endif
-@@ -88,3 +104,23 @@
+@@ -88,3 +104,28 @@
  #endif
  
  #endif /* EVO_WEBUI_H */
@@ -1531,9 +1565,14 @@
 +const char *evo_nuvio_startup_status(void);
 +
 +#ifdef __cplusplus
-+extern "C"
++extern "C" {
 +#endif
 +int evo_webui_native_requested(void);
++int evo_webui_take_settings_requested(void);
++void evo_webui_reopen_from_settings(void);
++#ifdef __cplusplus
++}
++#endif
 +
 +#ifdef __cplusplus
 +extern "C"
@@ -2461,7 +2500,7 @@
 -  "contentId": "UP9000-PPSA99039_00-EVOPLAYER0000000",
 -  "contentVersion": "01.013.050",
 +  "contentId": "UP9000-PPSA99996_00-NUVIOPS500000000",
-+  "contentVersion": "01.000.013",
++  "contentVersion": "01.000.014",
    "downloadDataSize": 256,
    "gameIntent": {
      "permittedIntents": [
@@ -2544,6 +2583,44 @@
  #endif
      return g_root;
  }
+@@ -80,7 +80,7 @@
+     return buf;
+ }
+ 
+-int evo_mkdir(const char *path)
++static int evo_mkdir_leaf(const char *path)
+ {
+ #ifdef EVO_APP_MODULE
+     int r = sceKernelMkdir(path, 0777);
+@@ -93,3 +93,28 @@
+     return -1;
+ #endif
+ }
++
++int evo_mkdir(const char *path)
++{
++    if (!path || !*path)
++        return -1;
++
++    char tmp[512];
++    size_t len = strlen(path);
++    if (len >= sizeof(tmp))
++        return -1;
++    memcpy(tmp, path, len + 1);
++
++    while (len > 1 && tmp[len - 1] == '/') {
++        tmp[--len] = '\0';
++    }
++
++    for (char *p = tmp + 1; *p; p++) {
++        if (*p == '/' && *(p - 1) != '/') {
++            *p = '\0';
++            evo_mkdir_leaf(tmp);
++            *p = '/';
++        }
++    }
++    return evo_mkdir_leaf(tmp);
++}
 --- a/projects/evoplayer/src/evo_favorites.c
 +++ b/projects/evoplayer/src/evo_favorites.c
 @@ -1,7 +1,7 @@
@@ -2793,19 +2870,20 @@
      { "2: beside the rail, parts=0x7 control=0",    2, 108,  0, 1812, 1080, 0x7, 0x0 },
      { "3: inset card, parts=0 control=0x1",         2, 148, 40, 1732, 1000, 0x0, 0x1 },
      { "4: inset card, parts=0xFF control=0xFF",     2, 148, 40, 1732, 1000, 0xFF, 0xFF },
-@@ -180,7 +187,10 @@
+@@ -180,7 +187,11 @@
  static int  s_hold_frames = 25 * 60;
  
  static char s_url[1024];
 -static char s_hook_profile[16];      /* "" = media server, "nuvio" */
 +static int s_native_requested;
++static int s_settings_requested;
 +static char s_hook_profile[16];
 +static uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;
 +static int s_controller_direction, s_controller_shortcut;      /* "" = media server, "nuvio" */
  static char s_open_url[2048];        /* what the dialog opens first */
  static char s_reopen_url[2048];      /* where it reopens after playback */
  
-@@ -195,12 +205,35 @@
+@@ -195,12 +206,35 @@
  static int  s_play_pending = 0;
  static char s_play_url[2048];
  static char s_play_title[256];
@@ -2841,7 +2919,7 @@
  
  /* ---- shared with the server threads (s_mx) ---- */
  
-@@ -227,6 +260,7 @@
+@@ -227,6 +261,7 @@
  static char s_h_url[2048];
  static char s_h_title[256];
  static char s_h_return[2048];
@@ -2849,7 +2927,7 @@
  
  /*
   * The page's localStorage, kept by EVO. The PS5's browser dialog starts every
-@@ -415,17 +449,34 @@
+@@ -415,17 +450,34 @@
   * save whenever it changes: every 5 s, synchronously before a handoff or Back
   * to EVO, and by beacon when the page goes away. Values over 512 KB are
   * caches, not settings, and are left out. */
@@ -2895,7 +2973,7 @@
  "setInterval(function(){saveNow(0);},5000);"
  "window.addEventListener('pagehide',function(){saveNow(2);});"
  "document.addEventListener('visibilitychange',function(){if(document.hidden)saveNow(2);});"
-@@ -444,27 +495,22 @@
+@@ -444,27 +496,22 @@
  "function playerShown(){var p=document.getElementById('player');return !!(p&&p.style.display==='block');}"
  "function okEl(el){if(!NUVIO)return 1;return !!(el&&(el.id==='videoPlayer'||(el.closest&&el.closest('#player'))));}"
  "if(NUVIO){HTMLMediaElement.prototype.canPlayType=function(){return 'probably';};}"
@@ -2936,7 +3014,7 @@
  /* Where to come back to: the last page that is not the site's own player.
   * By the time the hook fires, the site has already routed to its player
   * (Emby: #!/videoosd/...), and reopening THAT leaves an empty player with no
-@@ -481,7 +527,7 @@
+@@ -481,7 +528,7 @@
  "function note(){if(!isPlayerUrl(location.href))good=location.href;}"
  "window.addEventListener('hashchange',note);window.addEventListener('popstate',note);"
  "['pushState','replaceState'].forEach(function(k){var o=history[k];"
@@ -2945,7 +3023,7 @@
  "function isStream(u){var l=String(u||'').toLowerCase();"
  " if(l.indexOf('blob:')==0||l.indexOf('data:')==0)return 0;"
  " if(NUVIO)return l.indexOf('http')==0||l.indexOf('/')==0;"
-@@ -493,14 +539,23 @@
+@@ -493,14 +540,23 @@
  " if(i<0)i=l.indexOf('/audio/');if(i<0)return '';var p=String(u).substring(i+1).split('/');return p[1]||'';}"
  "function handoff(u){evoLog('handoff '+String(u).substring(0,150));if(sent)return 1;sent=1;setTimeout(function(){sent=0;},30000);"
  " var abs=new URL(u,location.href).href,id=itemId(abs),done=0;"
@@ -2976,7 +3054,7 @@
  " setTimeout(function(){go(document.title);},1500);"
  " try{var ac=window.ApiClient;if(ac&&id){ac.getItem(ac.getCurrentUserId(),id).then(function(it){"
  "  var n=(it&&it.Name)||'';if(it&&it.SeriesName)n=it.SeriesName+' - '+n;go(n);},"
-@@ -537,9 +592,9 @@
+@@ -537,11 +593,11 @@
   * panicked the console. Re-added on a timer in case the site rebuilds the
   * page body. */
  "function addClose(){if(!document.body||document.getElementById('__evoClose'))return;"
@@ -2986,9 +3064,12 @@
 -"border-radius:30px;background:rgba(0,0,0,.75);color:#fff;font:24px sans-serif;cursor:pointer;"
 +"border-radius:30px;background:rgba(0,0,0,.75);color:#fff;font-size:24px;font-family:inherit;cursor:pointer;"
  "border:2px solid rgba(255,255,255,.55)');"
- " b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
+-" b.onclick=function(){saveNow(1);fetch('/evo/close');};document.body.appendChild(b);}"
++" b.onclick=function(){try{if(window.__nuvioSaveSettingsReturn)window.__nuvioSaveSettingsReturn();}catch(_){}saveNow(1);var u=new URL(good||location.href,location.href);u.searchParams.set('nuvioPlaybackReturn','1');fetch('/evo/close?return='+encodeURIComponent(u.href));};document.body.appendChild(b);}"
  "setInterval(addClose,2000);"
-@@ -785,17 +840,969 @@
+ "if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addClose);else addClose();"
+ "})();";
+@@ -785,17 +841,974 @@
          snprintf(out, cap, "%s", in);
  }
  
@@ -3953,12 +4034,17 @@
 +        speedtest_suspend();
          tlog("close requested by the page");
          pthread_mutex_lock(&s_mx);
++        char ret[2048];
++        ret[0] = 0;
++        query_param(path, "return", ret, sizeof ret);
++        if (ret[0]) snprintf(s_reopen_url, sizeof s_reopen_url, "%s", ret);
          s_close_req = 1;
 +        s_native_requested = 1;
++        s_settings_requested = 1;
          pthread_mutex_unlock(&s_mx);
          respond(fd, "204 No Content", "text/plain", "", 0);
      } else if (!strncmp(path, "/evo/log", 8)) {
-@@ -810,6 +1817,12 @@
+@@ -810,6 +1823,12 @@
          query_param(path, "url", raw, sizeof raw);
          query_param(path, "title", title, sizeof title);
          query_param(path, "return", ret, sizeof ret);
@@ -3971,7 +4057,7 @@
          to_upstream(raw, url, sizeof url);
          tlog("handoff: title='%s'", title);
          tlog("handoff: url=%.200s", url);
-@@ -818,6 +1831,14 @@
+@@ -818,6 +1837,14 @@
          snprintf(s_h_url, sizeof s_h_url, "%s", url);
          snprintf(s_h_title, sizeof s_h_title, "%s", title);
          snprintf(s_h_return, sizeof s_h_return, "%s", ret);
@@ -3986,7 +4072,18 @@
          s_handoff_ready = url[0] != 0;
          pthread_mutex_unlock(&s_mx);
          static const char body[] =
-@@ -1209,13 +2230,29 @@
+@@ -865,6 +1892,10 @@
+         if (have == (size_t)n) {
+             pthread_mutex_lock(&s_store_mx);
+             FILE *f = fopen(path, "wb");
++            if (!f) {
++                evo_mkdir(evo_data_path("webui"));
++                f = fopen(path, "wb");
++            }
+             if (f) {
+                 ok = fwrite(b, 1, have, f) == have;
+                 fclose(f);
+@@ -1209,13 +2240,29 @@
      if (req && read_head(fd, req, cap, &got, &hl) == 0) {
          char method[16] = "", path[4096] = "";
          sscanf(req, "%15s %4095s", method, path);
@@ -4018,7 +4115,7 @@
              proxy_request(fd, req, got, hl, method, path);
      }
      free(req);
-@@ -1227,8 +2264,14 @@
+@@ -1227,8 +2274,14 @@
  {
      (void)arg;
      while (!s_srv_stop) {
@@ -4033,7 +4130,7 @@
          if (c < 0) {
              if (s_srv_stop) break;
              if (errno == EINTR) continue;
-@@ -1250,8 +2293,20 @@
+@@ -1250,8 +2303,20 @@
  static void server_start(void)
  {
      if (s_listen_fd >= 0) return;
@@ -4055,7 +4152,7 @@
      int one = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
      struct sockaddr_in a;
-@@ -1259,11 +2314,20 @@
+@@ -1259,11 +2324,20 @@
      a.sin_family = AF_INET;
      a.sin_port = htons((uint16_t)s_port);
      a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -4078,7 +4175,7 @@
      s_listen_fd = fd;
      s_srv_stop = 0;
      pthread_t t;
-@@ -1279,6 +2343,7 @@
+@@ -1279,6 +2353,7 @@
  static void server_stop(void)
  {
      if (s_listen_fd < 0) return;
@@ -4086,7 +4183,7 @@
      s_srv_stop = 1;
      /* Wake the accept thread with a connection of our own; it sees the stop
       * flag and exits. Then the socket can go. */
-@@ -1304,10 +2369,32 @@
+@@ -1304,10 +2379,32 @@
      int uid = pick_user();
      if (ensure_initialized() != 0) {
          LOG("NO-GO at Initialize");
@@ -4119,15 +4216,16 @@
      evo_mkdir(evo_data_path("webui"));
      char leaf[200];
      snprintf(leaf, sizeof leaf, "webui/%s_%d.json", s_up.enabled ? s_up.host : "local",
-@@ -1318,6 +2405,7 @@
+@@ -1318,6 +2415,8 @@
      pthread_mutex_lock(&s_mx);
      s_close_req = 0;                     /* nothing stale from a previous page */
      s_hook_seen = 0;
 +    s_native_requested = 0;
++    s_settings_requested = 0;
      s_entry_failed = 0;
      s_handoff_ready = 0;
      pthread_mutex_unlock(&s_mx);
-@@ -1342,10 +2430,16 @@
+@@ -1342,10 +2441,16 @@
          s_param.header_y     = L->y;
          LOG("layout %s", L->name);
      }
@@ -4144,7 +4242,7 @@
          if (s_cycle && s_layout + 1 < LAYOUT_COUNT) {
              s_layout++;
              s_state = P_WAIT;
-@@ -1356,6 +2450,7 @@
+@@ -1356,6 +2461,7 @@
          s_state = P_OFF;
          return;
      }
@@ -4152,7 +4250,7 @@
      s_state = P_RUN;
      s_frames = 0;
      s_last_status = -1;
-@@ -1452,6 +2547,8 @@
+@@ -1452,6 +2558,8 @@
  {
      snprintf(s_error, sizeof s_error, "%s", msg);
      s_error_pending = 1;
@@ -4161,7 +4259,7 @@
  }
  
  int evo_webui_take_error(char *buf, size_t cap)
-@@ -1474,6 +2571,11 @@
+@@ -1474,6 +2582,11 @@
      snprintf(s_hook_profile, sizeof s_hook_profile, "%s", hook_profile ? hook_profile : "");
      if (s_preload_rc < 0) {
          LOG("open refused: the dialog module never loaded (0x%08x)", (unsigned)s_preload_rc);
@@ -4173,7 +4271,7 @@
          return -2;
      }
      memset(&s_up, 0, sizeof s_up);
-@@ -1505,7 +2607,9 @@
+@@ -1505,7 +2618,9 @@
          s_hook_profile[0] ? s_hook_profile : "media-server");
      s_error_pending = 0;
      s_check_rc = 0;
@@ -4184,7 +4282,7 @@
          s_check_rc = 1;                  /* nothing to reach: the page is in the app */
      } else {
          pthread_t t;
-@@ -1521,17 +2625,50 @@
+@@ -1521,17 +2636,50 @@
      return 0;
  }
  
@@ -4238,7 +4336,7 @@
      if (s_state != P_PLAYING) return;
      LOG("playback %s - reopening %s", played ? "ended" : "failed to start", s_reopen_url);
      s_state = P_WAIT;
-@@ -1601,6 +2738,12 @@
+@@ -1601,6 +2749,12 @@
              s_handoff_ready = 0;
              snprintf(s_play_url, sizeof s_play_url, "%s", s_h_url);
              snprintf(s_play_title, sizeof s_play_title, "%s", s_h_title);
@@ -4251,7 +4349,7 @@
              if (s_h_return[0])
                  snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_h_return);
          }
-@@ -1654,3 +2797,40 @@
+@@ -1654,3 +2808,64 @@
  #else
  typedef int evo_webui_not_built; /* keep the TU non-empty */
  #endif /* EVO_APP_MODULE */
@@ -4274,6 +4372,30 @@
 +    int result = s_native_requested;
 +    pthread_mutex_unlock(&s_mx);
 +    return result;
++}
++
++int evo_webui_take_settings_requested(void) {
++    pthread_mutex_lock(&s_mx);
++    int result = s_settings_requested;
++    s_settings_requested = 0;
++    pthread_mutex_unlock(&s_mx);
++    return result;
++}
++
++void evo_webui_reopen_from_settings(void) {
++    pthread_mutex_lock(&s_mx);
++    s_native_requested = 0;
++    s_settings_requested = 0;
++    s_close_req = 0;
++    s_closed_by_evo = 0;
++    if (s_reopen_url[0] || s_open_url[0]) {
++        if (!s_reopen_url[0]) {
++            snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_open_url);
++        }
++        s_frames = OPEN_DELAY_FRAMES / 2;
++        s_state = P_WAIT;
++    }
++    pthread_mutex_unlock(&s_mx);
 +}
 +
 +void evo_webui_controller(int options, int menu, int direction, int shortcut) {

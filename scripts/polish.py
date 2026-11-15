@@ -21,13 +21,149 @@ def apply(evo,nuvio):
         raise RuntimeError('NUVIO_WEBUI_ANIMATION must be a number')
     replace(web,'    LOG("Open url=%s ...", url);',
             '    s_param.animation = '+animation+';\n    LOG("Open url=%s ...", url);')
-    replace(web,'static char s_hook_profile[16];','static int s_native_requested;\nstatic char s_hook_profile[16];')
-    replace(web,'        s_close_req = 1;','        s_close_req = 1;\n        s_native_requested = 1;')
-    replace(web,'    s_hook_seen = 0;', '    s_hook_seen = 0;\n    s_native_requested = 0;')
-    web.write_text(web.read_text()+"\nint evo_webui_native_requested(void) {\n    pthread_mutex_lock(&s_mx);\n    int result = s_native_requested;\n    pthread_mutex_unlock(&s_mx);\n    return result;\n}\n")
-    h=app/'include/evo_webui.h';h.write_text(h.read_text()+'\n#ifdef __cplusplus\nextern "C"\n#endif\nint evo_webui_native_requested(void);\n')
+    replace(web,'static char s_hook_profile[16];','static int s_native_requested;\nstatic int s_settings_requested;\nstatic char s_hook_profile[16];')
+    replace(web,'        s_close_req = 1;',
+            '''        char ret[2048];
+        ret[0] = 0;
+        query_param(path, "return", ret, sizeof ret);
+        if (ret[0]) snprintf(s_reopen_url, sizeof s_reopen_url, "%s", ret);
+        s_close_req = 1;
+        s_native_requested = 1;
+        s_settings_requested = 1;''')
+    replace(web,'    s_hook_seen = 0;', '    s_hook_seen = 0;\n    s_native_requested = 0;\n    s_settings_requested = 0;')
+    replace(web, '''            pthread_mutex_lock(&s_store_mx);
+            FILE *f = fopen(path, "wb");
+            if (f) {
+                ok = fwrite(b, 1, have, f) == have;
+                fclose(f);
+            }
+            pthread_mutex_unlock(&s_store_mx);''',
+            '''            pthread_mutex_lock(&s_store_mx);
+            FILE *f = fopen(path, "wb");
+            if (!f) {
+                evo_mkdir(evo_data_path("webui"));
+                f = fopen(path, "wb");
+            }
+            if (f) {
+                ok = fwrite(b, 1, have, f) == have;
+                fclose(f);
+            }
+            pthread_mutex_unlock(&s_store_mx);''')
+    web.write_text(web.read_text()+r'''
+int evo_webui_native_requested(void) {
+    pthread_mutex_lock(&s_mx);
+    int result = s_native_requested;
+    pthread_mutex_unlock(&s_mx);
+    return result;
+}
+
+int evo_webui_take_settings_requested(void) {
+    pthread_mutex_lock(&s_mx);
+    int result = s_settings_requested;
+    s_settings_requested = 0;
+    pthread_mutex_unlock(&s_mx);
+    return result;
+}
+
+void evo_webui_reopen_from_settings(void) {
+    pthread_mutex_lock(&s_mx);
+    s_native_requested = 0;
+    s_settings_requested = 0;
+    s_close_req = 0;
+    s_closed_by_evo = 0;
+    if (s_reopen_url[0] || s_open_url[0]) {
+        if (!s_reopen_url[0]) {
+            snprintf(s_reopen_url, sizeof s_reopen_url, "%s", s_open_url);
+        }
+        s_frames = OPEN_DELAY_FRAMES / 2;
+        s_state = P_WAIT;
+    }
+    pthread_mutex_unlock(&s_mx);
+}
+''')
+    h=app/'include/evo_webui.h';h.write_text(h.read_text()+'''
+#ifdef __cplusplus
+extern "C" {
+#endif
+int evo_webui_native_requested(void);
+int evo_webui_take_settings_requested(void);
+void evo_webui_reopen_from_settings(void);
+#ifdef __cplusplus
+}
+#endif
+''')
     replace(web,"b.textContent='Back to EVO'", "b.textContent='Player settings'")
     replace(web,'font:24px sans-serif;', 'font-size:24px;font-family:inherit;')
+    replace(web,"b.onclick=function(){saveNow(1);fetch('/evo/close');};",
+            "b.onclick=function(){try{if(window.__nuvioSaveSettingsReturn)window.__nuvioSaveSettingsReturn();}catch(_){}"
+            "saveNow(1);var u=new URL(good||location.href,location.href);u.searchParams.set('nuvioPlaybackReturn','1');"
+            "fetch('/evo/close?return='+encodeURIComponent(u.href));};")
+    settings = app/'core/src/screens/SettingsScreen.cpp'
+    replace(settings, '#include "evo/screens/SettingsScreen.hpp"',
+            '#include "evo/screens/SettingsScreen.hpp"\n#include "evo_webui.h"')
+    replace(settings, '''    if (pressed & PadButtons::Circle) {
+        evo_feedback(EVO_FB_CANCEL);
+        if (auto screenMgr = Application::getInstance().getScreenManager()) {
+            screenMgr->navigateTo(ScreenId::MainMenu);
+        }
+        return true;
+    }''', '''    if (pressed & PadButtons::Circle) {
+        evo_feedback(EVO_FB_CANCEL);
+        saveSettings();
+        evo_webui_reopen_from_settings();
+        return true;
+    }''')
+    data_path = app/'src/evo_data_path.c'
+    replace(data_path, '''int evo_mkdir(const char *path)
+{
+#ifdef EVO_APP_MODULE
+    int r = sceKernelMkdir(path, 0777);
+    if (r == 0 || r == (int)0x80020011 /* SCE_KERNEL_ERROR_EEXIST */)
+        return 0;
+    return r;
+#else
+    if (mkdir(path, 0777) == 0 || errno == EEXIST)
+        return 0;
+    return -1;
+#endif
+}''', '''static int evo_mkdir_leaf(const char *path)
+{
+#ifdef EVO_APP_MODULE
+    int r = sceKernelMkdir(path, 0777);
+    if (r == 0 || r == (int)0x80020011 /* SCE_KERNEL_ERROR_EEXIST */)
+        return 0;
+    return r;
+#else
+    if (mkdir(path, 0777) == 0 || errno == EEXIST)
+        return 0;
+    return -1;
+#endif
+}
+
+int evo_mkdir(const char *path)
+{
+    if (!path || !*path)
+        return -1;
+
+    char tmp[512];
+    size_t len = strlen(path);
+    if (len >= sizeof(tmp))
+        return -1;
+    memcpy(tmp, path, len + 1);
+
+    while (len > 1 && tmp[len - 1] == '/') {
+        tmp[--len] = '\\0';
+    }
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/' && *(p - 1) != '/') {
+            *p = '\\0';
+            evo_mkdir_leaf(tmp);
+            *p = '/';
+        }
+    }
+    return evo_mkdir_leaf(tmp);
+}''')
     web.write_text(fix_playback_handoff(web.read_text()))
     web.write_text(fix_playback_title(web.read_text()))
     patch_playback_start(app)
