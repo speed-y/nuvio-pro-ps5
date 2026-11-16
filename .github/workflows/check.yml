@@ -149,7 +149,7 @@ jobs:
           EOF
           mapfile -t assets < release/ASSETS
           gh release create "$TAG" "${assets[@]}" --repo "$GH_REPO" \
-            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --target "$GITHUB_SHA" --draft --prerelease --latest=false \
             --title "PR #${PR_NUMBER} test build (${GITHUB_SHA:0:12})" --notes-file notes.md
           echo "### Experimental download" >> "$GITHUB_STEP_SUMMARY"
           gh release view "$TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
