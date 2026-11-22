@@ -53,7 +53,13 @@ void evo_keyboard_update() { ++keyboardUpdates; }
 void evo_keyboard_handle_input(uint32_t) { ++keyboardCalls; }
 bool evo_keyboard_wants_r3() { return false; }
 uint32_t evo_usb_remote_take_buttons() { return 0; }
-template<class... T> void toast(T...) {}
+static int toastCount = 0;
+static std::string toastTitle, toastBody;
+void toast(const char* title, const char* msg) {
+    ++toastCount; toastTitle = title ? title : ""; toastBody = msg ? msg : "";
+}
+void toast_sticky(const char* title, const char* msg) { toast(title, msg); }
+void toast_dismiss() { toastTitle.clear(); toastBody.clear(); }
 template<class... T> void EVO_LOGI(T...) {}
 template<class... T> void evo_boot_log(T...) {}
 void evo_boot_log_flush() {}
@@ -63,7 +69,6 @@ bool evo_capture_screenshot(std::string&) { assert(false); return false; }
 void notifyOnScreen(const char*) { assert(false); }
 bool g_upd_card_wanted = false;
 bool toast_is_sticky() { return false; }
-void toast_dismiss() {}
 void evo_updater_download() { assert(false); }
 void settingsFocusUpdateRow() {}
 namespace evo { namespace animation {
@@ -98,12 +103,15 @@ enum class ScreenId { Player, Browser, ExitConfirm, MediaInfo, ChapterPicker,
                       SubtitlePicker, AudioTrackPicker, SettingsSystem };
 enum class ViewMode { Fit, Fill, Stretch };
 struct Playback {
-    int toggles = 0, chapters = 0, seeks = 0, holdUpdates = 0;
+    int toggles = 0, chapters = 0, seeks = 0, holdUpdates = 0, pausedSets = 0;
     uint32_t lastHold = 0;
     bool paused = false, live = false;
-    double scrub = 0;
+    double scrub = 0, duration = 200, seekToPos = -1;
     void updateScrubHold(uint32_t held) { ++holdUpdates; lastHold = held; }
     void togglePause() { ++toggles; paused = !paused; }
+    void setPaused(bool value) { paused = value; ++pausedSets; }
+    void seekTo(double position) { seekToPos = position; }
+    double getDurationSeconds() { return duration; }
     bool isPaused() { return paused; }
     bool isLiveSource() { return live; }
     bool isScrubbing() { return false; }
@@ -292,9 +300,65 @@ void remote_codes() {
     remoteState.unknown[3] = 15; f.frame(2300); assert(manager.lastPressed == Circle);
     remoteState.unknown[3] = 0; f.frame(2310);
     const int calls = manager.calls;
-    for (int code : {22, 26, 255}) { remoteState.unknown[3] = code; f.frame(2500 + code); }
+    playback.paused = true;
+    remoteState.unknown[3] = 22; f.frame(2400);
+    assert(!playback.paused && playback.toggles == 2 && playback.pausedSets == 1);
+    remoteState.unknown[3] = 22; f.frame(2500);
+    assert(!playback.paused && playback.pausedSets == 1); // Play is not a toggle.
+    remoteState.unknown[3] = 26; f.frame(2600);
+    assert(playback.paused && playback.toggles == 2 && playback.pausedSets == 2);
+    remoteState.unknown[3] = 26; f.frame(2700);
+    assert(playback.paused && playback.pausedSets == 2); // Pause is not a toggle.
+    remoteState.unknown[3] = 255; f.frame(2800);
+    assert(playback.toggles == 2 && playback.seekToPos < 0);
     remoteState.buttons = L3 | R3 | Triangle; f.frame(3000);
-    assert(manager.calls == calls); // No guessed mappings or screenshot bits.
+    assert(manager.calls == calls); // Hardware-only bits stay off the remote path.
+}
+
+void remote_direct_actions() {
+    Fixture f; f.m_padHandle = -1;
+    remoteState.unknown[3] = 30; f.frame(1000);
+    assert(manager.navigated == ScreenId::SubtitlePicker);
+    remoteState.unknown[3] = 0; f.frame(1100);
+    remoteState.unknown[3] = 31; f.frame(1200);
+    assert(manager.navigated == ScreenId::AudioTrackPicker);
+    remoteState.unknown[3] = 0; f.frame(1300);
+    remoteState.unknown[3] = 5; f.frame(1400);
+    assert(playback.seekToPos == 100); // 50 percent of 200 seconds.
+    remoteState.unknown[3] = 37; f.frame(1500);
+    assert(manager.lastPressed & Triangle);
+    remoteState.unknown[3] = 39; f.frame(1600);
+    assert(manager.navigated == ScreenId::MediaInfo);
+    remoteState.unknown[3] = 32; f.frame(1700); // Sourced camera key, no guessed action.
+    assert(manager.navigated == ScreenId::MediaInfo && playback.seekToPos == 100);
+}
+
+void remote_action_menu() {
+    Fixture f; f.m_padHandle = -1;
+    remoteState.unknown[3] = 18; f.frame(1000);
+    assert(manager.player.m_showStatsForNerds); // Short press is unchanged.
+    f.frame(1699); assert(toastBody.find("Subtitles") == std::string::npos);
+    f.frame(1700); assert(toastBody.find("Subtitles") != std::string::npos);
+    remoteState.unknown[3] = 0;
+    remoteState.buttons = Down; f.frame(1800);
+    assert(toastBody.find("Audio") != std::string::npos);
+    assert(playback.seeks == 0); // The list consumes Down.
+    remoteState.buttons = Cross; f.frame(1900);
+    assert(manager.navigated == ScreenId::AudioTrackPicker);
+}
+
+void remote_learn_mode() {
+    std::remove(NUVIO_REMOTE_LEARN_PATH);
+    Fixture f; f.m_padHandle = -1;
+    remoteState.unknown[3] = 30; f.frame(1000);
+    assert(toastTitle != "REMOTE"); // Off until the learn file exists.
+    FILE* file = std::fopen(NUVIO_REMOTE_LEARN_PATH, "w");
+    assert(file); std::fclose(file);
+    remoteState.unknown[3] = 0; f.frame(1600);
+    remoteState.unknown[3] = 40; f.frame(1700); // Period is sourced and unmapped.
+    assert(toastTitle == "REMOTE");
+    assert(toastBody.find("code 40") != std::string::npos);
+    std::remove(NUVIO_REMOTE_LEARN_PATH);
 }
 
 void keyboard_and_nonplayer() {
@@ -320,6 +384,28 @@ void controller_unchanged() {
     assert(opens == (useBaseline ? 0 : 1) && remoteReads == (useBaseline ? 0 : 6) && controllerReads == 6);
 }
 '''
+
+
+class RemoteTableTests(unittest.TestCase):
+    def test_table_matches_the_sdl_index_range(self):
+        self.assertEqual([row[0] for row in native_remote.REMOTE_KEYS], list(range(46)))
+        unknown = {0, 14, 16, 17, 19, 28, 29, 34, 35}
+        for code, label, status, action, _player, _arg in native_remote.REMOTE_KEYS:
+            if code in unknown:
+                self.assertEqual(status, 'unknown')
+                self.assertEqual(action, 'none')
+            else:
+                self.assertEqual(status, 'sourced', label)
+        self.assertEqual(native_remote.key_by_code(13)[3], 'cross')
+        self.assertEqual(native_remote.key_by_code(22)[3], 'play')
+        self.assertEqual(native_remote.key_by_code(26)[3], 'pause')
+        self.assertNotEqual(native_remote.key_by_code(22)[3], 'cross')
+        self.assertNotEqual(native_remote.key_by_code(26)[3], 'cross')
+        self.assertEqual(native_remote.key_by_code(30)[3], 'down')
+        self.assertEqual(native_remote.key_by_code(31)[3], 'r2')
+        self.assertEqual(native_remote.key_by_code(45)[3], 'cross')
+        self.assertEqual(native_remote.MENU_ITEMS[0], ('Subtitles', 'down'))
+        self.assertEqual(native_remote.MENU_ITEMS[1], ('Audio', 'r2'))
 
 
 class NativeRemoteTests(unittest.TestCase):
@@ -373,6 +459,7 @@ class NativeRemoteTests(unittest.TestCase):
 ''' + '\n'.join(f'    if (name == "{name}") {{ {name}(); puts("{name}: passed"); return 0; }}'
                  for name in ('baseline_remote_only', 'remote_only', 'failed_controller', 'overlap', 'asymmetric_directions',
                               'disconnect', 'acquisition', 'browser_ownership', 'remote_codes',
+                              'remote_direct_actions', 'remote_action_menu', 'remote_learn_mode',
                               'keyboard_and_nonplayer', 'controller_unchanged')) + '\n    return 2;\n}\n')
         # The orb's target Clang lacks host ASan runtimes. GCC ships them.
         compiler = shutil.which('g++') or shutil.which('clang++') or shutil.which('c++')
@@ -386,6 +473,7 @@ class NativeRemoteTests(unittest.TestCase):
         (directory / 'test.cpp').write_text(source)
         cls.binary = directory / 'test'
         result = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                                 '-DNUVIO_REMOTE_LEARN_PATH="/tmp/nuvio-remote-learn"',
                                  '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                                  '-I' + str(directory), str(directory / 'test.cpp'),
                                  str(directory / 'evo_input.cpp'), '-o', str(cls.binary)],
@@ -422,6 +510,15 @@ class NativeRemoteTests(unittest.TestCase):
 
     def test_source_backed_remote_codes_reuse_player_actions(self):
         self.run_case('remote_codes')
+
+    def test_sourced_keys_open_pickers_and_seek_by_percent(self):
+        self.run_case('remote_direct_actions')
+
+    def test_long_menu_opens_an_action_list_without_seeking(self):
+        self.run_case('remote_action_menu')
+
+    def test_learn_file_shows_the_raw_code_and_stays_off_without_it(self):
+        self.run_case('remote_learn_mode')
 
     def test_keyboard_navigation_and_transport_scope(self):
         self.run_case('keyboard_and_nonplayer')

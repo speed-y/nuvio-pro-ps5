@@ -143,4 +143,6 @@ SDK v0.43 supplies the existing `scePadOpen`, `scePadGetHandle`, `scePadReadStat
 | `src/video/ps5/SDL_ps5remote.c` | `d0aac6bf7abc4a970b9199265b86e40d940502f6b10d179f9fc3a9c93bc1d85a` |
 
 `scripts/native_remote.py` retains SDL's zlib license notice, source attribution and an explicit altered-source notice in the generated adapter.
+Its code indexes are `remote_key_map` in `SDL_ps5remote.c`.
+Indexes that file marks unknown stay unmapped.
 This adaptation changes handle ownership, browser suspension, retry behavior and native action translation. It does not add SDL as a build dependency.

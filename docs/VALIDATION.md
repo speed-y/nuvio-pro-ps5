@@ -5470,6 +5470,24 @@ The dialog links to the release page and the `nuvio-pro-ps5-<version>.zip` asset
 The bundle version comes from `VERSION`, currently `0.2.0-alpha.8`.
 Console update prompts and skip cards on firmware 12.70 remain pending.
 
+## TV remote action map, 2026-11-22
+
+[SOURCE-VERIFIED] SDL `remote_key_map` at `ee4c47dc0d617b3bc8f35108f9956baf228a1322` names codes 0 through 45.
+Codes 0, 14, 16, 17, 19, 28, 29, 34 and 35 are unknown in that file and stay unmapped.
+No Info key appears in that table. Display is code 33.
+The player already binds Cross, Circle, Options, Square, Triangle, L1, R1, L2, R2, R3 and the touchpad halves.
+Library screens use D-pad, OK, Back, and some use L1, R1, Triangle or Square.
+
+[LOCALLY BUILT] The host remote tests passed with g++ 13.3.0 and ASan/UBSan.
+Play resumes only when paused. Pause pauses only when playing.
+Code 5 seeks to 50 percent of a 200 second duration.
+Subtitle opens the subtitle picker. Audio opens the audio picker.
+A 700 ms Menu hold opens the action list and consumes Down instead of seeking.
+Without `/tmp/nuvio-remote-learn` the learn line stays hidden.
+With that file, code 40 shows `code 40` on the sticky toast.
+The owner's earlier D-pad, OK, Back, Menu and transport checks on firmware 12.70 still describe the unchanged short-press mappings.
+The new keys and the learn line remain unverified on firmware 12.70.
+
 ## CJK subtitle coverage, 2026-11-22
 
 [SOURCE-VERIFIED] The HUD shader binds six font atlases.

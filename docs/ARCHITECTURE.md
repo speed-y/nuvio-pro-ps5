@@ -471,7 +471,12 @@ It uses existing native navigation and player actions, with one dispatch per fra
 Read failures release remote input. Recovery requires a neutral state and uses a one-second acquisition backoff.
 Browser ownership suspends the native receiver. Cleanup closes owned handles, not borrowed handles.
 Basic arrows, OK, Back and Menu are mapped. Supported transport codes reuse existing playback actions.
-Dedicated Play and Pause remain unbound because they must not act as toggles.
+Dedicated Play resumes playback. Dedicated Pause pauses playback. Neither key toggles.
+Hold OK or Menu for 700 ms in the player to open the action list.
+A short Menu press still toggles stats. Guide opens the same list.
+Create an empty `/data/nuvio/remote-learn` file to pin the last raw code on screen.
+Delete that file to hide the code. `/mnt/usb0/evo_remote_learn` shows the same line.
+The code table follows SDL `remote_key_map`. Indexes that file marks unknown stay unmapped.
 Actual TV-remote delivery and behavior on firmware 12.70 remain hardware checks.
 
 The browser subtitle loader shares matching in-flight discovery across initial mount and native handoff.
