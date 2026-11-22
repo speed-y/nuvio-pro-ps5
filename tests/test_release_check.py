@@ -39,12 +39,18 @@ const releases = [
   { draft: false, prerelease: true, tag_name: "v0.2.0-alpha.8", name: "Nuvio Pro v0.2.0-alpha.8",
     html_url: "https://github.com/speed-y/nuvio-pro-ps5/releases/tag/v0.2.0-alpha.8",
     assets: [{ name: "nuvio-pro-ps5-0.2.0-alpha.8.zip",
-      browser_download_url: "https://github.com/speed-y/nuvio-pro-ps5/releases/download/v0.2.0-alpha.8/nuvio-pro-ps5-0.2.0-alpha.8.zip" }] }
+      browser_download_url: "https://github.com/speed-y/nuvio-pro-ps5/releases/download/v0.2.0-alpha.8/nuvio-pro-ps5-0.2.0-alpha.8.zip" }] },
+  { draft: false, prerelease: true, tag_name: "v0.2.0-alpha.9", name: "Nuvio Pro v0.2.0-alpha.9",
+    html_url: "https://github.com/speed-y/nuvio-pro-ps5/releases/tag/v0.2.0-alpha.9",
+    assets: [{ name: "nuvio-pro-ps5-0.2.0-alpha.9.zip",
+      browser_download_url: "https://github.com/speed-y/nuvio-pro-ps5/releases/download/v0.2.0-alpha.9/nuvio-pro-ps5-0.2.0-alpha.9.zip" }] }
 ];
-if (chooseNewestRelease(releases, "0.2.0-alpha.8") !== null) throw new Error("current tag prompted");
-const next = chooseNewestRelease(releases, "0.2.0-alpha.7");
-if (next.tag !== "0.2.0-alpha.8") throw new Error(next.tag);
-if (!next.downloadUrl.endsWith("nuvio-pro-ps5-0.2.0-alpha.8.zip")) throw new Error(next.downloadUrl);
+if (chooseNewestRelease(releases, "0.2.0-alpha.9") !== null) throw new Error("current tag prompted");
+const next = chooseNewestRelease(releases, "0.2.0-alpha.8");
+if (next.tag !== "0.2.0-alpha.9") throw new Error(next.tag);
+if (!next.downloadUrl.endsWith("nuvio-pro-ps5-0.2.0-alpha.9.zip")) throw new Error(next.downloadUrl);
+const fromPrevious = chooseNewestRelease(releases.filter((release) => release.tag_name !== "v0.2.0-alpha.9"), "0.2.0-alpha.7");
+if (fromPrevious.tag !== "0.2.0-alpha.8") throw new Error(fromPrevious.tag);
 if (!next.releaseUrl.includes("github.com/speed-y/nuvio-pro-ps5/releases/tag/")) throw new Error(next.releaseUrl);
 if (parseLatestRelease(releases[1]) !== null) throw new Error("pull-request tag was accepted");
 ''')

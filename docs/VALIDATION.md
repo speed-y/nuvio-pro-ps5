@@ -5467,6 +5467,6 @@ The other fork patches applied on the 1.4.4 tree.
 Update checks read `speed-y/nuvio-pro-ps5` releases, including prerelease tags.
 The checker skips drafts and `pr-*` test tags.
 The dialog links to the release page and the `nuvio-pro-ps5-<version>.zip` asset.
-The bundle version comes from `VERSION`, currently `0.2.0-alpha.7`.
+The bundle version comes from `VERSION`, currently `0.2.0-alpha.8`.
 Console update prompts and skip cards on firmware 12.70 remain pending.
 
