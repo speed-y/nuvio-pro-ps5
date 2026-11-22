@@ -19,7 +19,7 @@
   document.addEventListener('click', function (event) {
     if (window.__nuvioPs5Activate) window.__nuvioPs5Activate(event);
   }, true);
-  document.addEventListener('keydown', function (event) {
+  window.addEventListener('keydown', function (event) {
     if (event.repeat) return;
     var key = event.key;
     var remoteKey = key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' ||
