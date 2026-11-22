@@ -2,10 +2,13 @@ float button_width(Button button, float size);
 
 namespace {
 bool g_remote_glyphs = false;
+bool g_remote_menu_seen = false;
 }
 
 void set_remote_glyphs(bool on) { g_remote_glyphs = on; }
 bool remote_glyphs() { return g_remote_glyphs; }
+void set_remote_menu_seen(bool on) { g_remote_menu_seen = on; }
+bool remote_menu_seen() { return g_remote_menu_seen; }
 
 namespace {
 float remote_x(float unit, float x, float w) { return x + unit / 64.0f * w; }
@@ -30,6 +33,16 @@ void remote_back_arrow(gfx::DrawList &list, float x, float cy, float w, float h,
         remote_x(28, x, w), remote_y(40, cy, h),
     };
     list.polygon(xy, 9, ink);
+}
+
+void remote_hold_ok(gfx::DrawList &list, const Fonts &fonts, GlyphStyle style, float x, float cy,
+                    float w, float h)
+{
+    const gfx::Color light = gfx::Color::rgb(0xf4f4f8);
+    remote_body(list, x, cy, w, h, gfx::Color::rgb(0x141624));
+    list.arc(x + w * 0.5f, cy, h * 0.30f, h * 0.07f, -2.2f, 5.0f, light, true);
+    style.ink = light;
+    label(list, fonts, style, "OK", x + w * 0.5f, cy, h * 0.28f);
 }
 }
 
@@ -67,6 +80,10 @@ bool draw_remote_button(gfx::DrawList &list, const Fonts &fonts, const GlyphStyl
         break;
     case Button::options:
     case Button::touchpad:
+        if (!remote_menu_seen()) {
+            remote_hold_ok(list, fonts, style, x, cy, w, h);
+            break;
+        }
         remote_body(list, x, cy, w, h, paper);
         list.rounded_rect({remote_x(16, x, w), remote_y(17, cy, h), w * 0.5f, h * 0.094f}, h * 0.04f, light);
         list.rounded_rect({remote_x(16, x, w), remote_y(29, cy, h), w * 0.5f, h * 0.094f}, h * 0.04f, light);

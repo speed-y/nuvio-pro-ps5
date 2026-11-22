@@ -317,6 +317,7 @@ static void respond(int fd, const char *status, const char *type, const char *bo
     last_body[n] = 0;
 }
 static void tlog(const char *fmt, ...) { (void)fmt; }
+int nuvio_remote_menu_seen(void) { return 0; }
 static void evo_webui_controller(int options, int menu, int direction, int shortcut);
 ''' + emitted.split('static char s_hook_profile[16];', 1)[1] + r'''
 int main(void) {

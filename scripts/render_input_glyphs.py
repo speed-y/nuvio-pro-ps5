@@ -89,6 +89,13 @@ def info():
     return image
 
 
+def hold_ok():
+    image, draw = key(PAPER)
+    draw.arc((u(15), u(15), u(49), u(49)), start=210, end=520, fill=LIGHT, width=int(u(4)))
+    label(draw, 'OK', 16, LIGHT)
+    return image
+
+
 def menu():
     image, draw = key(PAPER)
     for top in (17, 29, 41):
@@ -111,6 +118,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     made = {
         'btn_remote_ok.png': word('OK', 20),
+        'btn_remote_hold_ok.png': hold_ok(),
         'btn_remote_back.png': back(),
         'btn_remote_menu.png': menu(),
         'btn_remote_arrows.png': arrows(),
@@ -141,10 +149,11 @@ def main():
                     controllers.append((path.stem.replace('btn_', ''), Image.open(path).convert('RGBA')))
     controllers.sort()
 
-    order = ['ok', 'back', 'menu', 'arrows', 'red', 'green', 'yellow', 'blue', 'info', 'play', 'pause',
+    order = ['ok', 'hold_ok', 'back', 'menu', 'arrows', 'red', 'green', 'yellow', 'blue', 'info', 'play', 'pause',
              'ch_up', 'ch_down'] + [str(n) for n in range(10)]
     names = {
-        'ok': 'OK', 'back': 'Back', 'menu': 'Menu', 'arrows': 'Arrows', 'red': 'Red', 'green': 'Green',
+        'ok': 'OK', 'hold_ok': 'Hold OK', 'back': 'Back', 'menu': 'Menu', 'arrows': 'Arrows',
+        'red': 'Red', 'green': 'Green',
         'yellow': 'Yellow', 'blue': 'Blue', 'info': 'Info', 'play': 'Play', 'pause': 'Pause',
         'ch_up': 'CH+', 'ch_down': 'CH-',
     }

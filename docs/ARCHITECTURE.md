@@ -472,8 +472,9 @@ Read failures release remote input. Recovery requires a neutral state and uses a
 Browser ownership suspends the native receiver. Cleanup closes owned handles, not borrowed handles.
 Basic arrows, OK, Back and Menu are mapped. Supported transport codes reuse existing playback actions.
 Dedicated Play resumes playback. Dedicated Pause pauses playback. Neither key toggles.
-Hold OK or Menu for 700 ms in the player to open the action list.
-A short Menu press still toggles stats.
+Hold OK for 700 ms in the player to open the action list.
+A short Menu press still toggles stats when that remote has a Menu key.
+Hints show Hold OK until a Menu or context-menu code arrives.
 Guide opens the chapter list when the title has chapters.
 Red opens audio, green opens subtitles, yellow skips, and blue goes next.
 Create an empty `/data/nuvio/remote-learn` file to pin the last raw code on screen.

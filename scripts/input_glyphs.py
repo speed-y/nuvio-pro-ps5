@@ -27,7 +27,9 @@ def patch_hud_glyphs(kit):
              '                 const Hint *hints, int count, float x, bool right_align,\n'
              '                 const HintLayout &layout = {});\n'
              'void set_remote_glyphs(bool on);\n'
-             'bool remote_glyphs();\n',
+             'bool remote_glyphs();\n'
+             'void set_remote_menu_seen(bool on);\n'
+             'bool remote_menu_seen();\n',
              'glyph header')
     inc = (ROOT / 'scripts/remote_glyph_draw.inc').read_text()
     _replace(source, 'float button_width(Button button, float size)\n{',

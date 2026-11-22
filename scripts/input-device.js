@@ -16,14 +16,29 @@ export function noteInputDevice(state, source, now) {
 }
 
 const live = createInputDevice();
+let menuSeen = false;
 
 export function inputDevice() {
   return live.device;
 }
 
+export function remoteMenuSeen() {
+  return menuSeen;
+}
+
+/** Remember a real Menu or context-menu key for the rest of this page. */
+export function noteRemoteMenu() {
+  if (menuSeen) return;
+  menuSeen = true;
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('nuvio-remote-menu'));
+  }
+}
+
 export function installInputDevice() {
   if (typeof window === 'undefined') return;
   window.__NUVIO_INPUT_DEVICE__ = live.device;
+  window.__nuvioNoteRemoteMenu = () => noteRemoteMenu();
   window.__nuvioNoteInput = (source, now) => {
     const before = live.device;
     noteInputDevice(live, source, now);
@@ -50,8 +65,13 @@ const REMOTE_FOR = {
   R3: 'blue'
 };
 
-export function remoteGlyphName(controllerName) {
+export function remoteGlyphFor(controllerName, menuSeenNow) {
+  if (!menuSeenNow && (controllerName === 'Options' || controllerName === 'TouchPad')) return 'hold-ok';
   return REMOTE_FOR[controllerName] || 'ok';
+}
+
+export function remoteGlyphName(controllerName) {
+  return remoteGlyphFor(controllerName, menuSeen);
 }
 
 const PAPER = '#141624';
@@ -77,6 +97,13 @@ export function remoteGlyphSvg(name) {
   if (name === 'blue') return frame('#3b6fe2', '');
   if (name === 'back') {
     return frame(PAPER, '<polygon points="12,28 28,16 28,23 50,23 50,46 38,46 38,33 28,33 28,40" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'hold-ok') {
+    return frame(PAPER,
+      '<path d="M32 15 a17 17 0 1 1 -14 24" fill="none" stroke="' + LIGHT +
+      '" stroke-width="4" stroke-linecap="round"/>' +
+      '<text x="32" y="37" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="800" fill="' +
+      LIGHT + '">OK</text>');
   }
   if (name === 'menu') {
     return frame(PAPER,

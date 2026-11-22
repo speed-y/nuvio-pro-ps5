@@ -5492,6 +5492,8 @@ The same code then opens the subtitle picker.
 A remote press switches hints to the remote set. A controller press within 200 ms does not switch back.
 The sheet is [input-glyphs-preview.png](input-glyphs-preview.png).
 Play, pause, arrows, back and info are shapes on that sheet.
+OK does not reveal the Menu glyph. Code 18, code 27, and the Options bit do.
+The sheet includes Hold OK.
 Console glyph switching on firmware 12.70 remains pending.
 The owner's earlier D-pad, OK, Back, Menu and transport checks on firmware 12.70 still describe the unchanged short-press mappings.
 The new keys and the learn line remain unverified on firmware 12.70.

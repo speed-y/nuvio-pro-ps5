@@ -73,8 +73,11 @@ void evo_updater_download() { assert(false); }
 void settingsFocusUpdateRow() {}
 namespace hui { namespace ui {
 static int glyphMode = 0;
+static int menuSeen = 0;
 void set_remote_glyphs(bool on) { glyphMode = on ? 1 : 0; }
+void set_remote_menu_seen(bool on) { menuSeen = on ? 1 : 0; }
 int remote_glyph_mode_for_test() { return glyphMode; }
+int remote_menu_seen_for_test() { return menuSeen; }
 }}
 namespace evo { namespace animation {
 struct AnimationManager {
@@ -385,6 +388,26 @@ void remote_user_remap() {
     std::remove(NUVIO_REMOTE_LEARN_PATH);
 }
 
+void glyph_menu() {
+    Fixture f;
+    remoteState.unknown[3] = 13; f.frame(1000);
+    assert(hui::ui::remote_menu_seen_for_test() == 0);
+    remoteState.unknown[3] = 18; f.frame(1400);
+    assert(hui::ui::remote_menu_seen_for_test() == 1);
+}
+
+void glyph_menu_code() {
+    Fixture f;
+    remoteState.unknown[3] = 27; f.frame(1000);
+    assert(hui::ui::remote_menu_seen_for_test() == 1);
+}
+
+void glyph_menu_bit() {
+    Fixture f;
+    remoteState.buttons = Options; f.frame(1000);
+    assert(hui::ui::remote_menu_seen_for_test() == 1);
+}
+
 void glyph_switch() {
     Fixture f;
     controllerState.buttons = Cross; f.frame(1000);
@@ -519,7 +542,8 @@ class NativeRemoteTests(unittest.TestCase):
                  for name in ('baseline_remote_only', 'remote_only', 'failed_controller', 'overlap', 'asymmetric_directions',
                               'disconnect', 'acquisition', 'browser_ownership', 'remote_codes',
                               'remote_direct_actions', 'remote_action_menu', 'remote_learn_mode',
-                              'remote_user_remap', 'glyph_switch',
+                              'remote_user_remap', 'glyph_switch', 'glyph_menu',
+                              'glyph_menu_code', 'glyph_menu_bit',
                               'keyboard_and_nonplayer', 'controller_unchanged')) + '\n    return 2;\n}\n')
         # The orb's target Clang lacks host ASan runtimes. GCC ships them.
         compiler = shutil.which('g++') or shutil.which('clang++') or shutil.which('c++')
@@ -586,6 +610,15 @@ class NativeRemoteTests(unittest.TestCase):
 
     def test_glyphs_follow_the_last_device_and_ignore_a_stray_press(self):
         self.run_case('glyph_switch')
+
+    def test_ok_does_not_reveal_the_menu_glyph_but_code_18_does(self):
+        self.run_case('glyph_menu')
+
+    def test_context_menu_code_reveals_the_menu_glyph(self):
+        self.run_case('glyph_menu_code')
+
+    def test_remote_options_bit_reveals_the_menu_glyph(self):
+        self.run_case('glyph_menu_bit')
 
     def test_keyboard_navigation_and_transport_scope(self):
         self.run_case('keyboard_and_nonplayer')

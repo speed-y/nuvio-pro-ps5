@@ -1396,17 +1396,18 @@ def patch_controller_hook(source):
     anchor='static char s_hook_profile[16];'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller state anchor changed')
-    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;\nstatic int s_controller_direction, s_controller_shortcut;')
+    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;\nstatic int s_controller_direction, s_controller_shortcut;\nint nuvio_remote_menu_seen(void);')
     anchor='    } else if (!strncmp(path, "/evo/close", 10)) {'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller endpoint anchor changed')
     source=source.replace(anchor, '''    } else if (!strcmp(path, "/evo/controller")) {
-        char body[160];
+        char body[192];
         pthread_mutex_lock(&s_mx);
-        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d,\\"keyboard\\":%u,\\"shortcut\\":%d}",
+        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d,\\"keyboard\\":%u,\\"shortcut\\":%d,\\"remoteMenu\\":%u}",
                          (unsigned)s_controller_options, (unsigned)s_controller_menu,
                          (unsigned)s_controller_navigation, s_controller_direction,
-                         (unsigned)s_controller_keyboard, s_controller_shortcut);
+                         (unsigned)s_controller_keyboard, s_controller_shortcut,
+                         (unsigned)nuvio_remote_menu_seen());
         pthread_mutex_unlock(&s_mx);
         respond(fd, "200 OK", "application/json", body, (size_t)n);
 '''+anchor)

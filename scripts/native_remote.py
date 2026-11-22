@@ -207,7 +207,10 @@ RECEIVER = r'''
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
-namespace hui { namespace ui { void set_remote_glyphs(bool on); } }
+namespace hui { namespace ui {
+void set_remote_glyphs(bool on);
+void set_remote_menu_seen(bool on);
+} }
 #ifndef NUVIO_REMOTE_LEARN_PATH
 #define NUVIO_REMOTE_LEARN_PATH "/data/nuvio/remote-learn"
 #endif
@@ -263,6 +266,7 @@ class NuvioTvRemote {
     uint64_t mapCheckAt = 0;
     bool openChapters = false;
     bool hadPress = false;
+    bool sawMenu = false;
     uint32_t trackedButtons = 0;
     uint8_t trackedCode = 0;
 
@@ -435,6 +439,7 @@ class NuvioTvRemote {
 public:
     uint32_t buttons() const { return previous; }
     bool pressed() const { return hadPress; }
+    bool menuSeen() const { return sawMenu; }
 
     void shutdown() {
         detach();
@@ -511,6 +516,7 @@ public:
         using namespace evo::PadButtons;
         uint32_t basic = state.buttons & (Up | Down | Left | Right | Cross | Circle | Options);
         const uint8_t code = state.unknown[3];
+        if (code == 18 || code == 27 || (state.buttons & Options)) sawMenu = true;
         if (code != 0 && code != 13 && code != 15 && code != 18 && code != 43)
             bindCode = code;
         showLearn(code, state.buttons);
@@ -570,6 +576,7 @@ const NuvioTvRemote::Name NuvioTvRemote::kNames[] = {
 };
 const int NuvioTvRemote::kNameCount = sizeof(NuvioTvRemote::kNames) / sizeof(NuvioTvRemote::kNames[0]);
 static NuvioTvRemote s_nuvioRemote;
+extern "C" int nuvio_remote_menu_seen(void) { return s_nuvioRemote.menuSeen() ? 1 : 0; }
 
 '''
 
@@ -594,6 +601,7 @@ INPUT_GATE = '''        // Read the remote independently, even without a DualSen
             else if (controllerEdge) { remoteGlyphs = false; glyphBlock = glyphNow + 200; }
         }
         hui::ui::set_remote_glyphs(remoteGlyphs);
+        hui::ui::set_remote_menu_seen(s_nuvioRemote.menuSeen());
         if (!controllerRead) {
             // Failed reads may partially fill the struct. Neutralize every
             // non-button input: zero sticks would synthesize Up/Left forever.
