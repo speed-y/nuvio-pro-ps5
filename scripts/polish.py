@@ -654,6 +654,7 @@ def patch_nuvio(nuvio):
     navigation=nuvio/'js/ui/navigation'
     shutil.copyfile(Path(__file__).parent/'ps5-navigation.js', navigation/'ps5-navigation.js')
     shutil.copyfile(Path(__file__).parent/'ps5-text-input.js', navigation/'ps5-text-input.js')
+    shutil.copyfile(Path(__file__).parent/'input-device.js', navigation/'input-device.js')
     shutil.copyfile(Path(__file__).parent/'ps5-tv-remote.js', navigation/'ps5-tv-remote.js')
     with (nuvio/'css/components-60.css').open('a') as css:
         css.write('\n'+(Path(__file__).parent/'ps5-search-keyboard.css').read_text()+"""

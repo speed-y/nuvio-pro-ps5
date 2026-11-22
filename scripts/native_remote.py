@@ -261,6 +261,9 @@ class NuvioTvRemote {
     Saved saved[256]{};
     uint64_t mapCheckAt = 0;
     bool openChapters = false;
+    bool hadPress = false;
+    uint32_t trackedButtons = 0;
+    uint8_t trackedCode = 0;
 
     void detach() {
         if (owned && handle > 0) scePadClose(handle);
@@ -430,6 +433,7 @@ class NuvioTvRemote {
 
 public:
     uint32_t buttons() const { return previous; }
+    bool pressed() const { return hadPress; }
 
     void shutdown() {
         detach();
@@ -472,6 +476,7 @@ public:
     }
 
     uint32_t poll(bool browserOwnsInput, bool player, uint64_t now) {
+        hadPress = false;
         if (browserOwnsInput) {
             shutdown();
             return 0;
@@ -510,8 +515,13 @@ public:
         showLearn(code, state.buttons);
         if (waitNeutral) {
             if (!basic && !code) waitNeutral = false;
+            trackedButtons = 0;
+            trackedCode = 0;
             return previous = 0;
         }
+        hadPress = ((basic & ~trackedButtons) != 0) || (code != 0 && code != trackedCode);
+        trackedButtons = basic;
+        trackedCode = code;
         const bool menuKey = code == 18 || code == 13 || (state.buttons & (Options | Cross));
         if (player && menuKey && !menuOpen) {
             if (!holdingMenu) { holdingMenu = true; menuDownAt = now; }
@@ -570,6 +580,19 @@ INPUT_GATE = '''        // Read the remote independently, even without a DualSen
             static_cast<uint64_t>(now_ms()));
         s_nuvioRemote.applyPlayer();
         const bool controllerRead = m_padHandle >= 0 && scePadReadState(m_padHandle, &padData) == 0;
+        static uint32_t lastController = 0;
+        static uint64_t glyphBlock = 0;
+        static bool remoteGlyphs = false;
+        const uint64_t glyphNow = static_cast<uint64_t>(now_ms());
+        const uint32_t controllerNow = controllerRead ? padData.buttons : 0;
+        const bool controllerEdge = (controllerNow & ~lastController) != 0;
+        lastController = controllerNow;
+        const bool remoteEdge = s_nuvioRemote.pressed();
+        if (!(controllerEdge && remoteEdge) && glyphNow >= glyphBlock) {
+            if (remoteEdge) { remoteGlyphs = true; glyphBlock = glyphNow + 200; }
+            else if (controllerEdge) { remoteGlyphs = false; glyphBlock = glyphNow + 200; }
+        }
+        hui::ui::set_remote_glyphs(remoteGlyphs);
         if (!controllerRead) {
             // Failed reads may partially fill the struct. Neutralize every
             // non-button input: zero sticks would synthesize Up/Left forever.

@@ -480,6 +480,8 @@ Create an empty `/data/nuvio/remote-learn` file to pin the last raw code on scre
 Delete that file to hide the code. `/mnt/usb0/evo_remote_learn` shows the same line.
 With that file open, choosing an action list row saves the last code in `/data/nuvio/remote-map`.
 The code table follows SDL `remote_key_map`. Indexes that file marks unknown stay unmapped.
+Button hints follow the last device. A controller press shows PlayStation shapes.
+A remote press shows generic keys. The preview is [input-glyphs-preview.png](input-glyphs-preview.png).
 Actual TV-remote delivery and behavior on firmware 12.70 remain hardware checks.
 
 The browser subtitle loader shares matching in-flight discovery across initial mount and native handoff.

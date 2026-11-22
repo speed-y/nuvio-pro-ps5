@@ -71,6 +71,11 @@ bool g_upd_card_wanted = false;
 bool toast_is_sticky() { return false; }
 void evo_updater_download() { assert(false); }
 void settingsFocusUpdateRow() {}
+namespace hui { namespace ui {
+static int glyphMode = 0;
+void set_remote_glyphs(bool on) { glyphMode = on ? 1 : 0; }
+int remote_glyph_mode_for_test() { return glyphMode; }
+}}
 namespace evo { namespace animation {
 struct AnimationManager {
     static AnimationManager& getInstance() { static AnimationManager a; return a; }
@@ -380,6 +385,20 @@ void remote_user_remap() {
     std::remove(NUVIO_REMOTE_LEARN_PATH);
 }
 
+void glyph_switch() {
+    Fixture f;
+    controllerState.buttons = Cross; f.frame(1000);
+    assert(hui::ui::remote_glyph_mode_for_test() == 0);
+    controllerState.buttons = 0; f.frame(1100);
+    remoteState.unknown[3] = 13; f.frame(1200);
+    assert(hui::ui::remote_glyph_mode_for_test() == 1);
+    controllerState.buttons = Cross; f.frame(1300);
+    assert(hui::ui::remote_glyph_mode_for_test() == 1); // Stray controller press is ignored.
+    controllerState.buttons = 0; f.frame(1400);
+    controllerState.buttons = Cross; f.frame(1500);
+    assert(hui::ui::remote_glyph_mode_for_test() == 0);
+}
+
 void remote_learn_mode() {
     std::remove(NUVIO_REMOTE_LEARN_PATH);
     Fixture f; f.m_padHandle = -1;
@@ -500,7 +519,7 @@ class NativeRemoteTests(unittest.TestCase):
                  for name in ('baseline_remote_only', 'remote_only', 'failed_controller', 'overlap', 'asymmetric_directions',
                               'disconnect', 'acquisition', 'browser_ownership', 'remote_codes',
                               'remote_direct_actions', 'remote_action_menu', 'remote_learn_mode',
-                              'remote_user_remap',
+                              'remote_user_remap', 'glyph_switch',
                               'keyboard_and_nonplayer', 'controller_unchanged')) + '\n    return 2;\n}\n')
         # The orb's target Clang lacks host ASan runtimes. GCC ships them.
         compiler = shutil.which('g++') or shutil.which('clang++') or shutil.which('c++')
@@ -564,6 +583,9 @@ class NativeRemoteTests(unittest.TestCase):
 
     def test_learn_mode_can_save_a_remap_for_an_unknown_code(self):
         self.run_case('remote_user_remap')
+
+    def test_glyphs_follow_the_last_device_and_ignore_a_stray_press(self):
+        self.run_case('glyph_switch')
 
     def test_keyboard_navigation_and_transport_scope(self):
         self.run_case('keyboard_and_nonplayer')

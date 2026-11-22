@@ -1682,6 +1682,8 @@ def main():
     polish.apply(evo, nv)
     import native_remote
     native_remote.patch_native(evo / 'projects/evoplayer')
+    import input_glyphs
+    input_glyphs.install(evo)
     patches.write_patch(fetch('evo-player-nuvio-source')[1], evo, ROOT/'patches/evo.patch')
     patches.write_patch(fetch('nuvio-tv-source')[1], nv, ROOT/'patches/nuvio.patch')
     bootstrap_metadata = None

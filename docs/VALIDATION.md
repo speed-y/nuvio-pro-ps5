@@ -5489,6 +5489,9 @@ Without `/tmp/nuvio-remote-learn` the learn line stays hidden.
 With that file, code 40 shows `code 40` on the sticky toast.
 Choosing Subtitles after code 14 writes `14 subtitles` to the remap file.
 The same code then opens the subtitle picker.
+A remote press switches hints to the remote set. A controller press within 200 ms does not switch back.
+The sheet is [input-glyphs-preview.png](input-glyphs-preview.png).
+Console glyph switching on firmware 12.70 remains pending.
 The owner's earlier D-pad, OK, Back, Menu and transport checks on firmware 12.70 still describe the unchanged short-press mappings.
 The new keys and the learn line remain unverified on firmware 12.70.
 
