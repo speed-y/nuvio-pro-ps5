@@ -27,6 +27,10 @@ EVO's minimal configuration and installs it over the sysroot copy, replacing
 the pacbrew libav* libraries. The build omits libdav1d, so software AV1
 remains unsupported. The GPL-3.0 `ps5-homebrew-ui` kit unpacks under
 `third_party/` from its own pinned archive during the build.
+The build also pins Noto Sans Thai and Noto Sans Devanagari regular faces.
+`deps.lock` records each SHA-256.
+Both faces use the SIL Open Font License.
+The requested googlefonts URLs redirect to notofonts/noto-fonts.
 
 ### SDK firmware checks
 

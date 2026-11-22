@@ -11,8 +11,10 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 import subprocess
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
 import polish
@@ -625,12 +627,146 @@ def install_ffmpeg(sdk, env):
     print('FFmpeg', pin['directory'], 'built and installed over the sysroot')
 
 
+# Extra faces for the HUD subtitle atlas. The pinned kit already carries
+# Noto Sans, Arabic, Hebrew and both symbol faces. Thai and Devanagari do not.
+# The googlefonts/noto-fonts URLs redirect to notofonts/noto-fonts.
+FALLBACK_EXTRA_FONTS = (
+    {'id': 'noto-sans-thai-regular', 'file': 'NotoSansThai-Regular.ttf'},
+    {'id': 'noto-sans-devanagari-regular', 'file': 'NotoSansDevanagari-Regular.ttf'},
+)
+FALLBACK_BAKE_FONTS = (
+    'NotoSans-Regular.ttf',
+    'NotoSansThai-Regular.ttf',
+    'NotoSansDevanagari-Regular.ttf',
+    'NotoSansArabic-Regular.ttf',
+    'NotoSansHebrew-Regular.ttf',
+    'NotoSansSymbols-Regular.ttf',
+    'NotoSansSymbols2-Regular.ttf',
+)
+FALLBACK_RANGE_ANCHOR = '    {0x1E00, 0x1EFF},   // Latin Extended Additional (Vietnamese)\n'
+FALLBACK_RANGE_ADDITION = '    {0x0E00, 0x0E7F},   // Thai\n    {0x0900, 0x097F},   // Devanagari\n'
+FALLBACK_COMMENT_OLD = '// Latin (with accents and Vietnamese), Greek, Cyrillic, Hebrew, Arabic with\n'
+FALLBACK_COMMENT_NEW = '// Latin (with accents and Vietnamese), Greek, Cyrillic, Thai, Devanagari, Hebrew, Arabic with\n'
+
+
+def host_cxx():
+    """Return clang++ or g++, whichever can compile a C++17 program."""
+    for name in ('clang++', 'g++'):
+        compiler = shutil.which(name)
+        if not compiler:
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'probe.cpp'
+            out = Path(tmp) / 'probe'
+            src.write_text('int main(){return 0;}\n')
+            proc = subprocess.run([compiler, '-std=c++17', str(src), '-o', str(out)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode == 0:
+            return compiler
+    raise RuntimeError('No host C++ compiler can build the font baker. Install clang++ or g++.')
+
+
+def patch_fallback_baker(text):
+    """Add Thai and Devanagari ranges after Latin Extended Additional.
+
+    A second call leaves an already patched baker unchanged. A missing anchor
+    is a hard failure so a moved upstream range cannot bake the old atlas.
+    """
+    if text.count(FALLBACK_RANGE_ANCHOR) != 1:
+        raise RuntimeError('Pinned font baker is missing the Latin Extended Additional range')
+    block = FALLBACK_RANGE_ANCHOR + FALLBACK_RANGE_ADDITION
+    if block not in text:
+        if '0x0E00' in text or '{0x0900, 0x097F}' in text:
+            raise RuntimeError('Pinned font baker has Thai or Devanagari ranges outside the expected anchor')
+        text = text.replace(FALLBACK_RANGE_ANCHOR, block, 1)
+    if FALLBACK_COMMENT_OLD in text:
+        if text.count(FALLBACK_COMMENT_OLD) != 1:
+            raise RuntimeError('Pinned font baker comment anchor is not unique')
+        text = text.replace(FALLBACK_COMMENT_OLD, FALLBACK_COMMENT_NEW, 1)
+    return text
+
+
+def huifont_summary(path):
+    """Read a baked SDF font header and the code points it contains."""
+    data = path.read_bytes()
+    if len(data) < 40:
+        raise RuntimeError('Fallback font is too small: ' + str(path))
+    magic, version, width, height, pixel_size, sdf_range, _ascent, _descent, _gap, glyphs, kerns = struct.unpack_from(
+        '<IIHHfffffII', data)
+    if magic != 0x46505a50 or version != 1:
+        raise RuntimeError('Fallback font is not a huifont v1: ' + str(path))
+    expect = 40 + glyphs * 24 + kerns * 12 + width * height
+    if len(data) != expect:
+        raise RuntimeError('Fallback font size mismatch: ' + str(path))
+    codes = set()
+    offset = 40
+    for _ in range(glyphs):
+        codes.add(struct.unpack_from('<I', data, offset)[0])
+        offset += 24
+    return codes, {'width': width, 'height': height, 'glyphs': glyphs, 'bytes': len(data),
+                   'pixel_size': pixel_size, 'sdf_range': sdf_range}
+
+
+def fallback_font_file(dest, name):
+    """Use the kit face when it exists. Download only the pinned extra faces."""
+    bundled = dest / 'third_party/fonts' / name
+    if bundled.is_file():
+        return bundled
+    extra = next((item for item in FALLBACK_EXTRA_FONTS if item['file'] == name), None)
+    if extra is None:
+        raise RuntimeError('ps5-homebrew-ui is missing third_party/fonts/' + name)
+    _pin, cached = fetch(extra['id'])
+    return cached
+
+
+def bake_subtitle_fallback(dest, evo):
+    """Rebuild noto-fallback.huifont so the HUD can draw Thai and Devanagari.
+
+    The title embeds projects/evoplayer/assets/hui/fonts/noto-fallback.huifont.
+    The kit copy under assets/fonts is the baker output, not the bundled file.
+    """
+    baker_src = dest / 'tools/font-baker/bake_fallback.cpp'
+    if not baker_src.is_file():
+        raise RuntimeError('ps5-homebrew-ui is missing tools/font-baker/bake_fallback.cpp')
+    baker_src.write_text(patch_fallback_baker(baker_src.read_text()))
+    fonts = [fallback_font_file(dest, name) for name in FALLBACK_BAKE_FONTS]
+    out = dest / 'assets/fonts/noto-fallback.huifont'
+    if not out.parent.is_dir():
+        raise RuntimeError('ps5-homebrew-ui is missing assets/fonts')
+    bundled = evo / 'projects/evoplayer/assets/hui/fonts/noto-fallback.huifont'
+    if not bundled.is_file():
+        raise RuntimeError('EVO is missing the embedded HUD fallback font')
+    WORK.mkdir(parents=True, exist_ok=True)
+    compiler = host_cxx()
+    tool = WORK / 'bake_fallback'
+    run([compiler, '-O2', '-std=c++17', '-o', tool, baker_src])
+    command = [tool, out, '48', '6', '4096', *fonts]
+    proc = subprocess.run([str(a) for a in command], capture_output=True, text=True)
+    if proc.returncode != 0 and 'too small' in proc.stderr:
+        print('Fallback atlas 4096 is too small; retrying at 8192')
+        command[4] = '8192'
+        proc = subprocess.run([str(a) for a in command], capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or 'font baker failed').strip()
+        raise RuntimeError('Fallback font bake failed:\n' + detail[-2000:])
+    if proc.stdout.strip():
+        print(proc.stdout.strip())
+    codes, info = huifont_summary(out)
+    for codepoint, label in ((0x0E01, 'Thai'), (0x0915, 'Devanagari'), (0x0627, 'Arabic'), (0x05D0, 'Hebrew')):
+        if codepoint not in codes:
+            raise RuntimeError('Baked fallback font has no ' + label + ' glyph U+' + format(codepoint, '04X'))
+    shutil.copyfile(out, bundled)
+    print('Fallback font', info['glyphs'], 'glyphs, atlas',
+          str(info['width']) + 'x' + str(info['height']) + ',', info['bytes'], 'bytes')
+
+
 def provide_hui(evo):
     """Install the pinned EVO UI kit where the Makefile expects its submodule.
 
     EVO v0.12.0 records third_party/ps5-homebrew-ui as a git submodule, and a
     pinned codeload archive contains only the empty directory. The adapter
-    unpacks the kit's own pinned archive instead (see deps.lock)."""
+    unpacks the kit's own pinned archive instead (see deps.lock). It then
+    rebakes the HUD fallback font with Thai and Devanagari (#18)."""
     pin, archive = fetch('ps5-homebrew-ui-source')
     dest = evo / 'third_party/ps5-homebrew-ui'
     if dest.exists():
@@ -645,6 +781,7 @@ def provide_hui(evo):
     for sub in ('src/ui', 'src/ui/components', 'src/core'):
         if not any((dest / sub).glob('*.cpp')):
             raise RuntimeError('ps5-homebrew-ui has no sources under ' + sub)
+    bake_subtitle_fallback(dest, evo)
 
 
 def fix_network_reader(text):

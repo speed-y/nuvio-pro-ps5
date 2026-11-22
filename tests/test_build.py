@@ -11,6 +11,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import build
 
 
+class FallbackBakerTests(unittest.TestCase):
+    def test_patch_inserts_thai_and_devanagari_once(self):
+        sample = (
+            '    {0x1E00, 0x1EFF},   // Latin Extended Additional (Vietnamese)\n'
+            '    {0x2000, 0x206F},   // general punctuation\n'
+        )
+        once = build.patch_fallback_baker(sample)
+        self.assertEqual(once.count('{0x0E00, 0x0E7F}'), 1)
+        self.assertEqual(once.count('{0x0900, 0x097F}'), 1)
+        self.assertLess(once.index('0x1E00'), once.index('0x0E00'))
+        self.assertLess(once.index('0x0E00'), once.index('0x0900'))
+        self.assertLess(once.index('0x0900'), once.index('0x2000'))
+        self.assertEqual(build.patch_fallback_baker(once), once)
+
+    def test_patch_requires_the_latin_extended_anchor(self):
+        with self.assertRaises(RuntimeError):
+            build.patch_fallback_baker('no ranges here\n')
+
+
 class FFmpegCacheTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "generated": "2026-11-13",
+  "generated": "2026-11-22",
   "description": "Pinned inputs for the experimental Nuvio PS5 integration; no implicit latest dependencies.",
   "checksum_policy": {
     "statement": "SHA-256 pins recorded locally from version-pinned downloads; not maintainer signatures.",
@@ -137,6 +137,30 @@
       "retrieved": "2026-10-01",
       "evidence": "[LOCALLY RECORDED] sha256 computed from version-pinned download; no upstream-published checksum.",
       "role": "Locally recorded checksum, not upstream-published. Diagnostic payload actually used in the Nuvio hardware session."
+    },
+    {
+      "id": "noto-sans-thai-regular",
+      "kind": "font",
+      "role": "Thai glyphs (U+0E00-U+0E7F) for the homebrew-ui subtitle fallback atlas.",
+      "url": "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansThai/NotoSansThai-Regular.ttf",
+      "sha256": "404ddfb5ed0aaa6b6ec8a85700d682978992062d67da93903967b56cbd9a4acc",
+      "size_bytes": 37752,
+      "cache_file": "NotoSansThai-Regular.ttf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the file returned on 2026-11-22. The googlefonts URL redirects to notofonts/noto-fonts and the body is a TrueType font."
+    },
+    {
+      "id": "noto-sans-devanagari-regular",
+      "kind": "font",
+      "role": "Devanagari glyphs (U+0900-U+097F) for the homebrew-ui subtitle fallback atlas.",
+      "url": "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansDevanagari/NotoSansDevanagari-Regular.ttf",
+      "sha256": "385e78e6359a9d88a0f243d53b1209d7548361ba2194e2b9ec779bcaa7e8949d",
+      "size_bytes": 219212,
+      "cache_file": "NotoSansDevanagari-Regular.ttf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the file returned on 2026-11-22. The googlefonts URL redirects to notofonts/noto-fonts and the body is a TrueType font."
     }
   ],
   "host_requirements": [

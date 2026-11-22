@@ -5427,3 +5427,24 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Confirmed title mounted and managed with `control-2.elf`.
   - Read `/data/nuvio/evo.log`: verified `BUILD f6e43e65-nuvio_1115-1118`, HTTP 200 asset responses, storage restoration, and active decoders.
 
+## Subtitle fallback font coverage, 2026-11-22
+
+[SOURCE-VERIFIED] Issue #18 reports Thai subtitles as boxes or question marks.
+The preferred HUD reads `hui/fonts/noto-fallback.huifont`.
+That atlas had no Thai or Devanagari glyphs.
+A missing code point becomes `?` in the baked font.
+Otherwise the HUD drops the caption and RmlUi draws it.
+
+[LOCALLY BUILT] `provide_hui` downloads Noto Sans Thai and Noto Sans Devanagari, patches the baker, and rebuilds the atlas.
+The requested font URLs returned HTTP 200.
+They redirect to notofonts/noto-fonts.
+This host selected g++ 13.3.0.
+This host has clang++ 18.1.3 without C++ standard library headers.
+The baker wrote 3,154 glyphs into a 4096 by 1501 atlas, 6,223,832 bytes.
+U+0E01, U+0E32, U+0E48, U+0E31, U+0915 and U+093E are present.
+Arabic U+0627 and Hebrew U+05D0 remain present.
+An atlas of 4096 did not overflow.
+CJK is still outside this atlas.
+Python on this host is 3.12.3.
+Console subtitle rendering on firmware 12.70 remains pending.
+
