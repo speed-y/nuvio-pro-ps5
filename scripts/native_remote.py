@@ -207,6 +207,7 @@ RECEIVER = r'''
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+namespace hui { namespace ui { void set_remote_glyphs(bool on); } }
 #ifndef NUVIO_REMOTE_LEARN_PATH
 #define NUVIO_REMOTE_LEARN_PATH "/data/nuvio/remote-learn"
 #endif
