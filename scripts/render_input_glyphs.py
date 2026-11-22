@@ -7,60 +7,127 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'assets' / 'remote-glyphs'
 FONT = Path('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
 
-PAPER = (17, 19, 31, 255)
+PAPER = (20, 22, 36, 255)
 LIGHT = (244, 244, 248, 255)
 RED = (214, 69, 69, 255)
 GREEN = (47, 158, 79, 255)
 YELLOW = (226, 177, 26, 255)
 BLUE = (59, 111, 226, 255)
-EDGE = (108, 113, 150, 255)
+EDGE = (242, 242, 248, 255)
+SCALE = 2  # 64-unit design drawn at 128 px so the TV icons stay sharp.
 
 
 def font(size):
     return ImageFont.truetype(str(FONT), size) if FONT.is_file() else ImageFont.load_default()
 
 
-def rounded(draw, box, radius, fill):
-    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=EDGE, width=2)
+def u(value):
+    return value * SCALE
 
 
-def icon(label, fill, ink, wide=False):
-    image = Image.new('RGBA', (96 if wide else 64, 64), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    rounded(draw, (4, 10, image.width - 5, 54), 12, fill)
-    if label:
-        face = font(18 if len(label) > 2 else 22)
-        box = draw.textbbox((0, 0), label, font=face)
-        x = (image.width - (box[2] - box[0])) / 2
-        y = (64 - (box[3] - box[1])) / 2 - 1
-        draw.text((x, y), label, font=face, fill=ink)
+def canvas():
+    image = Image.new('RGBA', (64 * SCALE, 64 * SCALE), (0, 0, 0, 0))
+    return image, ImageDraw.Draw(image)
+
+
+def key(fill):
+    image, draw = canvas()
+    draw.rounded_rectangle((u(3), u(3), u(61), u(61)), radius=u(16), fill=fill, outline=EDGE, width=int(u(4)))
+    return image, draw
+
+
+def label(draw, text, size, ink):
+    face = font(int(u(size)))
+    box = draw.textbbox((0, 0), text, font=face)
+    x = (64 * SCALE - (box[2] - box[0])) / 2 - box[0]
+    y = (64 * SCALE - (box[3] - box[1])) / 2 - box[1]
+    draw.text((x, y), text, font=face, fill=ink)
+
+
+def play():
+    image, draw = key(PAPER)
+    draw.polygon([(u(23), u(16)), (u(23), u(48)), (u(47), u(32))], fill=LIGHT)
+    return image
+
+
+def pause():
+    image, draw = key(PAPER)
+    draw.rounded_rectangle((u(20), u(16), u(28), u(48)), radius=u(2), fill=LIGHT)
+    draw.rounded_rectangle((u(36), u(16), u(44), u(48)), radius=u(2), fill=LIGHT)
+    return image
+
+
+def arrows():
+    image, draw = key(PAPER)
+    draw.rounded_rectangle((u(27), u(12), u(37), u(52)), radius=u(3), fill=LIGHT)
+    draw.rounded_rectangle((u(12), u(27), u(52), u(37)), radius=u(3), fill=LIGHT)
+    return image
+
+
+def back():
+    """Left-pointing return arrow: head, top shaft, right drop, short foot."""
+    image, draw = key(PAPER)
+    draw.polygon([
+        (u(12), u(28)),
+        (u(28), u(16)),
+        (u(28), u(23)),
+        (u(50), u(23)),
+        (u(50), u(46)),
+        (u(38), u(46)),
+        (u(38), u(33)),
+        (u(28), u(33)),
+        (u(28), u(40)),
+    ], fill=LIGHT)
+    return image
+
+
+def info():
+    image, draw = key(PAPER)
+    draw.ellipse((u(16), u(16), u(48), u(48)), outline=LIGHT, width=int(u(4)))
+    draw.ellipse((u(29.2), u(21), u(34.8), u(26.6)), fill=LIGHT)
+    draw.rounded_rectangle((u(29.4), u(29), u(34.6), u(43)), radius=u(2), fill=LIGHT)
+    return image
+
+
+def menu():
+    image, draw = key(PAPER)
+    for top in (17, 29, 41):
+        draw.rounded_rectangle((u(16), u(top), u(48), u(top + 6)), radius=u(3), fill=LIGHT)
+    return image
+
+
+def word(text, size=22):
+    image, draw = key(PAPER)
+    label(draw, text, size, LIGHT)
+    return image
+
+
+def colour(fill):
+    image, draw = key(fill)
     return image
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    specs = {
-        'btn_remote_ok.png': ('OK', PAPER, LIGHT, False),
-        'btn_remote_back.png': ('Back', PAPER, LIGHT, True),
-        'btn_remote_menu.png': ('Menu', PAPER, LIGHT, True),
-        'btn_remote_arrows.png': ('<>', PAPER, LIGHT, False),
-        'btn_remote_red.png': ('', RED, LIGHT, False),
-        'btn_remote_green.png': ('', GREEN, LIGHT, False),
-        'btn_remote_yellow.png': ('', YELLOW, (26, 26, 26, 255), False),
-        'btn_remote_blue.png': ('', BLUE, LIGHT, False),
-        'btn_remote_info.png': ('i', PAPER, LIGHT, False),
-        'btn_remote_play.png': ('>', PAPER, LIGHT, False),
-        'btn_remote_pause.png': ('||', PAPER, LIGHT, False),
-        'btn_remote_ch_up.png': ('CH+', PAPER, LIGHT, True),
-        'btn_remote_ch_down.png': ('CH-', PAPER, LIGHT, True),
+    made = {
+        'btn_remote_ok.png': word('OK', 20),
+        'btn_remote_back.png': back(),
+        'btn_remote_menu.png': menu(),
+        'btn_remote_arrows.png': arrows(),
+        'btn_remote_red.png': colour(RED),
+        'btn_remote_green.png': colour(GREEN),
+        'btn_remote_yellow.png': colour(YELLOW),
+        'btn_remote_blue.png': colour(BLUE),
+        'btn_remote_info.png': info(),
+        'btn_remote_play.png': play(),
+        'btn_remote_pause.png': pause(),
+        'btn_remote_ch_up.png': word('CH+', 16),
+        'btn_remote_ch_down.png': word('CH-', 16),
     }
     for digit in range(10):
-        specs['btn_remote_%d.png' % digit] = (str(digit), PAPER, LIGHT, False)
-    made = {}
-    for name, spec in specs.items():
-        image = icon(*spec)
+        made['btn_remote_%d.png' % digit] = word(str(digit), 26)
+    for name, image in made.items():
         image.save(OUT / name)
-        made[name] = image
 
     archive = next((ROOT / '.cache').glob('evo-player-nuvio-source-*.tar.gz'), None)
     controllers = []
@@ -74,47 +141,42 @@ def main():
                     controllers.append((path.stem.replace('btn_', ''), Image.open(path).convert('RGBA')))
     controllers.sort()
 
-    labels = [
-        ('OK', made['btn_remote_ok.png']),
-        ('Back', made['btn_remote_back.png']),
-        ('Menu', made['btn_remote_menu.png']),
-        ('Arrows', made['btn_remote_arrows.png']),
-        ('Red', made['btn_remote_red.png']),
-        ('Green', made['btn_remote_green.png']),
-        ('Yellow', made['btn_remote_yellow.png']),
-        ('Blue', made['btn_remote_blue.png']),
-        ('Info', made['btn_remote_info.png']),
-        ('Play', made['btn_remote_play.png']),
-        ('Pause', made['btn_remote_pause.png']),
-        ('CH+', made['btn_remote_ch_up.png']),
-        ('CH-', made['btn_remote_ch_down.png']),
-    ] + [(str(n), made['btn_remote_%d.png' % n]) for n in range(10)]
+    order = ['ok', 'back', 'menu', 'arrows', 'red', 'green', 'yellow', 'blue', 'info', 'play', 'pause',
+             'ch_up', 'ch_down'] + [str(n) for n in range(10)]
+    names = {
+        'ok': 'OK', 'back': 'Back', 'menu': 'Menu', 'arrows': 'Arrows', 'red': 'Red', 'green': 'Green',
+        'yellow': 'Yellow', 'blue': 'Blue', 'info': 'Info', 'play': 'Play', 'pause': 'Pause',
+        'ch_up': 'CH+', 'ch_down': 'CH-',
+    }
+    labels = [(names.get(key, key), made['btn_remote_%s.png' % key]) for key in order]
 
-    cell_w, cell_h = 120, 108
+    cell = 132
     columns = 8
     rows = (len(labels) + columns - 1) // columns
     controller_rows = (len(controllers) + columns - 1) // columns
-    width = 48 + columns * cell_w
-    height = 90 + rows * cell_h + 70 + controller_rows * cell_h
+    width = 40 + columns * cell
+    height = 88 + rows * cell + 64 + controller_rows * cell
     sheet = Image.new('RGB', (width, height), (12, 14, 24))
     draw = ImageDraw.Draw(sheet)
-    title = font(28)
-    small = font(16)
-    draw.text((32, 24), 'Remote glyphs', font=title, fill=LIGHT)
-    for index, (label, image) in enumerate(labels):
+    title = font(36)
+    small = font(18)
+    draw.text((28, 22), 'Remote glyphs', font=title, fill=LIGHT)
+    icon_size = 84
+    for index, (caption, image) in enumerate(labels):
         col, row = index % columns, index // columns
-        x, y = 32 + col * cell_w, 70 + row * cell_h
-        sheet.paste(image, (x + 12, y), image)
-        draw.text((x + 8, y + 70), label, font=small, fill=LIGHT)
-    base = 70 + rows * cell_h + 16
-    draw.text((32, base), 'Controller glyphs', font=title, fill=LIGHT)
-    for index, (label, image) in enumerate(controllers):
+        x, y = 28 + col * cell, 72 + row * cell
+        sheet.paste(image.resize((icon_size, icon_size), Image.Resampling.LANCZOS), (x + 16, y), image.resize((icon_size, icon_size), Image.Resampling.LANCZOS))
+        draw.text((x + 16, y + icon_size + 4), caption, font=small, fill=LIGHT)
+    base = 72 + rows * cell + 8
+    draw.text((28, base), 'Controller glyphs', font=title, fill=LIGHT)
+    for index, (caption, image) in enumerate(controllers):
         col, row = index % columns, index // columns
-        x, y = 32 + col * cell_w, base + 48 + row * cell_h
-        sheet.paste(image, (x + 28, y + 8), image)
-        draw.text((x + 8, y + 76), label, font=small, fill=LIGHT)
+        x, y = 28 + col * cell, base + 52 + row * cell
+        pasted = image.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+        sheet.paste(pasted, (x + 16, y), pasted)
+        draw.text((x + 16, y + icon_size + 4), caption, font=small, fill=LIGHT)
     sheet.save(ROOT / 'docs' / 'input-glyphs-preview.png')
-    print('wrote', OUT, 'and docs/input-glyphs-preview.png')
+    print('wrote', len(made), 'icons and docs/input-glyphs-preview.png')
 
 
 if __name__ == '__main__':

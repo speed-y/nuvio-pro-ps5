@@ -37,19 +37,7 @@ def patch_hud_glyphs(kit):
              'float button_width(Button button, float size)\n{\n    switch (button)\n    {\n    case Button::l1:',
              'float button_width(Button button, float size)\n{\n'
              '    if (remote_glyphs()) {\n'
-             '        switch (button) {\n'
-             '        case Button::circle:\n'
-             '        case Button::options:\n'
-             '            return size * 1.85f;\n'
-             '        case Button::l1:\n'
-             '        case Button::r1:\n'
-             '        case Button::touchpad:\n'
-             '            return size * 1.7f;\n'
-             '        case Button::none:\n'
-             '            return 0.0f;\n'
-             '        default:\n'
-             '            return size * 1.15f;\n'
-             '        }\n'
+             '        return button == Button::none ? 0.0f : size;\n'
              '    }\n'
              '    switch (button)\n    {\n    case Button::l1:',
              'glyph width')

@@ -54,29 +54,55 @@ export function remoteGlyphName(controllerName) {
   return REMOTE_FOR[controllerName] || 'ok';
 }
 
-function key(label, fill, ink, wide) {
-  const width = wide ? 78 : 46;
-  return '<svg viewBox="0 0 ' + width + ' 32">' +
-    '<rect x="1.5" y="3" width="' + (width - 3) + '" height="26" rx="8" fill="' + fill +
-    '" stroke="#6c7196" stroke-width="1.5"/>' +
-    '<text x="' + (width / 2) + '" y="21" text-anchor="middle" font-size="11" font-weight="700" fill="' +
-    ink + '">' + label + '</text></svg>';
+const PAPER = '#141624';
+const LIGHT = '#f4f4f8';
+const EDGE = '#f2f2f8';
+
+function frame(fill, inner) {
+  return '<svg viewBox="0 0 64 64"><rect x="3" y="3" width="58" height="58" rx="16" fill="' + fill +
+    '" stroke="' + EDGE + '" stroke-width="4"/>' + inner + '</svg>';
 }
 
-/** Generic remote key. Colour keys are rounded red, green, yellow and blue. */
+function word(text, size) {
+  return frame(PAPER, '<text x="32" y="34" text-anchor="middle" dominant-baseline="middle" ' +
+    'font-family="sans-serif" font-size="' + size + '" font-weight="800" fill="' + LIGHT + '">' +
+    text + '</text>');
+}
+
+/** Generic remote key. Symbols are shapes. Colour keys are rounded red, green, yellow and blue. */
 export function remoteGlyphSvg(name) {
-  if (name === 'red') return key('', '#d64545', '#fff', false).replace('></text>', '></text>');
-  if (name === 'green') return key('', '#2f9e4f', '#fff', false);
-  if (name === 'yellow') return key('', '#e2b11a', '#1a1a1a', false);
-  if (name === 'blue') return key('', '#3b6fe2', '#fff', false);
-  if (name === 'back') return key('Back', '#11131f', '#f4f4f8', true);
-  if (name === 'menu') return key('Menu', '#11131f', '#f4f4f8', true);
-  if (name === 'info') return key('i', '#11131f', '#f4f4f8', false);
-  if (name === 'play') return key('▶', '#11131f', '#f4f4f8', false);
-  if (name === 'pause') return key('❚❚', '#11131f', '#f4f4f8', false);
-  if (name === 'ch-up') return key('CH+', '#11131f', '#f4f4f8', true);
-  if (name === 'ch-down') return key('CH−', '#11131f', '#f4f4f8', true);
-  if (name === 'arrows') return key('↕', '#11131f', '#f4f4f8', false);
-  if (/^[0-9]$/.test(name)) return key(name, '#11131f', '#f4f4f8', false);
-  return key('OK', '#11131f', '#f4f4f8', false);
+  if (name === 'red') return frame('#d64545', '');
+  if (name === 'green') return frame('#2f9e4f', '');
+  if (name === 'yellow') return frame('#e2b11a', '');
+  if (name === 'blue') return frame('#3b6fe2', '');
+  if (name === 'back') {
+    return frame(PAPER, '<polygon points="12,28 28,16 28,23 50,23 50,46 38,46 38,33 28,33 28,40" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'menu') {
+    return frame(PAPER,
+      '<rect x="16" y="17" width="32" height="6" rx="3" fill="' + LIGHT + '"/>' +
+      '<rect x="16" y="29" width="32" height="6" rx="3" fill="' + LIGHT + '"/>' +
+      '<rect x="16" y="41" width="32" height="6" rx="3" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'info') {
+    return frame(PAPER,
+      '<circle cx="32" cy="32" r="16" fill="none" stroke="' + LIGHT + '" stroke-width="4"/>' +
+      '<circle cx="32" cy="23.8" r="2.8" fill="' + LIGHT + '"/>' +
+      '<rect x="29.4" y="29" width="5.2" height="14" rx="2" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'play') return frame(PAPER, '<polygon points="23,16 23,48 47,32" fill="' + LIGHT + '"/>');
+  if (name === 'pause') {
+    return frame(PAPER,
+      '<rect x="20" y="16" width="8" height="32" rx="2" fill="' + LIGHT + '"/>' +
+      '<rect x="36" y="16" width="8" height="32" rx="2" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'arrows') {
+    return frame(PAPER,
+      '<rect x="27" y="12" width="10" height="40" rx="3" fill="' + LIGHT + '"/>' +
+      '<rect x="12" y="27" width="40" height="10" rx="3" fill="' + LIGHT + '"/>');
+  }
+  if (name === 'ch-up') return word('CH+', 16);
+  if (name === 'ch-down') return word('CH-', 16);
+  if (/^[0-9]$/.test(name)) return word(name, 26);
+  return word('OK', 20);
 }

@@ -22,6 +22,10 @@ if (remoteGlyphName("Cross") !== "ok" || remoteGlyphName("Circle") !== "back") t
 if (remoteGlyphName("Triangle") !== "yellow" || remoteGlyphName("R2") !== "red") throw new Error("colour");
 const svg = remoteGlyphSvg("red");
 if (!svg.includes("#d64545") || !svg.includes("<svg")) throw new Error("svg");
+if (!remoteGlyphSvg("play").includes("<polygon")) throw new Error("play");
+if ((remoteGlyphSvg("pause").match(/<rect/g) || []).length < 3) throw new Error("pause");
+if (!remoteGlyphSvg("info").includes("<circle")) throw new Error("info");
+if (!remoteGlyphSvg("arrows").includes("<rect")) throw new Error("arrows");
 console.log("ok");
 '''
         path = ROOT / 'tests' / '_input_device_check.mjs'
