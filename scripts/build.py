@@ -760,13 +760,356 @@ def bake_subtitle_fallback(dest, evo):
           str(info['width']) + 'x' + str(info['height']) + ',', info['bytes'], 'bytes')
 
 
+# Subset OTFs from notofonts/noto-cjk @ 165c01b46ea533872e002e0785ff17e44f6d97d8.
+# The HUD shader has six font slots and is already compiled, so these faces are
+# rasterized on demand into the existing complex-text atlas. A /data copy wins.
+CJK_FONTS = (
+    {'id': 'noto-sans-sc-regular', 'file': 'NotoSansSC-Regular.otf'},
+    {'id': 'noto-sans-tc-regular', 'file': 'NotoSansTC-Regular.otf'},
+    {'id': 'noto-sans-jp-regular', 'file': 'NotoSansJP-Regular.otf'},
+    {'id': 'noto-sans-kr-regular', 'file': 'NotoSansKR-Regular.otf'},
+)
+CJK_COMPLEX_PATCHES = (
+    (
+        '    f_sc,\n    f_jp,\n    f_kr,\n',
+        '    f_sc,\n    f_tc,\n    f_jp,\n    f_kr,\n',
+        'CJK face id',
+    ),
+    (
+        '    {nullptr, "NotoSansSC-Regular.otf", "zh"},\n'
+        '    {nullptr, "NotoSansJP-Regular.otf", "ja"},\n'
+        '    {nullptr, "NotoSansKR-Regular.otf", "ko"},\n',
+        '    {"fonts/NotoSansSC-Regular.otf", "NotoSansSC-Regular.otf", "zh"},\n'
+        '    {"fonts/NotoSansTC-Regular.otf", "NotoSansTC-Regular.otf", "zh-Hant"},\n'
+        '    {"fonts/NotoSansJP-Regular.otf", "NotoSansJP-Regular.otf", "ja"},\n'
+        '    {"fonts/NotoSansKR-Regular.otf", "NotoSansKR-Regular.otf", "ko"},\n',
+        'CJK face table',
+    ),
+    (
+        '        const int mask = cjk_mask();\n'
+        '        if (mask & (1 << (want - f_sc)))\n'
+        '            return want;\n'
+        '        for (int f = f_sc; f <= f_kr; ++f)\n'
+        '            if (mask & (1 << (f - f_sc)))\n'
+        '                return f;\n'
+        '        return -1;\n',
+        '        const int mask = cjk_mask();\n'
+        '        auto present = [&](int face) {\n'
+        '            if (mask & (1 << (face - f_sc)))\n'
+        '                return true;\n'
+        '            return kFaces[face].bundle != nullptr;\n'
+        '        };\n'
+        '        if (present(want))\n'
+        '            return want;\n'
+        '        for (int f = f_sc; f <= f_kr; ++f)\n'
+        '            if (present(f))\n'
+        '                return f;\n'
+        '        return -1;\n',
+        'CJK face choice',
+    ),
+    (
+        '        if (kFaces[id].bundle)\n'
+        '        {\n'
+        '            const EvoRmlBundleFile *b = evo_rmlui_bundle_find(kFaces[id].bundle);\n'
+        '            if (b)\n'
+        '            {\n'
+        '                f.data = b->data;\n'
+        '                size = b->size;\n'
+        '            }\n'
+        '        }\n'
+        '        else\n'
+        '        {\n'
+        '            const std::string path = cjk_path(id);\n'
+        '            if (std::FILE *fp = std::fopen(path.c_str(), "rb"))\n'
+        '            {\n'
+        '                std::fseek(fp, 0, SEEK_END);\n'
+        '                const long n = std::ftell(fp);\n'
+        '                std::fseek(fp, 0, SEEK_SET);\n'
+        '                if (n > 0)\n'
+        '                {\n'
+        '                    f.owned.resize(static_cast<std::size_t>(n));\n'
+        '                    if (std::fread(f.owned.data(), 1, f.owned.size(), fp) == f.owned.size())\n'
+        '                    {\n'
+        '                        f.data = f.owned.data();\n'
+        '                        size = f.owned.size();\n'
+        '                    }\n'
+        '                }\n'
+        '                std::fclose(fp);\n'
+        '            }\n'
+        '        }\n',
+        '        if (kFaces[id].file)\n'
+        '        {\n'
+        '            const std::string path = cjk_path(id);\n'
+        '            if (std::FILE *fp = std::fopen(path.c_str(), "rb"))\n'
+        '            {\n'
+        '                std::fseek(fp, 0, SEEK_END);\n'
+        '                const long n = std::ftell(fp);\n'
+        '                std::fseek(fp, 0, SEEK_SET);\n'
+        '                if (n > 0)\n'
+        '                {\n'
+        '                    f.owned.resize(static_cast<std::size_t>(n));\n'
+        '                    if (std::fread(f.owned.data(), 1, f.owned.size(), fp) == f.owned.size())\n'
+        '                    {\n'
+        '                        f.data = f.owned.data();\n'
+        '                        size = f.owned.size();\n'
+        '                    }\n'
+        '                }\n'
+        '                std::fclose(fp);\n'
+        '            }\n'
+        '        }\n'
+        '        if ((!f.data || size == 0) && kFaces[id].bundle)\n'
+        '        {\n'
+        '            const EvoRmlBundleFile *b = evo_rmlui_bundle_find(kFaces[id].bundle);\n'
+        '            if (b)\n'
+        '            {\n'
+        '                f.data = b->data;\n'
+        '                size = b->size;\n'
+        '            }\n'
+        '        }\n',
+        'CJK font load',
+    ),
+    (
+        '        Face *f = load(id);\n'
+        '        if (!f)\n'
+        '            return nullptr;\n'
+        '        if (shapes.size() >= kShapeCacheMax)\n',
+        '        Face *f = load(id);\n'
+        '        if (!f && id < f_sc)\n'
+        '            return nullptr;\n'
+        '        if (shapes.size() >= kShapeCacheMax)\n',
+        'CJK face fallback',
+    ),
+    (
+        'struct ShapedGlyph\n'
+        '{\n'
+        '    std::uint32_t id;\n'
+        '    float advance, dx, dy; /* in ems; y up */\n'
+        '};\n',
+        'struct ShapedGlyph\n'
+        '{\n'
+        '    std::uint32_t id;\n'
+        '    int face = -1;\n'
+        '    float advance, dx, dy; /* in ems; y up */\n'
+        '};\n',
+        'CJK glyph face',
+    ),
+    (
+        '    /* The face a run of one group is drawn with. */\n',
+        '    /* True when some CJK face has this scalar. A miss stays missing\n'
+        '     * so the caption can fall back to RmlUi instead of a box. */\n'
+        '    bool cjk_glyph(char32_t codepoint)\n'
+        '    {\n'
+        '        int prefer = f_sc;\n'
+        '        if (is_kana(codepoint))\n'
+        '            prefer = f_jp;\n'
+        '        else if (is_hangul(codepoint))\n'
+        '            prefer = f_kr;\n'
+        '        const int order[] = {prefer, f_sc, f_tc, f_jp, f_kr};\n'
+        '        for (const int candidate : order)\n'
+        '        {\n'
+        '            if (candidate < f_sc || candidate > f_kr)\n'
+        '                continue;\n'
+        '            Face *chosen = load(candidate);\n'
+        '            if (chosen != nullptr &&\n'
+        '                FT_Get_Char_Index(chosen->ft, static_cast<FT_ULong>(codepoint)) != 0)\n'
+        '                return true;\n'
+        '        }\n'
+        '        return false;\n'
+        '    }\n'
+        '\n'
+        '    /* The face a run of one group is drawn with. */\n',
+        'CJK coverage probe',
+    ),
+    (
+        '            Shaped &plain = shapes[key];\n'
+        '            const float em = static_cast<float>(f->upem);\n'
+        '            for (const char32_t c : run)\n'
+        '            {\n'
+        '                hb_codepoint_t gid = 0;\n'
+        '                if (!hb_font_get_nominal_glyph(f->font, c, &gid))\n'
+        '                    gid = 0;\n'
+        '                ShapedGlyph g;\n'
+        '                g.id = gid;\n'
+        '                g.advance = static_cast<float>(hb_font_get_glyph_h_advance(f->font, gid)) / em;\n'
+        '                g.dx = g.dy = 0.0f;\n'
+        '                plain.glyphs.push_back(g);\n'
+        '                plain.width += g.advance;\n'
+        '            }\n',
+        '            Shaped &plain = shapes[key];\n'
+        '            const int order[] = {id, f_sc, f_tc, f_jp, f_kr};\n'
+        '            for (const char32_t c : run)\n'
+        '            {\n'
+        '                int use = -1;\n'
+        '                hb_codepoint_t gid = 0;\n'
+        '                Face *chosen = nullptr;\n'
+        '                for (const int candidate : order)\n'
+        '                {\n'
+        '                    if (candidate < f_sc || candidate > f_kr)\n'
+        '                        continue;\n'
+        '                    Face *attempt = load(candidate);\n'
+        '                    if (attempt && hb_font_get_nominal_glyph(attempt->font, c, &gid))\n'
+        '                    {\n'
+        '                        use = candidate;\n'
+        '                        chosen = attempt;\n'
+        '                        break;\n'
+        '                    }\n'
+        '                }\n'
+        '                if (use < 0 || chosen == nullptr)\n'
+        '                    continue;\n'
+        '                const float em = static_cast<float>(chosen->upem);\n'
+        '                ShapedGlyph g;\n'
+        '                g.id = gid;\n'
+        '                g.face = use;\n'
+        '                g.advance = static_cast<float>(hb_font_get_glyph_h_advance(chosen->font, gid)) / em;\n'
+        '                g.dx = g.dy = 0.0f;\n'
+        '                plain.glyphs.push_back(g);\n'
+        '                plain.width += g.advance;\n'
+        '            }\n',
+        'CJK shaping',
+    ),
+    (
+        '            g.id = info[i].codepoint;\n'
+        '            g.advance = static_cast<float>(pos[i].x_advance) / em;\n',
+        '            g.id = info[i].codepoint;\n'
+        '            g.face = id;\n'
+        '            g.advance = static_cast<float>(pos[i].x_advance) / em;\n',
+        'shaped glyph face',
+    ),
+    (
+        '                const Cached *c = impl_->glyph(*this, face, sg.id);\n',
+        '                const Cached *c = impl_->glyph(*this, sg.face, sg.id);\n',
+        'CJK glyph atlas',
+    ),
+    (
+        '    const Group g = group_of(codepoint);\n'
+        '    return g != g_none && impl_->available(g);\n',
+        '    const Group g = group_of(codepoint);\n'
+        '    if (g == g_none)\n'
+        '        return false;\n'
+        '    if (g == g_cjk)\n'
+        '        return impl_->cjk_glyph(codepoint);\n'
+        '    return impl_->available(g);\n',
+        'CJK handles',
+    ),
+)
+CJK_HEADER_OLD = (
+    ' * Indic scripts use Noto faces embedded in the binary; Chinese, Japanese and\n'
+    ' * Korean use the Noto Sans CJK files in /data/evoplayer/fonts when they are\n'
+    ' * there (4-8 MB each, too big to embed).\n'
+)
+CJK_HEADER_NEW = (
+    ' * Indic scripts use Noto faces embedded in the binary. Chinese, Japanese and\n'
+    ' * Korean use that same on-demand atlas. The build embeds Noto Sans CJK\n'
+    ' * subset faces, and a file in /data/evoplayer/fonts still wins.\n'
+)
+
+
+def apply_text_patches(text, patches):
+    """Apply anchored replacements. A second call leaves patched text unchanged."""
+    for old, new, label in patches:
+        if new in text:
+            continue
+        if text.count(old) != 1:
+            raise RuntimeError('Pinned source anchor changed: ' + label)
+        text = text.replace(old, new, 1)
+    return text
+
+
+def patch_cjk_complex(text):
+    """Embed CJK faces in the on-demand subtitle path and skip missing scalars."""
+    return apply_text_patches(text, CJK_COMPLEX_PATCHES)
+
+
+def patch_cjk_complex_header(text):
+    """Point the complex-text comment at the embedded CJK faces."""
+    return apply_text_patches(text, ((CJK_HEADER_OLD, CJK_HEADER_NEW, 'CJK header'),))
+
+
+def freetype_build_flags():
+    """Return (cflags, libs) for a host program that reads fonts with FreeType."""
+    cflags = subprocess.run(['pkg-config', '--cflags', 'freetype2'], capture_output=True, text=True)
+    libs = subprocess.run(['pkg-config', '--libs', 'freetype2'], capture_output=True, text=True)
+    if cflags.returncode != 0 or libs.returncode != 0:
+        detail = (cflags.stderr or libs.stderr or 'pkg-config failed').strip()
+        raise RuntimeError('FreeType development files are required to check CJK faces. ' + detail)
+    return cflags.stdout.split(), libs.stdout.split()
+
+
+def verify_cjk_coverage(font_paths):
+    """Fail the build when a pinned face set drops a common subtitle scalar.
+
+    The result is cached from the checker source, the code point list and the
+    face checksums. A second build with the same inputs does not recheck.
+    """
+    import cjk_subset
+    codes = sorted(cjk_subset.cjk_codepoints())
+    listing = '\n'.join(format(code, 'X') for code in codes) + '\n'
+    checker = ROOT / 'scripts/cjk_glyph_check.cpp'
+    stamp = {
+        'checker_sha256': hashlib.sha256(checker.read_bytes()).hexdigest(),
+        'codepoints_sha256': hashlib.sha256(listing.encode()).hexdigest(),
+        'fonts': [digest(path) for path in font_paths],
+    }
+    stamp_path = CACHE / 'noto-cjk-coverage.stamp.json'
+    if stamp_path.is_file():
+        cached = json.loads(stamp_path.read_text())
+        if all(cached.get(key) == stamp[key] for key in stamp):
+            print('CJK coverage cache hit:', cached.get('covered'), 'of', cached.get('total'))
+            return
+    WORK.mkdir(parents=True, exist_ok=True)
+    list_path = WORK / 'cjk-codepoints.txt'
+    list_path.write_text(listing)
+    compiler = host_cxx()
+    cflags, libs = freetype_build_flags()
+    tool = WORK / 'cjk_glyph_check'
+    run([compiler, '-O2', '-std=c++17', *cflags, '-o', tool, checker, *libs])
+    proc = subprocess.run([str(tool), str(list_path), *[str(path) for path in font_paths]],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or 'CJK coverage check failed').strip()
+        raise RuntimeError('CJK faces do not cover the subtitle set:\n' + detail[-2000:])
+    print(proc.stdout.strip())
+    covered, _, total = proc.stdout.strip().split()[1:]
+    stamp['covered'] = int(covered)
+    stamp['total'] = int(total)
+    stamp_path.write_text(json.dumps(stamp, indent=2) + '\n')
+
+
+def install_cjk_fonts(evo):
+    """Copy the pinned CJK faces into the title and teach the HUD to use them."""
+    fonts = []
+    for item in CJK_FONTS:
+        _pin, cached = fetch(item['id'])
+        fonts.append(cached)
+    verify_cjk_coverage(fonts)
+    dest = evo / 'projects/evoplayer/assets/fonts'
+    if not dest.is_dir():
+        raise RuntimeError('EVO is missing assets/fonts')
+    total = 0
+    for item, src in zip(CJK_FONTS, fonts):
+        target = dest / item['file']
+        if not target.is_file() or digest(target) != digest(src):
+            shutil.copyfile(src, target)
+        total += target.stat().st_size
+    notice_src = ROOT / 'scripts/noto-cjk-notice.txt'
+    notice = dest / 'NotoCJK-NOTICE.txt'
+    if not notice.is_file() or notice.read_bytes() != notice_src.read_bytes():
+        shutil.copyfile(notice_src, notice)
+    source = evo / 'projects/evoplayer/ui_kit/src/evo_hui_complex.cpp'
+    header = evo / 'projects/evoplayer/ui_kit/include/evo_hui_complex.hpp'
+    source.write_text(patch_cjk_complex(source.read_text()))
+    header.write_text(patch_cjk_complex_header(header.read_text()))
+    print('CJK faces', total, 'bytes, on-demand atlas', '2048x2048')
+
+
 def provide_hui(evo):
     """Install the pinned EVO UI kit where the Makefile expects its submodule.
 
     EVO v0.12.0 records third_party/ps5-homebrew-ui as a git submodule, and a
     pinned codeload archive contains only the empty directory. The adapter
     unpacks the kit's own pinned archive instead (see deps.lock). It then
-    rebakes the HUD fallback font with Thai and Devanagari (#18)."""
+    rebakes the HUD fallback font with Thai and Devanagari (#18) and embeds
+    CJK faces for the on-demand subtitle atlas."""
     pin, archive = fetch('ps5-homebrew-ui-source')
     dest = evo / 'third_party/ps5-homebrew-ui'
     if dest.exists():
@@ -782,6 +1125,7 @@ def provide_hui(evo):
         if not any((dest / sub).glob('*.cpp')):
             raise RuntimeError('ps5-homebrew-ui has no sources under ' + sub)
     bake_subtitle_fallback(dest, evo)
+    install_cjk_fonts(evo)
 
 
 def fix_network_reader(text):

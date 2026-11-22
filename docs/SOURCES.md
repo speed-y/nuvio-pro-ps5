@@ -28,8 +28,11 @@ the pacbrew libav* libraries. The build omits libdav1d, so software AV1
 remains unsupported. The GPL-3.0 `ps5-homebrew-ui` kit unpacks under
 `third_party/` from its own pinned archive during the build.
 The build also pins Noto Sans Thai and Noto Sans Devanagari regular faces.
+It also pins Noto Sans CJK subset faces for Simplified Chinese, Traditional Chinese, Japanese and Korean.
+The CJK pin is commit `165c01b46ea533872e002e0785ff17e44f6d97d8` of notofonts/noto-cjk.
 `deps.lock` records each SHA-256.
-Both faces use the SIL Open Font License.
+These faces use the SIL Open Font License.
+The CJK faces are not committed.
 The requested googlefonts URLs redirect to notofonts/noto-fonts.
 
 ### SDK firmware checks

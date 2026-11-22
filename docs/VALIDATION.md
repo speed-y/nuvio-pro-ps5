@@ -5470,3 +5470,32 @@ The dialog links to the release page and the `nuvio-pro-ps5-<version>.zip` asset
 The bundle version comes from `VERSION`, currently `0.2.0-alpha.8`.
 Console update prompts and skip cards on firmware 12.70 remain pending.
 
+## CJK subtitle coverage, 2026-11-22
+
+[SOURCE-VERIFIED] The HUD shader binds six font atlases.
+`kFontSlots` is 6 and `ui_sdf.pipe` is already compiled for those six.
+A seventh baked atlas cannot be sampled.
+`ComplexText` rasterizes Chinese, Japanese and Korean on demand when a face is present.
+Without a face, `has_glyph` is false.
+`OsdScreen::can_draw` then leaves the caption on RmlUi.
+RmlUi draws a missing scalar as `?` when its own font lacks it.
+
+[LOCALLY BUILT] The build embeds Noto Sans SC, TC, JP and KR subset faces.
+The pin is commit `165c01b46ea533872e002e0785ff17e44f6d97d8`.
+Those four files are 23,192,480 bytes.
+A file of the same name under `/data/evoplayer/fonts` still replaces the embedded face.
+Kana prefers the Japanese face.
+Hangul prefers the Korean face.
+Shared Han prefers the Simplified Chinese face, then Traditional Chinese, Japanese and Korean.
+The on-demand atlas stays 2048 by 2048 in the existing sixth slot.
+The common repertoire is 12,857 assigned scalars.
+FreeType 26.1.20 found every one of them in the four faces.
+That set is GB2312, Big5 level 1 and JIS X 0208 level 1.
+It also has 2,350 KS X 1001 Hangul syllables, kana, Jamo, punctuation and fullwidth forms.
+Host rasterization drew the Simplified, Traditional, Japanese and Korean sample lines with no missing glyphs.
+U+20000 is in none of the faces, so `has_glyph` stays false and that caption stays on RmlUi.
+A second check with the same faces reused the coverage cache.
+This host used g++ 13.3.0.
+`VERSION` stays `0.2.0-alpha.8` and `contentVersion` stays `01.000.015`.
+Console subtitle rendering on firmware 12.70 remains pending.
+

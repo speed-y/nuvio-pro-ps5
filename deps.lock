@@ -161,6 +161,58 @@
       "retrieved": "2026-11-22",
       "license": "OFL-1.1",
       "evidence": "[LOCALLY RECORDED] SHA-256 of the file returned on 2026-11-22. The googlefonts URL redirects to notofonts/noto-fonts and the body is a TrueType font."
+    },
+    {
+      "id": "noto-sans-sc-regular",
+      "kind": "font",
+      "role": "Simplified Chinese, shared Han and kana for on-demand HUD subtitles.",
+      "url": "https://github.com/notofonts/noto-cjk/raw/165c01b46ea533872e002e0785ff17e44f6d97d8/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+      "commit": "165c01b46ea533872e002e0785ff17e44f6d97d8",
+      "sha256": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
+      "size_bytes": 8331336,
+      "cache_file": "NotoSansSC-Regular.otf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the subset OTF at notofonts/noto-cjk commit 165c01b46ea533872e002e0785ff17e44f6d97d8."
+    },
+    {
+      "id": "noto-sans-tc-regular",
+      "kind": "font",
+      "role": "Traditional Chinese Han for on-demand HUD subtitles.",
+      "url": "https://github.com/notofonts/noto-cjk/raw/165c01b46ea533872e002e0785ff17e44f6d97d8/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf",
+      "commit": "165c01b46ea533872e002e0785ff17e44f6d97d8",
+      "sha256": "5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537",
+      "size_bytes": 5683368,
+      "cache_file": "NotoSansTC-Regular.otf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the subset OTF at notofonts/noto-cjk commit 165c01b46ea533872e002e0785ff17e44f6d97d8."
+    },
+    {
+      "id": "noto-sans-jp-regular",
+      "kind": "font",
+      "role": "Japanese kana and kanji for on-demand HUD subtitles.",
+      "url": "https://github.com/notofonts/noto-cjk/raw/165c01b46ea533872e002e0785ff17e44f6d97d8/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf",
+      "commit": "165c01b46ea533872e002e0785ff17e44f6d97d8",
+      "sha256": "dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073",
+      "size_bytes": 4533028,
+      "cache_file": "NotoSansJP-Regular.otf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the subset OTF at notofonts/noto-cjk commit 165c01b46ea533872e002e0785ff17e44f6d97d8."
+    },
+    {
+      "id": "noto-sans-kr-regular",
+      "kind": "font",
+      "role": "Hangul syllables and Jamo for on-demand HUD subtitles.",
+      "url": "https://github.com/notofonts/noto-cjk/raw/165c01b46ea533872e002e0785ff17e44f6d97d8/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
+      "commit": "165c01b46ea533872e002e0785ff17e44f6d97d8",
+      "sha256": "69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68",
+      "size_bytes": 4644748,
+      "cache_file": "NotoSansKR-Regular.otf",
+      "retrieved": "2026-11-22",
+      "license": "OFL-1.1",
+      "evidence": "[LOCALLY RECORDED] SHA-256 of the subset OTF at notofonts/noto-cjk commit 165c01b46ea533872e002e0785ff17e44f6d97d8."
     }
   ],
   "host_requirements": [

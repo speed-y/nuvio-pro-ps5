@@ -151,10 +151,13 @@ Unknown duration or a rejected demuxer seek can still prevent startup resume.
 The AGC playback bridge prefers the homebrew-ui HUD when that renderer can draw the current captions.
 RmlUi remains the fallback for unsupported caption glyphs.
 The build rebakes the HUD fallback atlas with Thai and Devanagari before packaging.
+Common CJK is drawn by the existing on-demand subtitle atlas.
+The console shader has six font slots, and that shader is already compiled.
+Kana uses Noto Sans JP and Hangul uses Noto Sans KR.
+Shared Han uses Noto Sans SC, then Traditional Chinese, Japanese and Korean.
+A character outside those faces leaves the caption on RmlUi.
 Startup and Settings compare `VERSION` with releases from `speed-y/nuvio-pro-ps5`.
 The update dialog links to that release and its package.
-RmlUi still draws glyphs that atlas does not contain.
-Full CJK faces stay out of this atlas.
 Both HUDs must consume the skip, next-episode and playback-ended fields.
 Homebrew-ui copies the skip label before drawing, independent of the input string's lifetime.
 The prompt cards remain outside the fading controls, including when those controls are hidden.
