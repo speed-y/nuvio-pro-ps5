@@ -72,8 +72,8 @@ def patch_rml_glyphs(app):
              '    bool m_nuvio_remote_glyphs = false;\n',
              'rml member')
     helper = r'''
-#include "ui/glyphs.hpp"
 #include <string>
+namespace hui { namespace ui { bool remote_glyphs(); } }
 static void nuvio_glyph_src(Rml::ElementDocument *doc, const char *id, const char *prefix,
                              const char *controller, const char *remote, bool use_remote)
 {
