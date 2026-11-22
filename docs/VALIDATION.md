@@ -5482,9 +5482,13 @@ Library screens use D-pad, OK, Back, and some use L1, R1, Triangle or Square.
 Play resumes only when paused. Pause pauses only when playing.
 Code 5 seeks to 50 percent of a 200 second duration.
 Subtitle opens the subtitle picker. Audio opens the audio picker.
+Red opens audio, green opens subtitles, yellow sends Triangle, and blue sends R1.
+Guide opens the chapter list when the mock reports chapters, and it does not take a screenshot.
 A 700 ms Menu hold opens the action list and consumes Down instead of seeking.
 Without `/tmp/nuvio-remote-learn` the learn line stays hidden.
 With that file, code 40 shows `code 40` on the sticky toast.
+Choosing Subtitles after code 14 writes `14 subtitles` to the remap file.
+The same code then opens the subtitle picker.
 The owner's earlier D-pad, OK, Back, Menu and transport checks on firmware 12.70 still describe the unchanged short-press mappings.
 The new keys and the learn line remain unverified on firmware 12.70.
 

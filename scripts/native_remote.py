@@ -18,6 +18,7 @@ EVO_COMMIT = 'f6e43e6561796630673f1e20eb1eb67d6428514c'
 SDL_COMMIT = 'ee4c47dc0d617b3bc8f35108f9956baf228a1322'
 LEARN_PATH = '/data/nuvio/remote-learn'
 LEARN_USB_PATH = '/mnt/usb0/evo_remote_learn'
+MAP_PATH = '/data/nuvio/remote-map'
 MENU_HOLD_MS = 700
 
 # status: sourced = SDL names the key. unknown = SDL says the index is unknown.
@@ -61,15 +62,15 @@ REMOTE_KEYS = (
     (33, 'display', 'sourced', 'wake', True, 0),
     (34, 'unknown-34', 'unknown', 'none', False, 0),
     (35, 'unknown-35', 'unknown', 'none', False, 0),
-    (36, 'blue', 'sourced', 'r3', True, 0),
-    (37, 'red', 'sourced', 'triangle', True, 0),
-    (38, 'green', 'sourced', 'r1', True, 0),
-    (39, 'yellow', 'sourced', 'square', True, 0),
+    (36, 'blue', 'sourced', 'r1', True, 0),
+    (37, 'red', 'sourced', 'r2', True, 0),
+    (38, 'green', 'sourced', 'down', True, 0),
+    (39, 'yellow', 'sourced', 'triangle', True, 0),
     (40, 'period', 'sourced', 'none', False, 0),
-    (41, 'channel-up', 'sourced', 'l1', False, 0),
-    (42, 'channel-down', 'sourced', 'r1', False, 0),
+    (41, 'channel-up', 'sourced', 'r1', False, 0),
+    (42, 'channel-down', 'sourced', 'l1', False, 0),
     (43, 'prev', 'sourced', 'circle', False, 0),
-    (44, 'guide', 'sourced', 'menu', True, 0),
+    (44, 'guide', 'sourced', 'chapters', True, 0),
     (45, 'play-pause', 'sourced', 'cross', True, 0),
 )
 
@@ -81,7 +82,7 @@ MENU_ITEMS = (
     ('Skip or view', 'triangle'),
     ('Next', 'r1'),
     ('Previous', 'l1'),
-    ('Chapters', 'r3'),
+    ('Chapters', 'chapters'),
     ('Media info', 'square'),
     ('Subtitle earlier', 'l2'),
     ('Subtitle later', 'touch-right'),
@@ -109,7 +110,30 @@ ACTIONS = {
     'seek': 18,
     'menu': 19,
     'wake': 20,
+    'chapters': 21,
 }
+
+# Names accepted in /data/nuvio/remote-map. Seek percent is "seek" plus a number.
+REMAP_NAMES = (
+    ('none', 'none', 0),
+    ('ok', 'cross', 0),
+    ('back', 'circle', 0),
+    ('menu', 'options', 0),
+    ('subtitles', 'down', 0),
+    ('audio', 'r2', 0),
+    ('skip', 'triangle', 0),
+    ('next', 'r1', 0),
+    ('previous', 'l1', 0),
+    ('chapters', 'chapters', 0),
+    ('info', 'wake', 0),
+    ('play', 'play', 0),
+    ('pause', 'pause', 0),
+    ('rewind', 'left', 0),
+    ('forward', 'right', 0),
+    ('earlier', 'l2', 0),
+    ('later', 'touch-right', 0),
+    ('actions', 'menu', 0),
+)
 
 
 def key_by_code(code):
@@ -132,6 +156,14 @@ def _table_cpp():
         lines.append(
             '    {%d, %d, %d}, /* %s %s */' % (
                 ACTIONS[action], 1 if player_only else 0, arg, label, status))
+    return '\n'.join(lines)
+
+
+def _remap_cpp():
+    lines = []
+    for name, action, arg in REMAP_NAMES:
+        player = 0 if action in ('none', 'cross', 'circle', 'options') else 1
+        lines.append('    {"%s", %d, %d, %d},' % (name, ACTIONS[action], arg, player))
     return '\n'.join(lines)
 
 
@@ -172,9 +204,14 @@ RECEIVER = r'''
  * browser suspension, failure backoff and native action translation only.
  */
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 #ifndef NUVIO_REMOTE_LEARN_PATH
 #define NUVIO_REMOTE_LEARN_PATH "/data/nuvio/remote-learn"
+#endif
+#ifndef NUVIO_REMOTE_MAP_PATH
+#define NUVIO_REMOTE_MAP_PATH "/data/nuvio/remote-map"
 #endif
 extern "C" int scePadGetHandle(int user_id, int type, int index);
 extern "C" int scePadClose(int handle);
@@ -192,10 +229,15 @@ class NuvioTvRemote {
     static constexpr int ActSeek = 18;
     static constexpr int ActMenu = 19;
     static constexpr int ActWake = 20;
+    static constexpr int ActChapters = 21;
     struct Key { uint8_t act; uint8_t player; uint8_t arg; };
     struct Item { uint8_t act; const char *label; };
+    struct Name { const char *name; uint8_t act; uint8_t arg; uint8_t player; };
+    struct Saved { uint8_t used; uint8_t act; uint8_t arg; uint8_t player; };
     static const Key kKeys[46];
     static const Item kMenu[9];
+    static const Name kNames[];
+    static const int kNameCount;
     int handle = -1;
     bool owned = false;
     bool waitNeutral = false;
@@ -215,6 +257,10 @@ class NuvioTvRemote {
     bool holdingMenu = false;
     uint64_t menuDownAt = 0;
     uint32_t menuNav = 0;
+    uint8_t bindCode = 0;
+    Saved saved[256]{};
+    uint64_t mapCheckAt = 0;
+    bool openChapters = false;
 
     void detach() {
         if (owned && handle > 0) scePadClose(handle);
@@ -231,6 +277,64 @@ class NuvioTvRemote {
         if (on != learn) { shownCode = 0xff; shownButtons = 0xffffffffu; }
         learn = on;
         learnKnown = true;
+        loadMap(now);
+    }
+
+    const char *nameFor(uint8_t act, uint8_t arg) const {
+        if (act == ActSeek) return nullptr;
+        for (int i = 0; i < kNameCount; ++i)
+            if (kNames[i].act == act && kNames[i].arg == arg) return kNames[i].name;
+        return nullptr;
+    }
+
+    void loadMap(uint64_t now) {
+        if (now < mapCheckAt) return;
+        mapCheckAt = now + 500;
+        std::memset(saved, 0, sizeof saved);
+        std::FILE *file = std::fopen(NUVIO_REMOTE_MAP_PATH, "r");
+        if (!file) return;
+        char line[64];
+        while (std::fgets(line, sizeof line, file)) {
+            if (line[0] == '#' || line[0] == '\n') continue;
+            unsigned code = 0;
+            char name[32] = {};
+            if (std::sscanf(line, "%u %31s", &code, name) != 2 || code == 0 || code > 255)
+                continue;
+            if (std::strncmp(name, "seek", 4) == 0) {
+                saved[code].used = 1;
+                saved[code].act = ActSeek;
+                saved[code].arg = static_cast<uint8_t>(std::atoi(name + 4));
+                saved[code].player = 1;
+                continue;
+            }
+            for (int i = 0; i < kNameCount; ++i) {
+                if (std::strcmp(kNames[i].name, name) == 0) {
+                    saved[code] = {1, kNames[i].act, kNames[i].arg, kNames[i].player};
+                    break;
+                }
+            }
+        }
+        std::fclose(file);
+    }
+
+    void saveBind(uint8_t code, uint8_t act) {
+        if (code == 0 || code == 13 || code == 15 || code == 18 || code == 43) return;
+        saved[code].used = 1;
+        saved[code].act = act;
+        saved[code].arg = 0;
+        saved[code].player = (act == 1 || act == 2 || act == 3) ? 0 : 1;
+        std::FILE *file = std::fopen(NUVIO_REMOTE_MAP_PATH, "w");
+        if (!file) return;
+        std::fputs("# code action\n", file);
+        for (int i = 1; i < 256; ++i) {
+            if (!saved[i].used) continue;
+            if (saved[i].act == ActSeek)
+                std::fprintf(file, "%d seek%d\n", i, saved[i].arg);
+            else if (const char *name = nameFor(saved[i].act, saved[i].arg))
+                std::fprintf(file, "%d %s\n", i, name);
+        }
+        std::fclose(file);
+        mapCheckAt = 0;
     }
 
     void showLearn(uint8_t code, uint32_t buttons) {
@@ -297,10 +401,13 @@ class NuvioTvRemote {
         const bool choose = !menuIgnoreSelect && ((code == 13) || (edge & Cross));
         const bool back = (code == 15) || (code == 43) || (edge & Circle);
         if (choose) {
-            const uint32_t bits = maskFor(kMenu[menuIndex].act);
+            const uint8_t act = kMenu[menuIndex].act;
+            if (learn) saveBind(bindCode, act);
             menuOpen = false;
             toast_dismiss();
-            return previous = bits;
+            if (act == ActChapters) { openChapters = true; return previous = 0; }
+            if (act == ActMenu) { openMenu(); return previous = 0; }
+            return previous = maskFor(act);
         }
         if (back) {
             menuOpen = false;
@@ -338,6 +445,13 @@ public:
 
     void applyPlayer() {
         auto *playback = evo::Application::getInstance().getPlaybackController();
+        if (openChapters) {
+            openChapters = false;
+            auto *meta = evo::Application::getInstance().getMediaMetadataService();
+            auto *screens = evo::Application::getInstance().getScreenManager();
+            if (meta && screens && meta->getChapterCount() > 0)
+                screens->navigateTo(evo::ScreenId::ChapterPicker);
+        }
         if (seekPercent >= 0) {
             const int percent = seekPercent;
             seekPercent = -1;
@@ -391,6 +505,8 @@ public:
         using namespace evo::PadButtons;
         uint32_t basic = state.buttons & (Up | Down | Left | Right | Cross | Circle | Options);
         const uint8_t code = state.unknown[3];
+        if (code != 0 && code != 13 && code != 15 && code != 18 && code != 43)
+            bindCode = code;
         showLearn(code, state.buttons);
         if (waitNeutral) {
             if (!basic && !code) waitNeutral = false;
@@ -407,17 +523,25 @@ public:
         } else if (!menuKey) {
             holdingMenu = false;
         }
-        if (code < 46 && player && kKeys[code].act == ActMenu) openMenu();
-        if (menuOpen) return menuFrame(code, basic);
-
+        uint8_t act = 0, arg = 0, playerOnly = 1;
         if (code < 46) {
-            const Key &key = kKeys[code];
-            if (!key.player || player) {
-                if (key.act == ActPlay) transport = 1;
-                else if (key.act == ActPause) transport = 2;
-                else if (key.act == ActSeek) seekPercent = key.arg;
-                else basic |= maskFor(key.act);
-            }
+            act = kKeys[code].act;
+            arg = kKeys[code].arg;
+            playerOnly = kKeys[code].player;
+        }
+        if (saved[code].used) {
+            act = saved[code].act;
+            arg = saved[code].arg;
+            playerOnly = saved[code].player;
+        }
+        if (player && act == ActMenu) openMenu();
+        if (menuOpen) return menuFrame(code, basic);
+        if (!playerOnly || player) {
+            if (act == ActPlay) transport = 1;
+            else if (act == ActPause) transport = 2;
+            else if (act == ActSeek) seekPercent = arg;
+            else if (act == ActChapters) openChapters = true;
+            else basic |= maskFor(act);
         }
         return previous = basic;
     }
@@ -430,6 +554,10 @@ const NuvioTvRemote::Key NuvioTvRemote::kKeys[46] = {
 const NuvioTvRemote::Item NuvioTvRemote::kMenu[9] = {
 ''' + _menu_cpp() + r'''
 };
+const NuvioTvRemote::Name NuvioTvRemote::kNames[] = {
+''' + _remap_cpp() + r'''
+};
+const int NuvioTvRemote::kNameCount = sizeof(NuvioTvRemote::kNames) / sizeof(NuvioTvRemote::kNames[0]);
 static NuvioTvRemote s_nuvioRemote;
 
 '''

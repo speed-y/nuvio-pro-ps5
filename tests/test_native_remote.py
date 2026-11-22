@@ -121,7 +121,7 @@ struct Playback {
     void cycleViewMode() {}
     ViewMode getViewMode() { return ViewMode::Fit; }
 };
-struct Metadata { int getChapterCount() { return 0; } };
+struct Metadata { int chapters = 0; int getChapterCount() { return chapters; } };
 struct PlayerScreen {
     uint64_t m_controlsLastUsedMs = 0, m_lastPlayPauseToggleMs = 0;
     bool m_showStatsForNerds = false;
@@ -325,12 +325,19 @@ void remote_direct_actions() {
     remoteState.unknown[3] = 0; f.frame(1300);
     remoteState.unknown[3] = 5; f.frame(1400);
     assert(playback.seekToPos == 100); // 50 percent of 200 seconds.
-    remoteState.unknown[3] = 37; f.frame(1500);
+    remoteState.unknown[3] = 37; f.frame(1500); // Red opens audio.
+    assert(manager.navigated == ScreenId::AudioTrackPicker);
+    remoteState.unknown[3] = 38; f.frame(1550); // Green opens subtitles.
+    assert(manager.navigated == ScreenId::SubtitlePicker);
+    remoteState.unknown[3] = 39; f.frame(1600); // Yellow is skip, which is Triangle.
     assert(manager.lastPressed & Triangle);
-    remoteState.unknown[3] = 39; f.frame(1600);
-    assert(manager.navigated == ScreenId::MediaInfo);
-    remoteState.unknown[3] = 32; f.frame(1700); // Sourced camera key, no guessed action.
-    assert(manager.navigated == ScreenId::MediaInfo && playback.seekToPos == 100);
+    remoteState.unknown[3] = 36; f.frame(1650); // Blue is next, not a screenshot.
+    assert(playback.chapters == 1);
+    metadata.chapters = 2;
+    remoteState.unknown[3] = 44; f.frame(1700); // Guide opens the chapter list.
+    assert(manager.navigated == ScreenId::ChapterPicker);
+    remoteState.unknown[3] = 32; f.frame(1750); // Camera stays unmapped.
+    assert(manager.navigated == ScreenId::ChapterPicker && playback.seekToPos == 100);
 }
 
 void remote_action_menu() {
@@ -345,6 +352,32 @@ void remote_action_menu() {
     assert(playback.seeks == 0); // The list consumes Down.
     remoteState.buttons = Cross; f.frame(1900);
     assert(manager.navigated == ScreenId::AudioTrackPicker);
+}
+
+void remote_user_remap() {
+    std::remove(NUVIO_REMOTE_MAP_PATH);
+    std::remove(NUVIO_REMOTE_LEARN_PATH);
+    FILE* file = std::fopen(NUVIO_REMOTE_LEARN_PATH, "w");
+    assert(file); std::fclose(file);
+    Fixture f; f.m_padHandle = -1;
+    remoteState.unknown[3] = 14; f.frame(1000); // Unknown index, remembered for binding.
+    remoteState.unknown[3] = 18; f.frame(2000);
+    f.frame(2700); // Long Menu opens the action list.
+    remoteState.unknown[3] = 0;
+    remoteState.buttons = Cross; f.frame(2800); // Bind code 14 to Subtitles.
+    file = std::fopen(NUVIO_REMOTE_MAP_PATH, "r");
+    assert(file);
+    char line[64] = {};
+    bool found = false;
+    while (std::fgets(line, sizeof line, file))
+        if (std::strstr(line, "14 subtitles")) found = true;
+    std::fclose(file);
+    assert(found);
+    remoteState.buttons = 0;
+    remoteState.unknown[3] = 14; f.frame(2900);
+    assert(manager.navigated == ScreenId::SubtitlePicker);
+    std::remove(NUVIO_REMOTE_MAP_PATH);
+    std::remove(NUVIO_REMOTE_LEARN_PATH);
 }
 
 void remote_learn_mode() {
@@ -403,6 +436,13 @@ class RemoteTableTests(unittest.TestCase):
         self.assertNotEqual(native_remote.key_by_code(26)[3], 'cross')
         self.assertEqual(native_remote.key_by_code(30)[3], 'down')
         self.assertEqual(native_remote.key_by_code(31)[3], 'r2')
+        self.assertEqual(native_remote.key_by_code(36)[3], 'r1')
+        self.assertEqual(native_remote.key_by_code(37)[3], 'r2')
+        self.assertEqual(native_remote.key_by_code(38)[3], 'down')
+        self.assertEqual(native_remote.key_by_code(39)[3], 'triangle')
+        self.assertEqual(native_remote.key_by_code(41)[3], 'r1')
+        self.assertEqual(native_remote.key_by_code(42)[3], 'l1')
+        self.assertEqual(native_remote.key_by_code(44)[3], 'chapters')
         self.assertEqual(native_remote.key_by_code(45)[3], 'cross')
         self.assertEqual(native_remote.MENU_ITEMS[0], ('Subtitles', 'down'))
         self.assertEqual(native_remote.MENU_ITEMS[1], ('Audio', 'r2'))
@@ -460,6 +500,7 @@ class NativeRemoteTests(unittest.TestCase):
                  for name in ('baseline_remote_only', 'remote_only', 'failed_controller', 'overlap', 'asymmetric_directions',
                               'disconnect', 'acquisition', 'browser_ownership', 'remote_codes',
                               'remote_direct_actions', 'remote_action_menu', 'remote_learn_mode',
+                              'remote_user_remap',
                               'keyboard_and_nonplayer', 'controller_unchanged')) + '\n    return 2;\n}\n')
         # The orb's target Clang lacks host ASan runtimes. GCC ships them.
         compiler = shutil.which('g++') or shutil.which('clang++') or shutil.which('c++')
@@ -474,6 +515,7 @@ class NativeRemoteTests(unittest.TestCase):
         cls.binary = directory / 'test'
         result = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                                  '-DNUVIO_REMOTE_LEARN_PATH="/tmp/nuvio-remote-learn"',
+                                 '-DNUVIO_REMOTE_MAP_PATH="/tmp/nuvio-remote-map"',
                                  '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                                  '-I' + str(directory), str(directory / 'test.cpp'),
                                  str(directory / 'evo_input.cpp'), '-o', str(cls.binary)],
@@ -519,6 +561,9 @@ class NativeRemoteTests(unittest.TestCase):
 
     def test_learn_file_shows_the_raw_code_and_stays_off_without_it(self):
         self.run_case('remote_learn_mode')
+
+    def test_learn_mode_can_save_a_remap_for_an_unknown_code(self):
+        self.run_case('remote_user_remap')
 
     def test_keyboard_navigation_and_transport_scope(self):
         self.run_case('keyboard_and_nonplayer')

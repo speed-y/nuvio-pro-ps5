@@ -473,9 +473,12 @@ Browser ownership suspends the native receiver. Cleanup closes owned handles, no
 Basic arrows, OK, Back and Menu are mapped. Supported transport codes reuse existing playback actions.
 Dedicated Play resumes playback. Dedicated Pause pauses playback. Neither key toggles.
 Hold OK or Menu for 700 ms in the player to open the action list.
-A short Menu press still toggles stats. Guide opens the same list.
+A short Menu press still toggles stats.
+Guide opens the chapter list when the title has chapters.
+Red opens audio, green opens subtitles, yellow skips, and blue goes next.
 Create an empty `/data/nuvio/remote-learn` file to pin the last raw code on screen.
 Delete that file to hide the code. `/mnt/usb0/evo_remote_learn` shows the same line.
+With that file open, choosing an action list row saves the last code in `/data/nuvio/remote-map`.
 The code table follows SDL `remote_key_map`. Indexes that file marks unknown stay unmapped.
 Actual TV-remote delivery and behavior on firmware 12.70 remain hardware checks.
 
