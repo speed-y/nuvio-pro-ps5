@@ -56,7 +56,7 @@ The old upstream identity is `PPSA99997`. Historical evidence retains that ident
 patches show changes to upstream files. The adapters also copy the loading
 artwork and the RML assets. The patches alone do not perform the full build.
 
-The browser UI uses Nuvio TV 1.4.1. EVO remains pinned to v0.13.5 with the existing native patches.
+The browser UI uses Nuvio TV 1.4.4. EVO remains pinned to v0.13.5 with the existing native patches.
 Upstream now supplies nullable collection-rating normalization, manual source selection and series-wide stream preference lookup.
 PS5 adapters retain focused stream identity during incremental loading and defer preference writes until native playback succeeds.
 The adapters disable the new stream-link cache on PS5. Stream reuse still matches fresh addon results instead of storing signed URLs or headers.
@@ -150,6 +150,14 @@ Unknown duration or a rejected demuxer seek can still prevent startup resume.
 
 The AGC playback bridge prefers the homebrew-ui HUD when that renderer can draw the current captions.
 RmlUi remains the fallback for unsupported caption glyphs.
+The build rebakes the HUD fallback atlas with Thai and Devanagari before packaging.
+Common CJK is drawn by the existing on-demand subtitle atlas.
+The console shader has six font slots, and that shader is already compiled.
+Kana uses Noto Sans JP and Hangul uses Noto Sans KR.
+Shared Han uses Noto Sans SC, then Traditional Chinese, Japanese and Korean.
+A character outside those faces leaves the caption on RmlUi.
+Startup and Settings compare `VERSION` with releases from `speed-y/nuvio-pro-ps5`.
+The update dialog links to that release and its package.
 Both HUDs must consume the skip, next-episode and playback-ended fields.
 Homebrew-ui copies the skip label before drawing, independent of the input string's lifetime.
 The prompt cards remain outside the fading controls, including when those controls are hidden.
@@ -463,7 +471,19 @@ It uses existing native navigation and player actions, with one dispatch per fra
 Read failures release remote input. Recovery requires a neutral state and uses a one-second acquisition backoff.
 Browser ownership suspends the native receiver. Cleanup closes owned handles, not borrowed handles.
 Basic arrows, OK, Back and Menu are mapped. Supported transport codes reuse existing playback actions.
-Dedicated Play and Pause remain unbound because they must not act as toggles.
+Dedicated Play resumes playback. Dedicated Pause pauses playback. Neither key toggles.
+Hold OK for 700 ms in the player to open the action list.
+A short Menu press still toggles stats when that remote has a Menu key.
+Hints show Hold OK until a Menu or context-menu code arrives.
+Guide opens the chapter list when the title has chapters.
+Red opens audio, green opens subtitles, yellow skips, and blue goes next.
+Create an empty `/data/nuvio/remote-learn` file to pin the last raw code on screen.
+Delete that file to hide the code. `/mnt/usb0/evo_remote_learn` shows the same line.
+With that file open, choosing an action list row saves the last code in `/data/nuvio/remote-map`.
+The code table follows SDL `remote_key_map`. Indexes that file marks unknown stay unmapped.
+Button hints follow the last device. A controller press shows PlayStation shapes.
+A remote press shows generic keys. Play, pause, arrows, back and info are shapes.
+The preview is [input-glyphs-preview.png](input-glyphs-preview.png).
 Actual TV-remote delivery and behavior on firmware 12.70 remain hardware checks.
 
 The browser subtitle loader shares matching in-flight discovery across initial mount and native handoff.

@@ -133,6 +133,11 @@ EVO v0.12.0 source refuses any other libavcodec. The build keeps the compiled
 output under `.cache/` and later builds reuse it. The build also unpacks the
 pinned `ps5-homebrew-ui` archive into `third_party/`, where the EVO Makefile
 expects its submodule.
+It then rebakes `noto-fallback.huifont` with Thai and Devanagari.
+It copies four Noto Sans CJK subset faces into `assets/fonts` for on-demand captions.
+The build reuses a cached download when the checksum matches.
+The browser bundle reports `VERSION`, not the upstream Nuvio TV version.
+The embedded copy is `assets/hui/fonts/noto-fallback.huifont`.
 
 The builder writes `patches/evo.patch` and `patches/nuvio.patch` for review. The
 Python adapters already apply those changes, so do not apply the patches again.

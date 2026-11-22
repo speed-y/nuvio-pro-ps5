@@ -5427,3 +5427,103 @@ The bump is in `VERSION` and `sce_sys/param.json`. This preparation does not pub
   - Confirmed title mounted and managed with `control-2.elf`.
   - Read `/data/nuvio/evo.log`: verified `BUILD f6e43e65-nuvio_1115-1118`, HTTP 200 asset responses, storage restoration, and active decoders.
 
+## Subtitle fallback font coverage, 2026-11-22
+
+[SOURCE-VERIFIED] Issue #18 reports Thai subtitles as boxes or question marks.
+The preferred HUD reads `hui/fonts/noto-fallback.huifont`.
+That atlas had no Thai or Devanagari glyphs.
+A missing code point becomes `?` in the baked font.
+Otherwise the HUD drops the caption and RmlUi draws it.
+
+[LOCALLY BUILT] `provide_hui` downloads Noto Sans Thai and Noto Sans Devanagari, patches the baker, and rebuilds the atlas.
+The requested font URLs returned HTTP 200.
+They redirect to notofonts/noto-fonts.
+This host selected g++ 13.3.0.
+This host has clang++ 18.1.3 without C++ standard library headers.
+The baker wrote 3,154 glyphs into a 4096 by 1501 atlas, 6,223,832 bytes.
+U+0E01, U+0E32, U+0E48, U+0E31, U+0915 and U+093E are present.
+Arabic U+0627 and Hebrew U+05D0 remain present.
+An atlas of 4096 did not overflow.
+CJK is still outside this atlas.
+Python on this host is 3.12.3.
+Console subtitle rendering on firmware 12.70 remains pending.
+
+## Skip prompts and Nuvio TV 1.4.4, 2026-11-22
+
+[SOURCE-VERIFIED] Nuvio playback sends IntroDB intervals on the `/evo/play` `skip` query.
+`evo_webui_skip_interval` keeps a prompt while playback is inside a valid interval.
+The homebrew-ui HUD draws that prompt from `draw_nuvio_prompts` when a Nuvio presentation is active.
+RmlUi draws the same label in `#nuvio-skip` when the HUD does not.
+EVO's own library prompt still uses its chapter or server segments for eight seconds.
+That path runs only after the browser closes into native library playback.
+Host tests already cover the HUD card, the metadata proxy and the handoff encoding.
+This session did not launch firmware 12.70, so on-screen prompts remain pending.
+
+[LOCALLY BUILT] The browser UI pin moved from Nuvio TV 1.4.1 to release 1.4.4.
+The previous pin was 1.4.1, commit `f5c673886965b0030b497e54ea5d60b4ed0a1870`.
+The new pin is commit `573d49472d04087ed75cc219b872cc8aefee19aa`.
+One home-menu anchor moved. Play manually stays available on PS5.
+The other fork patches applied on the 1.4.4 tree.
+Update checks read `speed-y/nuvio-pro-ps5` releases, including prerelease tags.
+The checker skips drafts and `pr-*` test tags.
+The dialog links to the release page and the `nuvio-pro-ps5-<version>.zip` asset.
+The bundle version comes from `VERSION`, currently `0.2.0-alpha.8`.
+Console update prompts and skip cards on firmware 12.70 remain pending.
+
+## TV remote action map, 2026-11-22
+
+[SOURCE-VERIFIED] SDL `remote_key_map` at `ee4c47dc0d617b3bc8f35108f9956baf228a1322` names codes 0 through 45.
+Codes 0, 14, 16, 17, 19, 28, 29, 34 and 35 are unknown in that file and stay unmapped.
+No Info key appears in that table. Display is code 33.
+The player already binds Cross, Circle, Options, Square, Triangle, L1, R1, L2, R2, R3 and the touchpad halves.
+Library screens use D-pad, OK, Back, and some use L1, R1, Triangle or Square.
+
+[LOCALLY BUILT] The host remote tests passed with g++ 13.3.0 and ASan/UBSan.
+Play resumes only when paused. Pause pauses only when playing.
+Code 5 seeks to 50 percent of a 200 second duration.
+Subtitle opens the subtitle picker. Audio opens the audio picker.
+Red opens audio, green opens subtitles, yellow sends Triangle, and blue sends R1.
+Guide opens the chapter list when the mock reports chapters, and it does not take a screenshot.
+A 700 ms Menu hold opens the action list and consumes Down instead of seeking.
+Without `/tmp/nuvio-remote-learn` the learn line stays hidden.
+With that file, code 40 shows `code 40` on the sticky toast.
+Choosing Subtitles after code 14 writes `14 subtitles` to the remap file.
+The same code then opens the subtitle picker.
+A remote press switches hints to the remote set. A controller press within 200 ms does not switch back.
+The sheet is [input-glyphs-preview.png](input-glyphs-preview.png).
+Play, pause, arrows, back and info are shapes on that sheet.
+OK does not reveal the Menu glyph. Code 18, code 27, and the Options bit do.
+The sheet includes Hold OK.
+Console glyph switching on firmware 12.70 remains pending.
+The owner's earlier D-pad, OK, Back, Menu and transport checks on firmware 12.70 still describe the unchanged short-press mappings.
+The new keys and the learn line remain unverified on firmware 12.70.
+
+## CJK subtitle coverage, 2026-11-22
+
+[SOURCE-VERIFIED] The HUD shader binds six font atlases.
+`kFontSlots` is 6 and `ui_sdf.pipe` is already compiled for those six.
+A seventh baked atlas cannot be sampled.
+`ComplexText` rasterizes Chinese, Japanese and Korean on demand when a face is present.
+Without a face, `has_glyph` is false.
+`OsdScreen::can_draw` then leaves the caption on RmlUi.
+RmlUi draws a missing scalar as `?` when its own font lacks it.
+
+[LOCALLY BUILT] The build embeds Noto Sans SC, TC, JP and KR subset faces.
+The pin is commit `165c01b46ea533872e002e0785ff17e44f6d97d8`.
+Those four files are 23,192,480 bytes.
+A file of the same name under `/data/evoplayer/fonts` still replaces the embedded face.
+Kana prefers the Japanese face.
+Hangul prefers the Korean face.
+Shared Han prefers the Simplified Chinese face, then Traditional Chinese, Japanese and Korean.
+The on-demand atlas stays 2048 by 2048 in the existing sixth slot.
+The common repertoire is 12,857 assigned scalars.
+FreeType 26.1.20 found every one of them in the four faces.
+That set is GB2312, Big5 level 1 and JIS X 0208 level 1.
+It also has 2,350 KS X 1001 Hangul syllables, kana, Jamo, punctuation and fullwidth forms.
+Host rasterization drew the Simplified, Traditional, Japanese and Korean sample lines with no missing glyphs.
+U+20000 is in none of the faces, so `has_glyph` stays false and that caption stays on RmlUi.
+A second check with the same faces reused the coverage cache.
+This host used g++ 13.3.0.
+`VERSION` stays `0.2.0-alpha.8` and `contentVersion` stays `01.000.015`.
+Console subtitle rendering on firmware 12.70 remains pending.
+

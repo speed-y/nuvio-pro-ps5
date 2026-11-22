@@ -5,6 +5,7 @@ import { addonRepository } from '../../data/repository/addonRepository.js';
 import { catalogRepository } from '../../data/repository/catalogRepository.js';
 import { buildSearchTargets } from '../screens/search/searchCatalogTargets.js';
 import { filterReleasedItems } from '../../core/util/releaseInfoUtils.js';
+import { inputDevice, installInputDevice, remoteGlyphName, remoteGlyphSvg, remoteMenuSeen } from './input-device.js';
 
 // SVG adaptation of ps5-homebrew-ui's ui/glyphs.cpp, pinned in deps.lock.
 // Copyright (C) 2026 BlackBearReloaded. SPDX-License-Identifier: GPL-3.0-or-later.
@@ -27,6 +28,7 @@ function stickGlyphSvg(name) {
 
 /** Return an inline SVG matching DualSense GlyphStyle::dark() for a button name. */
 export function ps5GlyphSvg(name) {
+  if (inputDevice() === 'remote') return remoteGlyphSvg(remoteGlyphName(name));
   if (PS5_GLYPH_FACES[name]) {
     return '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#11131f" fill-opacity=".92"/>' +
       PS5_GLYPH_FACES[name] + '</svg>';
@@ -443,15 +445,19 @@ export function refreshPs5HintBar() {
       }
       return;
     }
-    const sig = hints.map(([g, l]) => g + ':' + l).join('|');
+    const sig = inputDevice() + (remoteMenuSeen() ? ':menu' : '') + '|' +
+      hints.map(([g, l]) => g + ':' + l).join('|');
     if (sig === hintBarSignature && !hintBarNode.hidden) return;
     hintBarSignature = sig;
     hintBarNode.hidden = false;
     hintBarNode.innerHTML = hints.map(([glyph, label]) => {
+      const holdOk = inputDevice() === 'remote' && !remoteMenuSeen() && label === 'Menu' &&
+        (glyph === 'Options' || glyph === 'TouchPad');
       const cls = glyph === 'TouchPad' || glyph.includes('/') ? 'ps5-control-glyph wide' :
-        glyph === 'Options' ? 'ps5-control-glyph narrow' : 'ps5-control-glyph';
+        glyph === 'Options' && !holdOk && inputDevice() !== 'remote' ? 'ps5-control-glyph narrow' :
+        'ps5-control-glyph';
       return '<span class="ps5-control-hint"><span class="' + cls + '" aria-hidden="true">' +
-        ps5GlyphSvg(glyph) + '</span><span>' + label + '</span></span>';
+        ps5GlyphSvg(glyph) + '</span><span>' + (holdOk ? 'Hold OK' : label) + '</span></span>';
     }).join('');
   });
 }
@@ -465,6 +471,13 @@ export function initPs5HintBar() {
   hintBarNode.setAttribute('aria-hidden', 'true');
   hintBarNode.hidden = true;
   document.body.appendChild(hintBarNode);
+  installInputDevice();
+  const redrawHints = () => {
+    hintBarSignature = '';
+    refreshPs5HintBar();
+  };
+  window.addEventListener('nuvio-input-device', redrawHints);
+  window.addEventListener('nuvio-remote-menu', redrawHints);
   const trigger = () => refreshPs5HintBar();
   window.addEventListener('hashchange', trigger, true);
   window.addEventListener('popstate', trigger, true);

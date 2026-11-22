@@ -11,6 +11,52 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import build
 
 
+class FallbackBakerTests(unittest.TestCase):
+    def test_patch_inserts_thai_and_devanagari_once(self):
+        sample = (
+            '    {0x1E00, 0x1EFF},   // Latin Extended Additional (Vietnamese)\n'
+            '    {0x2000, 0x206F},   // general punctuation\n'
+        )
+        once = build.patch_fallback_baker(sample)
+        self.assertEqual(once.count('{0x0E00, 0x0E7F}'), 1)
+        self.assertEqual(once.count('{0x0900, 0x097F}'), 1)
+        self.assertLess(once.index('0x1E00'), once.index('0x0E00'))
+        self.assertLess(once.index('0x0E00'), once.index('0x0900'))
+        self.assertLess(once.index('0x0900'), once.index('0x2000'))
+        self.assertEqual(build.patch_fallback_baker(once), once)
+
+    def test_patch_requires_the_latin_extended_anchor(self):
+        with self.assertRaises(RuntimeError):
+            build.patch_fallback_baker('no ranges here\n')
+
+
+class CjkCoverageTests(unittest.TestCase):
+    def test_complex_patch_is_idempotent(self):
+        text = ''.join(old for old, _new, _label in build.CJK_COMPLEX_PATCHES)
+        once = build.patch_cjk_complex(text)
+        self.assertIn('f_tc', once)
+        self.assertIn('fonts/NotoSansSC-Regular.otf', once)
+        self.assertIn('cjk_glyph', once)
+        self.assertIn('sg.face', once)
+        self.assertEqual(build.patch_cjk_complex(once), once)
+        header = build.patch_cjk_complex_header(build.CJK_HEADER_OLD)
+        self.assertEqual(build.patch_cjk_complex_header(header), header)
+        self.assertIn('/data/evoplayer/fonts', header)
+
+    def test_complex_patch_requires_anchors(self):
+        with self.assertRaises(RuntimeError):
+            build.patch_cjk_complex('no cjk anchors\n')
+
+    def test_subset_covers_sample_lines(self):
+        from cjk_subset import SAMPLES, cjk_codepoints
+        codes = cjk_codepoints()
+        hangul = [code for code in codes if 0xAC00 <= code <= 0xD7A3]
+        self.assertEqual(len(hangul), 2350)
+        for name, text in SAMPLES.items():
+            missing = [ch for ch in text if ord(ch) > 127 and ord(ch) not in codes]
+            self.assertEqual(missing, [], name)
+
+
 class FFmpegCacheTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

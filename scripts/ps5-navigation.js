@@ -3,6 +3,7 @@
 import { Router } from './routerState.js';
 import { NuvioDialog } from '../components/nuvioDialog.js';
 import { initPs5HintBar, initPs5SearchKeyboard, refreshPs5HintBar, requestPs5SearchKeyboard } from './ps5-text-input.js';
+import { noteRemoteMenu } from './input-device.js';
 import { startPs5TvRemoteDiagnostics } from './ps5-tv-remote.js';
 
 function visible(node) {
@@ -491,6 +492,7 @@ export function initPs5Navigation() {
       try {
         const next = JSON.parse(request.responseText);
         if (!Number.isInteger(next.options) || !Number.isInteger(next.menu)) { previous = null; return; }
+        if (next.remoteMenu === 1) noteRemoteMenu();
         if (previous) {
           if (next.menu !== previous.menu) window.dispatchEvent(new Event('nuvio:controller-menu'));
           if (next.options !== previous.options) window.dispatchEvent(new Event('nuvio:options'));

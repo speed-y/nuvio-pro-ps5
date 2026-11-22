@@ -11,8 +11,10 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 import subprocess
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
 import polish
@@ -625,12 +627,489 @@ def install_ffmpeg(sdk, env):
     print('FFmpeg', pin['directory'], 'built and installed over the sysroot')
 
 
+# Extra faces for the HUD subtitle atlas. The pinned kit already carries
+# Noto Sans, Arabic, Hebrew and both symbol faces. Thai and Devanagari do not.
+# The googlefonts/noto-fonts URLs redirect to notofonts/noto-fonts.
+FALLBACK_EXTRA_FONTS = (
+    {'id': 'noto-sans-thai-regular', 'file': 'NotoSansThai-Regular.ttf'},
+    {'id': 'noto-sans-devanagari-regular', 'file': 'NotoSansDevanagari-Regular.ttf'},
+)
+FALLBACK_BAKE_FONTS = (
+    'NotoSans-Regular.ttf',
+    'NotoSansThai-Regular.ttf',
+    'NotoSansDevanagari-Regular.ttf',
+    'NotoSansArabic-Regular.ttf',
+    'NotoSansHebrew-Regular.ttf',
+    'NotoSansSymbols-Regular.ttf',
+    'NotoSansSymbols2-Regular.ttf',
+)
+FALLBACK_RANGE_ANCHOR = '    {0x1E00, 0x1EFF},   // Latin Extended Additional (Vietnamese)\n'
+FALLBACK_RANGE_ADDITION = '    {0x0E00, 0x0E7F},   // Thai\n    {0x0900, 0x097F},   // Devanagari\n'
+FALLBACK_COMMENT_OLD = '// Latin (with accents and Vietnamese), Greek, Cyrillic, Hebrew, Arabic with\n'
+FALLBACK_COMMENT_NEW = '// Latin (with accents and Vietnamese), Greek, Cyrillic, Thai, Devanagari, Hebrew, Arabic with\n'
+
+
+def host_cxx():
+    """Return clang++ or g++, whichever can compile a C++17 program."""
+    for name in ('clang++', 'g++'):
+        compiler = shutil.which(name)
+        if not compiler:
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'probe.cpp'
+            out = Path(tmp) / 'probe'
+            src.write_text('int main(){return 0;}\n')
+            proc = subprocess.run([compiler, '-std=c++17', str(src), '-o', str(out)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode == 0:
+            return compiler
+    raise RuntimeError('No host C++ compiler can build the font baker. Install clang++ or g++.')
+
+
+def patch_fallback_baker(text):
+    """Add Thai and Devanagari ranges after Latin Extended Additional.
+
+    A second call leaves an already patched baker unchanged. A missing anchor
+    is a hard failure so a moved upstream range cannot bake the old atlas.
+    """
+    if text.count(FALLBACK_RANGE_ANCHOR) != 1:
+        raise RuntimeError('Pinned font baker is missing the Latin Extended Additional range')
+    block = FALLBACK_RANGE_ANCHOR + FALLBACK_RANGE_ADDITION
+    if block not in text:
+        if '0x0E00' in text or '{0x0900, 0x097F}' in text:
+            raise RuntimeError('Pinned font baker has Thai or Devanagari ranges outside the expected anchor')
+        text = text.replace(FALLBACK_RANGE_ANCHOR, block, 1)
+    if FALLBACK_COMMENT_OLD in text:
+        if text.count(FALLBACK_COMMENT_OLD) != 1:
+            raise RuntimeError('Pinned font baker comment anchor is not unique')
+        text = text.replace(FALLBACK_COMMENT_OLD, FALLBACK_COMMENT_NEW, 1)
+    return text
+
+
+def huifont_summary(path):
+    """Read a baked SDF font header and the code points it contains."""
+    data = path.read_bytes()
+    if len(data) < 40:
+        raise RuntimeError('Fallback font is too small: ' + str(path))
+    magic, version, width, height, pixel_size, sdf_range, _ascent, _descent, _gap, glyphs, kerns = struct.unpack_from(
+        '<IIHHfffffII', data)
+    if magic != 0x46505a50 or version != 1:
+        raise RuntimeError('Fallback font is not a huifont v1: ' + str(path))
+    expect = 40 + glyphs * 24 + kerns * 12 + width * height
+    if len(data) != expect:
+        raise RuntimeError('Fallback font size mismatch: ' + str(path))
+    codes = set()
+    offset = 40
+    for _ in range(glyphs):
+        codes.add(struct.unpack_from('<I', data, offset)[0])
+        offset += 24
+    return codes, {'width': width, 'height': height, 'glyphs': glyphs, 'bytes': len(data),
+                   'pixel_size': pixel_size, 'sdf_range': sdf_range}
+
+
+def fallback_font_file(dest, name):
+    """Use the kit face when it exists. Download only the pinned extra faces."""
+    bundled = dest / 'third_party/fonts' / name
+    if bundled.is_file():
+        return bundled
+    extra = next((item for item in FALLBACK_EXTRA_FONTS if item['file'] == name), None)
+    if extra is None:
+        raise RuntimeError('ps5-homebrew-ui is missing third_party/fonts/' + name)
+    _pin, cached = fetch(extra['id'])
+    return cached
+
+
+def bake_subtitle_fallback(dest, evo):
+    """Rebuild noto-fallback.huifont so the HUD can draw Thai and Devanagari.
+
+    The title embeds projects/evoplayer/assets/hui/fonts/noto-fallback.huifont.
+    The kit copy under assets/fonts is the baker output, not the bundled file.
+    """
+    baker_src = dest / 'tools/font-baker/bake_fallback.cpp'
+    if not baker_src.is_file():
+        raise RuntimeError('ps5-homebrew-ui is missing tools/font-baker/bake_fallback.cpp')
+    baker_src.write_text(patch_fallback_baker(baker_src.read_text()))
+    fonts = [fallback_font_file(dest, name) for name in FALLBACK_BAKE_FONTS]
+    out = dest / 'assets/fonts/noto-fallback.huifont'
+    if not out.parent.is_dir():
+        raise RuntimeError('ps5-homebrew-ui is missing assets/fonts')
+    bundled = evo / 'projects/evoplayer/assets/hui/fonts/noto-fallback.huifont'
+    if not bundled.is_file():
+        raise RuntimeError('EVO is missing the embedded HUD fallback font')
+    WORK.mkdir(parents=True, exist_ok=True)
+    compiler = host_cxx()
+    tool = WORK / 'bake_fallback'
+    run([compiler, '-O2', '-std=c++17', '-o', tool, baker_src])
+    command = [tool, out, '48', '6', '4096', *fonts]
+    proc = subprocess.run([str(a) for a in command], capture_output=True, text=True)
+    if proc.returncode != 0 and 'too small' in proc.stderr:
+        print('Fallback atlas 4096 is too small; retrying at 8192')
+        command[4] = '8192'
+        proc = subprocess.run([str(a) for a in command], capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or 'font baker failed').strip()
+        raise RuntimeError('Fallback font bake failed:\n' + detail[-2000:])
+    if proc.stdout.strip():
+        print(proc.stdout.strip())
+    codes, info = huifont_summary(out)
+    for codepoint, label in ((0x0E01, 'Thai'), (0x0915, 'Devanagari'), (0x0627, 'Arabic'), (0x05D0, 'Hebrew')):
+        if codepoint not in codes:
+            raise RuntimeError('Baked fallback font has no ' + label + ' glyph U+' + format(codepoint, '04X'))
+    shutil.copyfile(out, bundled)
+    print('Fallback font', info['glyphs'], 'glyphs, atlas',
+          str(info['width']) + 'x' + str(info['height']) + ',', info['bytes'], 'bytes')
+
+
+# Subset OTFs from notofonts/noto-cjk @ 165c01b46ea533872e002e0785ff17e44f6d97d8.
+# The HUD shader has six font slots and is already compiled, so these faces are
+# rasterized on demand into the existing complex-text atlas. A /data copy wins.
+CJK_FONTS = (
+    {'id': 'noto-sans-sc-regular', 'file': 'NotoSansSC-Regular.otf'},
+    {'id': 'noto-sans-tc-regular', 'file': 'NotoSansTC-Regular.otf'},
+    {'id': 'noto-sans-jp-regular', 'file': 'NotoSansJP-Regular.otf'},
+    {'id': 'noto-sans-kr-regular', 'file': 'NotoSansKR-Regular.otf'},
+)
+CJK_COMPLEX_PATCHES = (
+    (
+        '    f_sc,\n    f_jp,\n    f_kr,\n',
+        '    f_sc,\n    f_tc,\n    f_jp,\n    f_kr,\n',
+        'CJK face id',
+    ),
+    (
+        '    {nullptr, "NotoSansSC-Regular.otf", "zh"},\n'
+        '    {nullptr, "NotoSansJP-Regular.otf", "ja"},\n'
+        '    {nullptr, "NotoSansKR-Regular.otf", "ko"},\n',
+        '    {"fonts/NotoSansSC-Regular.otf", "NotoSansSC-Regular.otf", "zh"},\n'
+        '    {"fonts/NotoSansTC-Regular.otf", "NotoSansTC-Regular.otf", "zh-Hant"},\n'
+        '    {"fonts/NotoSansJP-Regular.otf", "NotoSansJP-Regular.otf", "ja"},\n'
+        '    {"fonts/NotoSansKR-Regular.otf", "NotoSansKR-Regular.otf", "ko"},\n',
+        'CJK face table',
+    ),
+    (
+        '        const int mask = cjk_mask();\n'
+        '        if (mask & (1 << (want - f_sc)))\n'
+        '            return want;\n'
+        '        for (int f = f_sc; f <= f_kr; ++f)\n'
+        '            if (mask & (1 << (f - f_sc)))\n'
+        '                return f;\n'
+        '        return -1;\n',
+        '        const int mask = cjk_mask();\n'
+        '        auto present = [&](int face) {\n'
+        '            if (mask & (1 << (face - f_sc)))\n'
+        '                return true;\n'
+        '            return kFaces[face].bundle != nullptr;\n'
+        '        };\n'
+        '        if (present(want))\n'
+        '            return want;\n'
+        '        for (int f = f_sc; f <= f_kr; ++f)\n'
+        '            if (present(f))\n'
+        '                return f;\n'
+        '        return -1;\n',
+        'CJK face choice',
+    ),
+    (
+        '        if (kFaces[id].bundle)\n'
+        '        {\n'
+        '            const EvoRmlBundleFile *b = evo_rmlui_bundle_find(kFaces[id].bundle);\n'
+        '            if (b)\n'
+        '            {\n'
+        '                f.data = b->data;\n'
+        '                size = b->size;\n'
+        '            }\n'
+        '        }\n'
+        '        else\n'
+        '        {\n'
+        '            const std::string path = cjk_path(id);\n'
+        '            if (std::FILE *fp = std::fopen(path.c_str(), "rb"))\n'
+        '            {\n'
+        '                std::fseek(fp, 0, SEEK_END);\n'
+        '                const long n = std::ftell(fp);\n'
+        '                std::fseek(fp, 0, SEEK_SET);\n'
+        '                if (n > 0)\n'
+        '                {\n'
+        '                    f.owned.resize(static_cast<std::size_t>(n));\n'
+        '                    if (std::fread(f.owned.data(), 1, f.owned.size(), fp) == f.owned.size())\n'
+        '                    {\n'
+        '                        f.data = f.owned.data();\n'
+        '                        size = f.owned.size();\n'
+        '                    }\n'
+        '                }\n'
+        '                std::fclose(fp);\n'
+        '            }\n'
+        '        }\n',
+        '        if (kFaces[id].file)\n'
+        '        {\n'
+        '            const std::string path = cjk_path(id);\n'
+        '            if (std::FILE *fp = std::fopen(path.c_str(), "rb"))\n'
+        '            {\n'
+        '                std::fseek(fp, 0, SEEK_END);\n'
+        '                const long n = std::ftell(fp);\n'
+        '                std::fseek(fp, 0, SEEK_SET);\n'
+        '                if (n > 0)\n'
+        '                {\n'
+        '                    f.owned.resize(static_cast<std::size_t>(n));\n'
+        '                    if (std::fread(f.owned.data(), 1, f.owned.size(), fp) == f.owned.size())\n'
+        '                    {\n'
+        '                        f.data = f.owned.data();\n'
+        '                        size = f.owned.size();\n'
+        '                    }\n'
+        '                }\n'
+        '                std::fclose(fp);\n'
+        '            }\n'
+        '        }\n'
+        '        if ((!f.data || size == 0) && kFaces[id].bundle)\n'
+        '        {\n'
+        '            const EvoRmlBundleFile *b = evo_rmlui_bundle_find(kFaces[id].bundle);\n'
+        '            if (b)\n'
+        '            {\n'
+        '                f.data = b->data;\n'
+        '                size = b->size;\n'
+        '            }\n'
+        '        }\n',
+        'CJK font load',
+    ),
+    (
+        '        Face *f = load(id);\n'
+        '        if (!f)\n'
+        '            return nullptr;\n'
+        '        if (shapes.size() >= kShapeCacheMax)\n',
+        '        Face *f = load(id);\n'
+        '        if (!f && id < f_sc)\n'
+        '            return nullptr;\n'
+        '        if (shapes.size() >= kShapeCacheMax)\n',
+        'CJK face fallback',
+    ),
+    (
+        'struct ShapedGlyph\n'
+        '{\n'
+        '    std::uint32_t id;\n'
+        '    float advance, dx, dy; /* in ems; y up */\n'
+        '};\n',
+        'struct ShapedGlyph\n'
+        '{\n'
+        '    std::uint32_t id;\n'
+        '    int face = -1;\n'
+        '    float advance, dx, dy; /* in ems; y up */\n'
+        '};\n',
+        'CJK glyph face',
+    ),
+    (
+        '    /* The face a run of one group is drawn with. */\n',
+        '    /* True when some CJK face has this scalar. A miss stays missing\n'
+        '     * so the caption can fall back to RmlUi instead of a box. */\n'
+        '    bool cjk_glyph(char32_t codepoint)\n'
+        '    {\n'
+        '        int prefer = f_sc;\n'
+        '        if (is_kana(codepoint))\n'
+        '            prefer = f_jp;\n'
+        '        else if (is_hangul(codepoint))\n'
+        '            prefer = f_kr;\n'
+        '        const int order[] = {prefer, f_sc, f_tc, f_jp, f_kr};\n'
+        '        for (const int candidate : order)\n'
+        '        {\n'
+        '            if (candidate < f_sc || candidate > f_kr)\n'
+        '                continue;\n'
+        '            Face *chosen = load(candidate);\n'
+        '            if (chosen != nullptr &&\n'
+        '                FT_Get_Char_Index(chosen->ft, static_cast<FT_ULong>(codepoint)) != 0)\n'
+        '                return true;\n'
+        '        }\n'
+        '        return false;\n'
+        '    }\n'
+        '\n'
+        '    /* The face a run of one group is drawn with. */\n',
+        'CJK coverage probe',
+    ),
+    (
+        '            Shaped &plain = shapes[key];\n'
+        '            const float em = static_cast<float>(f->upem);\n'
+        '            for (const char32_t c : run)\n'
+        '            {\n'
+        '                hb_codepoint_t gid = 0;\n'
+        '                if (!hb_font_get_nominal_glyph(f->font, c, &gid))\n'
+        '                    gid = 0;\n'
+        '                ShapedGlyph g;\n'
+        '                g.id = gid;\n'
+        '                g.advance = static_cast<float>(hb_font_get_glyph_h_advance(f->font, gid)) / em;\n'
+        '                g.dx = g.dy = 0.0f;\n'
+        '                plain.glyphs.push_back(g);\n'
+        '                plain.width += g.advance;\n'
+        '            }\n',
+        '            Shaped &plain = shapes[key];\n'
+        '            const int order[] = {id, f_sc, f_tc, f_jp, f_kr};\n'
+        '            for (const char32_t c : run)\n'
+        '            {\n'
+        '                int use = -1;\n'
+        '                hb_codepoint_t gid = 0;\n'
+        '                Face *chosen = nullptr;\n'
+        '                for (const int candidate : order)\n'
+        '                {\n'
+        '                    if (candidate < f_sc || candidate > f_kr)\n'
+        '                        continue;\n'
+        '                    Face *attempt = load(candidate);\n'
+        '                    if (attempt && hb_font_get_nominal_glyph(attempt->font, c, &gid))\n'
+        '                    {\n'
+        '                        use = candidate;\n'
+        '                        chosen = attempt;\n'
+        '                        break;\n'
+        '                    }\n'
+        '                }\n'
+        '                if (use < 0 || chosen == nullptr)\n'
+        '                    continue;\n'
+        '                const float em = static_cast<float>(chosen->upem);\n'
+        '                ShapedGlyph g;\n'
+        '                g.id = gid;\n'
+        '                g.face = use;\n'
+        '                g.advance = static_cast<float>(hb_font_get_glyph_h_advance(chosen->font, gid)) / em;\n'
+        '                g.dx = g.dy = 0.0f;\n'
+        '                plain.glyphs.push_back(g);\n'
+        '                plain.width += g.advance;\n'
+        '            }\n',
+        'CJK shaping',
+    ),
+    (
+        '            g.id = info[i].codepoint;\n'
+        '            g.advance = static_cast<float>(pos[i].x_advance) / em;\n',
+        '            g.id = info[i].codepoint;\n'
+        '            g.face = id;\n'
+        '            g.advance = static_cast<float>(pos[i].x_advance) / em;\n',
+        'shaped glyph face',
+    ),
+    (
+        '                const Cached *c = impl_->glyph(*this, face, sg.id);\n',
+        '                const Cached *c = impl_->glyph(*this, sg.face, sg.id);\n',
+        'CJK glyph atlas',
+    ),
+    (
+        '    const Group g = group_of(codepoint);\n'
+        '    return g != g_none && impl_->available(g);\n',
+        '    const Group g = group_of(codepoint);\n'
+        '    if (g == g_none)\n'
+        '        return false;\n'
+        '    if (g == g_cjk)\n'
+        '        return impl_->cjk_glyph(codepoint);\n'
+        '    return impl_->available(g);\n',
+        'CJK handles',
+    ),
+)
+CJK_HEADER_OLD = (
+    ' * Indic scripts use Noto faces embedded in the binary; Chinese, Japanese and\n'
+    ' * Korean use the Noto Sans CJK files in /data/evoplayer/fonts when they are\n'
+    ' * there (4-8 MB each, too big to embed).\n'
+)
+CJK_HEADER_NEW = (
+    ' * Indic scripts use Noto faces embedded in the binary. Chinese, Japanese and\n'
+    ' * Korean use that same on-demand atlas. The build embeds Noto Sans CJK\n'
+    ' * subset faces, and a file in /data/evoplayer/fonts still wins.\n'
+)
+
+
+def apply_text_patches(text, patches):
+    """Apply anchored replacements. A second call leaves patched text unchanged."""
+    for old, new, label in patches:
+        if new in text:
+            continue
+        if text.count(old) != 1:
+            raise RuntimeError('Pinned source anchor changed: ' + label)
+        text = text.replace(old, new, 1)
+    return text
+
+
+def patch_cjk_complex(text):
+    """Embed CJK faces in the on-demand subtitle path and skip missing scalars."""
+    return apply_text_patches(text, CJK_COMPLEX_PATCHES)
+
+
+def patch_cjk_complex_header(text):
+    """Point the complex-text comment at the embedded CJK faces."""
+    return apply_text_patches(text, ((CJK_HEADER_OLD, CJK_HEADER_NEW, 'CJK header'),))
+
+
+def freetype_build_flags():
+    """Return (cflags, libs) for a host program that reads fonts with FreeType."""
+    cflags = subprocess.run(['pkg-config', '--cflags', 'freetype2'], capture_output=True, text=True)
+    libs = subprocess.run(['pkg-config', '--libs', 'freetype2'], capture_output=True, text=True)
+    if cflags.returncode != 0 or libs.returncode != 0:
+        detail = (cflags.stderr or libs.stderr or 'pkg-config failed').strip()
+        raise RuntimeError('FreeType development files are required to check CJK faces. ' + detail)
+    return cflags.stdout.split(), libs.stdout.split()
+
+
+def verify_cjk_coverage(font_paths):
+    """Fail the build when a pinned face set drops a common subtitle scalar.
+
+    The result is cached from the checker source, the code point list and the
+    face checksums. A second build with the same inputs does not recheck.
+    """
+    import cjk_subset
+    codes = sorted(cjk_subset.cjk_codepoints())
+    listing = '\n'.join(format(code, 'X') for code in codes) + '\n'
+    checker = ROOT / 'scripts/cjk_glyph_check.cpp'
+    stamp = {
+        'checker_sha256': hashlib.sha256(checker.read_bytes()).hexdigest(),
+        'codepoints_sha256': hashlib.sha256(listing.encode()).hexdigest(),
+        'fonts': [digest(path) for path in font_paths],
+    }
+    stamp_path = CACHE / 'noto-cjk-coverage.stamp.json'
+    if stamp_path.is_file():
+        cached = json.loads(stamp_path.read_text())
+        if all(cached.get(key) == stamp[key] for key in stamp):
+            print('CJK coverage cache hit:', cached.get('covered'), 'of', cached.get('total'))
+            return
+    WORK.mkdir(parents=True, exist_ok=True)
+    list_path = WORK / 'cjk-codepoints.txt'
+    list_path.write_text(listing)
+    compiler = host_cxx()
+    cflags, libs = freetype_build_flags()
+    tool = WORK / 'cjk_glyph_check'
+    run([compiler, '-O2', '-std=c++17', *cflags, '-o', tool, checker, *libs])
+    proc = subprocess.run([str(tool), str(list_path), *[str(path) for path in font_paths]],
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or 'CJK coverage check failed').strip()
+        raise RuntimeError('CJK faces do not cover the subtitle set:\n' + detail[-2000:])
+    print(proc.stdout.strip())
+    covered, _, total = proc.stdout.strip().split()[1:]
+    stamp['covered'] = int(covered)
+    stamp['total'] = int(total)
+    stamp_path.write_text(json.dumps(stamp, indent=2) + '\n')
+
+
+def install_cjk_fonts(evo):
+    """Copy the pinned CJK faces into the title and teach the HUD to use them."""
+    fonts = []
+    for item in CJK_FONTS:
+        _pin, cached = fetch(item['id'])
+        fonts.append(cached)
+    verify_cjk_coverage(fonts)
+    dest = evo / 'projects/evoplayer/assets/fonts'
+    if not dest.is_dir():
+        raise RuntimeError('EVO is missing assets/fonts')
+    total = 0
+    for item, src in zip(CJK_FONTS, fonts):
+        target = dest / item['file']
+        if not target.is_file() or digest(target) != digest(src):
+            shutil.copyfile(src, target)
+        total += target.stat().st_size
+    notice_src = ROOT / 'scripts/noto-cjk-notice.txt'
+    notice = dest / 'NotoCJK-NOTICE.txt'
+    if not notice.is_file() or notice.read_bytes() != notice_src.read_bytes():
+        shutil.copyfile(notice_src, notice)
+    source = evo / 'projects/evoplayer/ui_kit/src/evo_hui_complex.cpp'
+    header = evo / 'projects/evoplayer/ui_kit/include/evo_hui_complex.hpp'
+    source.write_text(patch_cjk_complex(source.read_text()))
+    header.write_text(patch_cjk_complex_header(header.read_text()))
+    print('CJK faces', total, 'bytes, on-demand atlas', '2048x2048')
+
+
 def provide_hui(evo):
     """Install the pinned EVO UI kit where the Makefile expects its submodule.
 
     EVO v0.12.0 records third_party/ps5-homebrew-ui as a git submodule, and a
     pinned codeload archive contains only the empty directory. The adapter
-    unpacks the kit's own pinned archive instead (see deps.lock)."""
+    unpacks the kit's own pinned archive instead (see deps.lock). It then
+    rebakes the HUD fallback font with Thai and Devanagari (#18) and embeds
+    CJK faces for the on-demand subtitle atlas."""
     pin, archive = fetch('ps5-homebrew-ui-source')
     dest = evo / 'third_party/ps5-homebrew-ui'
     if dest.exists():
@@ -645,6 +1124,8 @@ def provide_hui(evo):
     for sub in ('src/ui', 'src/ui/components', 'src/core'):
         if not any((dest / sub).glob('*.cpp')):
             raise RuntimeError('ps5-homebrew-ui has no sources under ' + sub)
+    bake_subtitle_fallback(dest, evo)
+    install_cjk_fonts(evo)
 
 
 def fix_network_reader(text):
@@ -1120,6 +1601,17 @@ def configure_ui(ui):
     index.write_text(patch_index(index.read_text()))
 
 
+def stamp_fork_version(nv):
+    """Publish this fork's VERSION inside the browser bundle, not upstream 1.4.x."""
+    version = (ROOT/'VERSION').read_text().strip()
+    if not version:
+        raise RuntimeError('VERSION is empty')
+    package_path = nv/'package.json'
+    package = json.loads(package_path.read_text())
+    package['version'] = version
+    package_path.write_text(json.dumps(package, indent=2) + '\n')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--ui-only', action='store_true')
@@ -1137,6 +1629,7 @@ def main():
     WORK.mkdir(parents=True, exist_ok=True)
     nv = source('nuvio-tv-source')
     polish.patch_nuvio(nv)
+    stamp_fork_version(nv)
     run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=nv)
     run(['npm', 'run', 'build'], cwd=nv)
     ui = WORK/'ui'
@@ -1189,6 +1682,8 @@ def main():
     polish.apply(evo, nv)
     import native_remote
     native_remote.patch_native(evo / 'projects/evoplayer')
+    import input_glyphs
+    input_glyphs.install(evo)
     patches.write_patch(fetch('evo-player-nuvio-source')[1], evo, ROOT/'patches/evo.patch')
     patches.write_patch(fetch('nuvio-tv-source')[1], nv, ROOT/'patches/nuvio.patch')
     bootstrap_metadata = None

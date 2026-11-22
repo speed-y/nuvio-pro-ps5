@@ -41,12 +41,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-19 llvm-19-dev lld-19 nasm zlib1g-dev pkg-config
+          sudo apt-get install -y clang-19 llvm-19-dev lld-19 nasm zlib1g-dev pkg-config libfreetype6-dev
           echo 'LLVM_CONFIG=/usr/bin/llvm-config-19' >> "$GITHUB_ENV"
       - name: Install macOS host tools
         if: runner.os == 'macOS'
         run: |
-          brew install llvm lld coreutils grep nasm
+          brew install llvm lld coreutils grep nasm freetype pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix freetype)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
@@ -71,6 +72,9 @@ jobs:
             .cache/*.tar.gz
             .cache/*.tar.xz
             .cache/*.wgt
+            .cache/*.ttf
+            .cache/*.otf
+            .cache/noto-cjk-coverage.stamp.json
           key: nuvio-downloads-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('deps.lock') }}
       - name: Restore compiled FFmpeg
         id: ffmpeg
@@ -122,6 +126,9 @@ jobs:
             .cache/*.tar.gz
             .cache/*.tar.xz
             .cache/*.wgt
+            .cache/*.ttf
+            .cache/*.otf
+            .cache/noto-cjk-coverage.stamp.json
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       - name: Save compiled FFmpeg
         if: success() && steps.ffmpeg.outputs.cache-hit != 'true'

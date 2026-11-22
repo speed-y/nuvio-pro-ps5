@@ -507,7 +507,107 @@ def patch_pin_submit_keydown(text):
     return text.replace(old, new)
 
 
+def patch_release_check(nuvio):
+    """Check speed-y/nuvio-pro-ps5 releases, including this fork's prereleases."""
+    service = nuvio/'js/core/update/appUpdateService.js'
+    replace(service,
+        'const LATEST_RELEASE_URL = "https://api.github.com/repos/NuvioMedia/NuvioTVSmart/releases/latest";',
+        'const LATEST_RELEASE_URL = "https://api.github.com/repos/speed-y/nuvio-pro-ps5/releases?per_page=30";')
+    replace(service, '''export function parseLatestRelease(release) {
+  if (!release || release.draft || release.prerelease) {
+    return null;
+  }
+
+  const tag = releaseTag(release);
+  if (!tag) {
+    return null;
+  }
+
+  return {
+    tag,
+    title: String(release.name || tag).trim() || tag,
+    notes: String(release.body || "").trim(),
+    releaseUrl: String(release.html_url || "").trim() || null
+  };
+}''', '''const FORK_VERSION_TAG = /^v?(\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?)$/;
+
+export function parseLatestRelease(release) {
+  if (!release || release.draft) {
+    return null;
+  }
+
+  const raw = releaseTag(release);
+  const match = raw.match(FORK_VERSION_TAG);
+  if (!match) {
+    return null;
+  }
+  const tag = match[1];
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const zip = assets.find((item) => item && item.name === `nuvio-pro-ps5-${tag}.zip`)
+    || assets.find((item) => item && item.name === "PPSA99996.zip");
+  const releaseUrl = String(release.html_url || "").trim()
+    || "https://github.com/speed-y/nuvio-pro-ps5/releases";
+  const downloadUrl = String(zip && zip.browser_download_url || "").trim() || releaseUrl;
+
+  return {
+    tag,
+    title: String(release.name || raw).trim() || tag,
+    notes: String(release.body || "").trim(),
+    releaseUrl,
+    downloadUrl
+  };
+}
+
+export function chooseNewestRelease(releases, currentVersion) {
+  const list = Array.isArray(releases) ? releases : releases ? [releases] : [];
+  let best = null;
+  for (const release of list) {
+    const parsed = parseLatestRelease(release);
+    if (!parsed || !isRemoteAppVersionNewer(parsed.tag, currentVersion)) {
+      continue;
+    }
+    if (!best || isRemoteAppVersionNewer(parsed.tag, best.tag)) {
+      best = parsed;
+    }
+  }
+  return best;
+}''')
+    replace(service, '''    const release = parseLatestRelease(await response.json());
+    if (!release || !isRemoteAppVersionNewer(release.tag, currentVersion)) {
+      return null;
+    }
+    return release;''',
+        '''    const release = chooseNewestRelease(await response.json(), currentVersion);
+    return release;''')
+    prompt = nuvio/'js/ui/components/appUpdatePrompt.js'
+    replace(prompt, '''    subtitle: t(
+      "update_installer_required",
+      "Use Nuvio TV Installer to update the app on your TV."
+    ),''', '''    subtitle: t(
+      "update_installer_required",
+      "Download the newer Nuvio Pro package from this project's GitHub releases."
+    ),''')
+    replace(prompt, '''  const notes = buildReleaseNotesContent(update.notes, documentRef);
+  content.appendChild(notes);''', '''  const notes = buildReleaseNotesContent(update.notes, documentRef);
+  content.appendChild(notes);
+  const addLink = (label, href) => {
+    if (!href) return;
+    const link = documentRef.createElement("a");
+    link.className = "app-update-link";
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = label;
+    content.appendChild(link);
+  };
+  addLink("Open release", update.releaseUrl);
+  if (update.downloadUrl && update.downloadUrl !== update.releaseUrl) {
+    addLink("Download package", update.downloadUrl);
+  }''')
+
+
 def patch_nuvio(nuvio):
+    patch_release_check(nuvio)
     patch_stream_selection(nuvio)
     home_dom = nuvio/'js/ui/screens/home/homeDomUpdate.js'
     home_dom.write_text(patch_home_dom(home_dom.read_text()))
@@ -554,6 +654,7 @@ def patch_nuvio(nuvio):
     navigation=nuvio/'js/ui/navigation'
     shutil.copyfile(Path(__file__).parent/'ps5-navigation.js', navigation/'ps5-navigation.js')
     shutil.copyfile(Path(__file__).parent/'ps5-text-input.js', navigation/'ps5-text-input.js')
+    shutil.copyfile(Path(__file__).parent/'input-device.js', navigation/'input-device.js')
     shutil.copyfile(Path(__file__).parent/'ps5-tv-remote.js', navigation/'ps5-tv-remote.js')
     with (nuvio/'css/components-60.css').open('a') as css:
         css.write('\n'+(Path(__file__).parent/'ps5-search-keyboard.css').read_text()+"""
@@ -904,8 +1005,8 @@ def patch_nuvio(nuvio):
 
       if (action === "playDefault") {''')
     home=nuvio/'js/ui/screens/home/homeScreenMethods-06-get-hero-source-from-focus-state.js'
-    replace(home, 'if (!isCloud && this.showContinueWatchingManualPlayOption) {',
-        'if (!isCloud && (globalThis.__NUVIO_PS5__ || this.showContinueWatchingManualPlayOption)) {')
+    replace(home, 'if (!isCloud && isAutoPlayEffectivelyEnabled(PlayerSettingsStore.get())) {',
+        'if (!isCloud && (globalThis.__NUVIO_PS5__ || isAutoPlayEffectivelyEnabled(PlayerSettingsStore.get()))) {')
     # Upstream now also honors manualSelection before progress-based resume.
     settings=nuvio/'js/ui/screens/settings/settingsScreenMethods-14-activate-focused.js'
     replace(settings,
@@ -1295,17 +1396,18 @@ def patch_controller_hook(source):
     anchor='static char s_hook_profile[16];'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller state anchor changed')
-    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;\nstatic int s_controller_direction, s_controller_shortcut;')
+    source=source.replace(anchor, anchor+'\nstatic uint32_t s_controller_options, s_controller_menu, s_controller_navigation, s_controller_keyboard;\nstatic int s_controller_direction, s_controller_shortcut;\nint nuvio_remote_menu_seen(void);')
     anchor='    } else if (!strncmp(path, "/evo/close", 10)) {'
     if source.count(anchor)!=1:
         raise RuntimeError('Pinned controller endpoint anchor changed')
     source=source.replace(anchor, '''    } else if (!strcmp(path, "/evo/controller")) {
-        char body[160];
+        char body[192];
         pthread_mutex_lock(&s_mx);
-        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d,\\"keyboard\\":%u,\\"shortcut\\":%d}",
+        int n = snprintf(body, sizeof body, "{\\"options\\":%u,\\"menu\\":%u,\\"navigation\\":%u,\\"direction\\":%d,\\"keyboard\\":%u,\\"shortcut\\":%d,\\"remoteMenu\\":%u}",
                          (unsigned)s_controller_options, (unsigned)s_controller_menu,
                          (unsigned)s_controller_navigation, s_controller_direction,
-                         (unsigned)s_controller_keyboard, s_controller_shortcut);
+                         (unsigned)s_controller_keyboard, s_controller_shortcut,
+                         (unsigned)nuvio_remote_menu_seen());
         pthread_mutex_unlock(&s_mx);
         respond(fd, "200 OK", "application/json", body, (size_t)n);
 '''+anchor)

@@ -8,14 +8,14 @@ identify locally recorded downloads and are not maintainer signatures.
 
 | Input | Fixed identity | Use |
 |---|---|---|
-| [Nuvio TV](https://github.com/NuvioMedia/NuvioTVSmart/tree/f5c673886965b0030b497e54ea5d60b4ed0a1870) | `f5c673886965b0030b497e54ea5d60b4ed0a1870`, version 1.4.1 | Browser UI and official branding |
+| [Nuvio TV](https://github.com/NuvioMedia/NuvioTVSmart/tree/573d49472d04087ed75cc219b872cc8aefee19aa) | `573d49472d04087ed75cc219b872cc8aefee19aa`, version 1.4.4 | Browser UI and official branding |
 | [EVO Player](https://github.com/sainsaji/EVO-PLAYER-PS5/tree/f6e43e6561796630673f1e20eb1eb67d6428514c) | `f6e43e6561796630673f1e20eb1eb67d6428514c`, v0.13.5 | Native title, bridge, decoder and runtime source |
 | [Unofficial Stremio PS5 port](https://github.com/Sp9nky/unofficial-stremio-ps5-port/tree/a4b12fb515a3044f073f4befba0dd90d8244eddd) | `a4b12fb515a3044f073f4befba0dd90d8244eddd` | Read-only comparison of sandbox networking changes |
 | [PS5 payload SDK](https://github.com/ps5-payload-dev/sdk/releases/tag/v0.43) | v0.43 | Headers, wrappers and payload link inputs |
 | [pacbrew target libraries](https://github.com/ps5-payload-dev/pacbrew-repo/releases/tag/v0.39) | v0.39 | Target libraries only |
 | [FFmpeg](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz) | 7.1.1 | Target libav* libraries. The build compiles this source and installs it over the sysroot copy |
 | [ps5-homebrew-ui](https://github.com/sainsaji/ps5-homebrew-ui/tree/47f4b9868c33264716b2e92922b0d2c9d0f2ab0f) | `47f4b9868c33264716b2e92922b0d2c9d0f2ab0f` | EVO v0.13.5's UI submodule. The build installs this pinned tree into `third_party/` |
-| [Official Nuvio TV package](https://github.com/NuvioMedia/NuvioTVSmart/releases/tag/1.4.1) | Tizen 1.4.1 | Selected public browser login configuration |
+| [Official Nuvio TV package](https://github.com/NuvioMedia/NuvioTVSmart/releases/tag/1.4.4) | Tizen 1.4.4 | Selected public browser login configuration |
 | [ShadowMountPlus scan paths](https://github.com/drakmor/ShadowMountPlus/blob/8b1f48e086bed93e1ad53158d1103054e362f54d/include/sm_paths.h) | `8b1f48e086bed93e1ad53158d1103054e362f54d` | Read-only reference for the default title folders in `scripts/webui_roots.h`. Nuvio copies no code from it |
 | [klogsrv](https://github.com/ps5-payload-dev/klogsrv/releases/tag/v0.9) | v0.9 | Optional diagnostics used in the console session |
 
@@ -27,6 +27,13 @@ EVO's minimal configuration and installs it over the sysroot copy, replacing
 the pacbrew libav* libraries. The build omits libdav1d, so software AV1
 remains unsupported. The GPL-3.0 `ps5-homebrew-ui` kit unpacks under
 `third_party/` from its own pinned archive during the build.
+The build also pins Noto Sans Thai and Noto Sans Devanagari regular faces.
+It also pins Noto Sans CJK subset faces for Simplified Chinese, Traditional Chinese, Japanese and Korean.
+The CJK pin is commit `165c01b46ea533872e002e0785ff17e44f6d97d8` of notofonts/noto-cjk.
+`deps.lock` records each SHA-256.
+These faces use the SIL Open Font License.
+The CJK faces are not committed.
+The requested googlefonts URLs redirect to notofonts/noto-fonts.
 
 ### SDK firmware checks
 
@@ -136,4 +143,6 @@ SDK v0.43 supplies the existing `scePadOpen`, `scePadGetHandle`, `scePadReadStat
 | `src/video/ps5/SDL_ps5remote.c` | `d0aac6bf7abc4a970b9199265b86e40d940502f6b10d179f9fc3a9c93bc1d85a` |
 
 `scripts/native_remote.py` retains SDL's zlib license notice, source attribution and an explicit altered-source notice in the generated adapter.
+Its code indexes are `remote_key_map` in `SDL_ps5remote.c`.
+Indexes that file marks unknown stay unmapped.
 This adaptation changes handle ownership, browser suspension, retry behavior and native action translation. It does not add SDL as a build dependency.
