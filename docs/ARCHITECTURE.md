@@ -56,7 +56,7 @@ The old upstream identity is `PPSA99997`. Historical evidence retains that ident
 patches show changes to upstream files. The adapters also copy the loading
 artwork and the RML assets. The patches alone do not perform the full build.
 
-The browser UI uses Nuvio TV 1.4.1. EVO remains pinned to v0.13.5 with the existing native patches.
+The browser UI uses Nuvio TV 1.4.4. EVO remains pinned to v0.13.5 with the existing native patches.
 Upstream now supplies nullable collection-rating normalization, manual source selection and series-wide stream preference lookup.
 PS5 adapters retain focused stream identity during incremental loading and defer preference writes until native playback succeeds.
 The adapters disable the new stream-link cache on PS5. Stream reuse still matches fresh addon results instead of storing signed URLs or headers.
@@ -151,6 +151,8 @@ Unknown duration or a rejected demuxer seek can still prevent startup resume.
 The AGC playback bridge prefers the homebrew-ui HUD when that renderer can draw the current captions.
 RmlUi remains the fallback for unsupported caption glyphs.
 The build rebakes the HUD fallback atlas with Thai and Devanagari before packaging.
+Startup and Settings compare `VERSION` with releases from `speed-y/nuvio-pro-ps5`.
+The update dialog links to that release and its package.
 RmlUi still draws glyphs that atlas does not contain.
 Full CJK faces stay out of this atlas.
 Both HUDs must consume the skip, next-episode and playback-ended fields.

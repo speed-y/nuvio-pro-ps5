@@ -5448,3 +5448,25 @@ CJK is still outside this atlas.
 Python on this host is 3.12.3.
 Console subtitle rendering on firmware 12.70 remains pending.
 
+## Skip prompts and Nuvio TV 1.4.4, 2026-11-22
+
+[SOURCE-VERIFIED] Nuvio playback sends IntroDB intervals on the `/evo/play` `skip` query.
+`evo_webui_skip_interval` keeps a prompt while playback is inside a valid interval.
+The homebrew-ui HUD draws that prompt from `draw_nuvio_prompts` when a Nuvio presentation is active.
+RmlUi draws the same label in `#nuvio-skip` when the HUD does not.
+EVO's own library prompt still uses its chapter or server segments for eight seconds.
+That path runs only after the browser closes into native library playback.
+Host tests already cover the HUD card, the metadata proxy and the handoff encoding.
+This session did not launch firmware 12.70, so on-screen prompts remain pending.
+
+[LOCALLY BUILT] The browser UI pin moved from Nuvio TV 1.4.1 to release 1.4.4.
+The previous pin was 1.4.1, commit `f5c673886965b0030b497e54ea5d60b4ed0a1870`.
+The new pin is commit `573d49472d04087ed75cc219b872cc8aefee19aa`.
+One home-menu anchor moved. Play manually stays available on PS5.
+The other fork patches applied on the 1.4.4 tree.
+Update checks read `speed-y/nuvio-pro-ps5` releases, including prerelease tags.
+The checker skips drafts and `pr-*` test tags.
+The dialog links to the release page and the `nuvio-pro-ps5-<version>.zip` asset.
+The bundle version comes from `VERSION`, currently `0.2.0-alpha.7`.
+Console update prompts and skip cards on firmware 12.70 remain pending.
+

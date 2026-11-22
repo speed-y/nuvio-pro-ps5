@@ -1257,6 +1257,17 @@ def configure_ui(ui):
     index.write_text(patch_index(index.read_text()))
 
 
+def stamp_fork_version(nv):
+    """Publish this fork's VERSION inside the browser bundle, not upstream 1.4.x."""
+    version = (ROOT/'VERSION').read_text().strip()
+    if not version:
+        raise RuntimeError('VERSION is empty')
+    package_path = nv/'package.json'
+    package = json.loads(package_path.read_text())
+    package['version'] = version
+    package_path.write_text(json.dumps(package, indent=2) + '\n')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--ui-only', action='store_true')
@@ -1274,6 +1285,7 @@ def main():
     WORK.mkdir(parents=True, exist_ok=True)
     nv = source('nuvio-tv-source')
     polish.patch_nuvio(nv)
+    stamp_fork_version(nv)
     run(['npm', 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=nv)
     run(['npm', 'run', 'build'], cwd=nv)
     ui = WORK/'ui'
